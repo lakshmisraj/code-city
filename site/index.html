@@ -15,6 +15,8 @@
   --ink-dim: #9aa3bd;        /* secondary text */
   --sodium: #f2a541;         /* streetlight accent */
   --fire: #ff6b2c;           /* TODO fires */
+  --added: #7ed49b;          /* PR: new files */
+  --changed: #8fb0ff;        /* PR: modified files */
   --f-display: "Chakra Petch", "Avenir Next Condensed", "Arial Narrow", sans-serif;
   --f-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -109,14 +111,14 @@ button:focus-visible, input:focus-visible, .linkish:focus-visible { outline: 2px
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .ramp { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--ink-dim); }
-.ramp .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #22305c, #2f4a8f, #4f6fc4, #c58a3c, #ef8a2e, #ff5a2a, #ffd9a8); }
+.ramp .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #22305c, #2f4a8f, #4f6fc4, #c58a3c, #e8822c, #f05a2a, #ff9a6a); }
 .ramp .ends { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; }
 .key { font-size: 12px; color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .key b { color: var(--ink); font-weight: 600; }
 details.more summary { cursor: pointer; font-size: 12px; color: var(--ink-dim); }
 details.more[open] summary { margin-bottom: 8px; }
 
-#drawer {
+#drawer, #side {
   position: fixed; z-index: 6;
   top: calc(16px + env(safe-area-inset-top, 0px));
   right: max(16px, env(safe-area-inset-right, 0px));
@@ -127,6 +129,39 @@ details.more[open] summary { margin-bottom: 8px; }
   border: 1px solid var(--line); border-radius: 10px;
   display: flex; flex-direction: column; overflow: hidden;
 }
+#drawer { z-index: 7; }
+.rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rank button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
+.rank button:hover, .rank button:focus-visible { background: var(--street-2); }
+.rank button:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
+.rank button.gone { cursor: default; }
+.rank .n { min-width: 18px; font: 12px var(--f-mono); color: var(--ink-dim); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.rank .path { font: 12px var(--f-mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .path i { font-style: normal; color: var(--ink-dim); }
+.rank .meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.rank .bar { grid-column: 2; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.rank .bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--sodium), var(--fire)); }
+.chip { font: 600 10px var(--f-mono); letter-spacing: .04em; text-transform: uppercase; padding: 0 5px; border-radius: 3px; border: 1px solid currentColor; line-height: 16px; }
+.chip.added { color: var(--added); } .chip.modified, .chip.renamed { color: var(--changed); } .chip.removed { color: var(--fire); } .chip.hot { color: var(--sodium); }
+.adds { color: var(--added); font-family: var(--f-mono); } .dels { color: var(--fire); font-family: var(--f-mono); }
+.side-note { font-size: 12px; line-height: 1.5; color: var(--ink-dim); margin: 0; }
+.side-note b { color: var(--ink); font-weight: 600; }
+.side-note a { color: var(--sodium); }
+.side-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-link { font: 600 13px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; text-decoration: none; }
+.btn-link:hover { border-color: var(--sodium); }
+.btn-link:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+#toast {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  background: var(--street-2); border: 1px solid var(--line); color: var(--ink);
+  padding: 8px 14px; border-radius: 999px; font-size: 13px; max-width: calc(100vw - 32px);
+}
+.signin { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-dim); }
+.signin b { color: var(--ink); font-weight: 600; }
+.gh-btn { background: var(--ink); color: var(--night); border-color: var(--ink); }
+.gh-btn:hover:not(:disabled) { border-color: var(--sodium); }
+#hotBtn[aria-pressed="true"] { border-color: var(--sodium); color: var(--sodium); }
 .drawer-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
 .drawer-head > div { min-width: 0; flex: 1; }
 .drawer-head h2 { margin: 0; font-family: var(--f-mono); font-size: 14px; font-weight: 600; word-break: break-all; }
@@ -202,7 +237,7 @@ body.walking .card, body.walking #hint { display: none; }
   .brand h1 { font-size: 22px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats dd { font-size: 14px; }
-  #drawer { top: auto; height: 50vh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #drawer, #side { top: auto; height: 50vh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   #hint { display: none; }
   #timeline { flex-wrap: wrap; gap: 8px; }
   .tl-main { order: 3; flex-basis: 100%; }
@@ -234,6 +269,14 @@ body.walking .card, body.walking #hint { display: none; }
       <button class="primary" type="submit">Build</button>
     </div>
     <small id="repoStatus"></small>
+    <div class="signin" id="signinRow" hidden>
+      <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
+      <span>5,000 GitHub requests an hour instead of 60</span>
+    </div>
+    <div class="signin" id="signedinRow" hidden>
+      <span>Signed in as <b id="ghLogin">GitHub</b></span>
+      <button class="linkish" type="button" id="signoutBtn">Sign out</button>
+    </div>
     <details class="more" id="tokenBox">
       <summary id="tokenSummary">Get more GitHub requests: add a token</summary>
       <div class="field">
@@ -258,7 +301,18 @@ body.walking .card, body.walking #hint { display: none; }
     </div>
   </section>
 
+  <form class="field" id="prForm" autocomplete="off" hidden>
+    <label for="prInput">Show a pull request</label>
+    <div class="inline">
+      <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
+      <button type="submit">Show</button>
+    </div>
+    <small id="prStatus"></small>
+  </form>
+
   <div class="actions">
+    <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
+    <button id="shareBtn" type="button">Copy link</button>
     <button id="openBtn" type="button">Open a folder</button>
     <button id="walkBtn" type="button">Walk the streets</button>
     <button id="resetBtn" type="button">Reset view</button>
@@ -299,6 +353,15 @@ body.walking .card, body.walking #hint { display: none; }
     <div id="dCode"></div>
   </div>
 </aside>
+
+<aside id="side" hidden aria-labelledby="sideTitle">
+  <div class="drawer-head">
+    <div><h2 id="sideTitle"></h2><p id="sideSub"></p></div>
+    <button id="sideClose" type="button">Close</button>
+  </div>
+  <div class="drawer-body" id="sideBody"></div>
+</aside>
+<div id="toast" role="status" hidden></div>
 
 <div id="timeline" hidden>
   <button id="playBtn" type="button" class="primary">Play history</button>
@@ -630,12 +693,12 @@ function langMat(lang) {
   }
   return matCache[lang];
 }
-const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#ef8a2e", "#ff5a2a", "#ffd9a8"].map(c => new THREE.Color(c));
+const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#e8822c", "#f05a2a", "#ff9a6a"].map(c => new THREE.Color(c));
 const HEAT_LEVELS = 16;
 const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
   if (i === 0) return new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 });
   const t = (i - 1) / (HEAT_LEVELS - 1) * (RAMP.length - 1), a = Math.floor(t), c = RAMP[a].clone().lerp(RAMP[Math.min(a + 1, RAMP.length - 1)], t - a);
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 });
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.06 + 0.22 * (i / HEAT_LEVELS) ** 2 });
 });
 const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.22, roughness: 0.5 });
 const PICKED = new THREE.MeshStandardMaterial({ color: 0xf2a541, emissive: 0xf2a541, emissiveIntensity: 0.32, roughness: 0.4 });
@@ -647,6 +710,12 @@ const FLASH = {
   del: new THREE.MeshStandardMaterial({ color: 0xff7a5c, emissive: 0xff3b1f, emissiveIntensity: 0.8, roughness: 0.6 }),
 };
 const FIRE = new THREE.MeshBasicMaterial({ color: 0xff6b2c, transparent: true, opacity: 0.9 });
+const PR_MATS = {   // files a pull request touches
+  modified: new THREE.MeshStandardMaterial({ color: 0x6688e0, emissive: 0x5d86ff, emissiveIntensity: 0.16, roughness: 0.5 }),
+  renamed: new THREE.MeshStandardMaterial({ color: 0x6688e0, emissive: 0x5d86ff, emissiveIntensity: 0.16, roughness: 0.5 }),
+  added: new THREE.MeshStandardMaterial({ color: 0x56b878, emissive: 0x3fbf6a, emissiveIntensity: 0.16, roughness: 0.5 }),
+  removed: new THREE.MeshStandardMaterial({ color: 0xff7a5c, emissive: 0xff3b1f, emissiveIntensity: 0.2, roughness: 0.6 }),
+};
 const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
   color: new THREE.Color("#161d33").lerp(new THREE.Color("#33406a"), d / 6), roughness: 0.95,
 }));
@@ -736,6 +805,7 @@ function buildCity(data) {
   resetView();
 
   ghRepo = data.gh || null;
+  currentRepo = data.repoKey || null;
   const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo", github: "GitHub" };
   document.getElementById("mode").textContent = tags[data.source] || "Repo";
   document.getElementById("repoName").textContent = data.name;
@@ -747,6 +817,7 @@ function buildCity(data) {
   if (hist) { scrub.max = hist.commits.length; speedIdx = 0; speedBtn.textContent = speedLabel(); }
   goNow(true);
   closeDrawer(); applySearch(); renderLegend();
+  onCityBuilt();
 }
 
 function setTargets(linesOf) {
@@ -759,6 +830,7 @@ function setTargets(linesOf) {
   maxChurn = 1; for (const v of churnSrc.values()) if (v > maxChurn) maxChurn = v;
   if (colorMode === "heat" && maxChurn !== prevMax) renderLegend();
   updateStats(); updateHud();
+  if (sideMode === "hot") refreshSideSoon();
 }
 function goNow(initial) {
   viewNow = true; playing = false; churnSrc = totalChurn; cursor = hist ? hist.commits.length - 1 : -1;
@@ -836,6 +908,7 @@ function matFor(b) {
   if (b === hovered) return HOVER;
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
   if (query) return b.userData.match ? MATCH : DIM;
+  if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
@@ -847,6 +920,7 @@ function setColorMode(m) {
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
   document.getElementById("cHeat").setAttribute("aria-pressed", m === "heat");
   renderLegend();
+  syncUrl();
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
@@ -999,8 +1073,9 @@ function openDrawer(b) {
         : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   drawer.hidden = false;
   if (!walk.on && picked !== prevPicked) flyToBuilding(b);
+  syncUrl();
 }
-function closeDrawer() { drawer.hidden = true; picked = null; }
+function closeDrawer() { const had = picked; drawer.hidden = true; picked = null; if (had) syncUrl(); }
 document.getElementById("closeBtn").onclick = closeDrawer;
 document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(true); };
 
@@ -1130,7 +1205,11 @@ let ghRepo = null;    // { owner, repo, branch } of a city loaded from GitHub
 let ghProbe = null;   // what step 1 learned about the repo, until history is loaded or skipped
 const tokenInput = document.getElementById("ghToken"), rememberToken = document.getElementById("rememberToken");
 
-function ghToken() { return tokenInput.value.trim(); }
+// A token from "Sign in with GitHub" (kept in this browser until sign-out) wins over a pasted one.
+const OAUTH_KEY = "codecity.githubOAuth";
+let oauthToken = null, signinEnabled = false;
+try { oauthToken = localStorage.getItem(OAUTH_KEY); } catch (e) { /* storage blocked: not signed in */ }
+function ghToken() { return oauthToken || tokenInput.value.trim(); }
 function ghHeaders() {
   const h = { Accept: "application/vnd.github+json" };
   if (ghToken()) h.Authorization = "Bearer " + ghToken();
@@ -1140,11 +1219,16 @@ function rateLimited(reset) {
   const at = reset ? "after " + new Date(reset * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "in an hour";
   return new Error(ghToken()
     ? `Your GitHub token has used its 5,000 requests for this hour. Try again ${at}.`
-    : `GitHub allows 60 requests an hour without a token, and your network has used them up. Try again ${at}, or ${MORE_WITH_TOKEN}`);
+    : `GitHub allows 60 requests an hour without a token, and your network has used them up. Try again ${at}, or ${moreWithToken()}`);
 }
 // Shown to visitors without a token wherever the request limit comes up.
-const MORE_WITH_TOKEN = `<button class="linkish" type="button" data-open-token>Sign in with a GitHub token</button> to get 5,000 requests an hour instead of 60.`;
+function moreWithToken() {
+  return signinEnabled
+    ? `<button class="linkish" type="button" data-signin>sign in with GitHub</button> to get 5,000 requests an hour instead of 60.`
+    : `<button class="linkish" type="button" data-open-token>add a GitHub token</button> to get 5,000 requests an hour instead of 60.`;
+}
 document.addEventListener("click", e => {
+  if (e.target.closest("[data-signin]")) return startSignin();
   if (!e.target.closest("[data-open-token]")) return;
   const box = document.getElementById("tokenBox");
   box.open = true; box.scrollIntoView({ block: "nearest" }); tokenInput.focus();
@@ -1236,9 +1320,9 @@ async function loadFromGitHub(key) {
   let total = page1.length, oldest = page1[page1.length - 1];
   if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
-  buildCity({ name: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch }, history: null });
-  if (!page1.length) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
-  ghProbe = { key, owner, repo, base, branch, files, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) };
+  ghProbe = page1.length ? { key, owner, repo, base, branch, files, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
+  buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch }, history: null });
+  if (!ghProbe) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
   setRepoStatus("");
   await openHistoryPanel();
 }
@@ -1256,9 +1340,11 @@ async function openHistoryPanel() {
   hp("hpRanges").innerHTML = RANGES.map(([label]) => `<button type="button" aria-pressed="${label === hpChoice}" data-range="${label}">${label}</button>`).join("");
   hp("hpCount").max = p.total;
   if (!hp("hpCount").value) hp("hpCount").value = Math.min(50, p.total);
+  rangeFromLink();
   renderPlan();
   hp("historyPanel").hidden = false;
   hp("historyPanel").scrollIntoView({ block: "nearest" });
+  autoLoadLinkedRange();
 }
 function closeHistoryPanel() { hp("historyPanel").hidden = true; ghProbe = null; }
 
@@ -1315,7 +1401,7 @@ function renderPlan() {
   let warn = `Keep this low: each commit costs one GitHub request, and big ranges take a while to load.${leftTxt}`;
   if (pl.mode === "steps") warn = `That's more commits than you have requests left, so it would load as ${fmt(pl.steps)} coarser steps instead of one by one.${leftTxt}`;
   if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${leftTxt} Pick a shorter range.`;
-  hp("hpWarn").innerHTML = esc(warn) + (token ? "" : " " + MORE_WITH_TOKEN);
+  hp("hpWarn").innerHTML = esc(warn) + (token ? "" : " Or " + moreWithToken());
   hp("hpWarn").classList.toggle("over", pl.mode !== "every");
   hp("hpLoad").disabled = !pl.mode;
   hp("hpLoad").textContent = pl.mode === "steps" ? `Load as ${fmt(pl.steps)} steps` : "Load history";
@@ -1329,8 +1415,9 @@ hp("hpRanges").addEventListener("click", e => {
   if (hpChoice === "Custom") hp("hpCount").focus();
 });
 hp("hpCount").addEventListener("input", renderPlan);
-hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); };
+hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
 hp("hpLoad").onclick = async () => {
+  currentRange = hpChoice === "Custom" ? String(plan().n) : RANGE_CODES[hpChoice];
   busy.hidden = false;
   try { await loadHistory(plan()); }
   catch (e) { setRepoStatus(e.message); }
@@ -1403,7 +1490,7 @@ async function loadHistory(pl) {
   const key = p.key;
   closeHistoryPanel();
   buildCity({
-    name: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
+    name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
     history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: singles.length } : null,
   });
   setRepoStatus(`Loaded ${fmt(singles.length)} commit${singles.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to today${steps ? `, as ${fmt(commits.length)} steps` : ""}. Press Play history.`);
@@ -1411,7 +1498,9 @@ async function loadHistory(pl) {
 
 // The token stays in this browser; it is saved only when the visitor asks.
 function syncTokenUi() {
-  document.getElementById("tokenSummary").textContent = ghToken() ? "GitHub token added: 5,000 requests an hour" : "Get more GitHub requests: add a token";
+  document.getElementById("tokenBox").hidden = !!oauthToken;
+  document.getElementById("tokenSummary").textContent = tokenInput.value.trim() ? "GitHub token added: 5,000 requests an hour"
+    : signinEnabled ? "Or paste a GitHub token" : "Get more GitHub requests: add a token";
 }
 try {
   const saved = localStorage.getItem(TOKEN_KEY);
@@ -1445,6 +1534,8 @@ async function loadRepo(src) {
   const key = normRepo(src);
   if (!key) return;
   setRepoStatus("");
+  currentRange = null;
+  closeSide(true);
   busy.hidden = false;
   try {
     if (LOCAL) {
@@ -1452,12 +1543,12 @@ async function loadRepo(src) {
       const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()));
       const data = await r.json();
       if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
-      buildCity({ ...data, source: data.source || "git" });
+      buildCity({ ...data, repoKey: key, source: data.source || "git" });
     } else if (PRESETS[key]) {
       busy.textContent = `Loading ${key}…`;
       const r = await fetch(PRESETS[key]);
       if (!r.ok) throw new Error("Could not load the built-in copy of " + key + ".");
-      buildCity({ ...(await r.json()), source: "json" });
+      buildCity({ ...(await r.json()), repoKey: key, source: "json" });
     } else {
       try { await loadFromGitHub(key); }
       catch (e) {
@@ -1536,6 +1627,260 @@ addEventListener("drop", async e => {
   if (out.length) ingest(out, roots.length === 1 ? roots[0].name : "dropped files");
 });
 
+// ---------- shareable links ----------
+// ?repo=owner/name&range=1m&mode=heat&panel=hotspots&file=src/app.ts&pr=123 reopens the same view.
+const SITE_URL = "https://code-city-lakshmi.netlify.app/";
+const RANGE_CODES = { "1 week": "1w", "1 month": "1m", "3 months": "3m", "1 year": "1y", "All time": "all" };
+const LINK_AUTOLOAD_MAX = 60;   // a link loads its history by itself only when that costs this few GitHub requests
+let currentRepo = null;    // owner/name of the city on screen, when it came from a repo
+let currentRange = null;   // history range loaded from GitHub, as a link code
+let pendingView = null;    // what a link asked for, applied once its repo (and history) are loaded
+
+function readLink() {
+  const q = new URLSearchParams(location.search);
+  const repo = (q.get("repo") || "").trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$|\/+$/g, "");
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return {};
+  pendingView = { repo, range: q.get("range"), mode: q.get("mode"), panel: q.get("panel"), file: q.get("file"), pr: q.get("pr") };
+  return pendingView;
+}
+function linkQuery() {
+  if (!currentRepo) return "";
+  const q = new URLSearchParams({ repo: currentRepo });
+  if (currentRange) q.set("range", currentRange);
+  if (colorMode === "heat") q.set("mode", "heat");
+  if (sideMode === "hot") q.set("panel", "hotspots");
+  if (prState) q.set("pr", prState.n);
+  if (picked) q.set("file", picked.userData.f.path);
+  return q.toString().replace(/%2F/gi, "/");
+}
+function syncUrl() {
+  if (pendingView) return;   // don't overwrite a link before it has been applied
+  const q = linkQuery();
+  try { history.replaceState(null, "", location.pathname + (q ? "?" + q : "")); } catch (e) { /* some hosts don't allow it */ }
+}
+function shareUrl() {
+  const base = /\.netlify\.app$/.test(location.hostname) ? location.origin + location.pathname : SITE_URL;
+  const q = linkQuery();
+  return base + (q ? "?" + q : "");
+}
+// Pick the linked range in the history panel; load it straight away only when it's cheap.
+function rangeFromLink() {
+  const r = pendingView && pendingView.repo === ghProbe.key && pendingView.range;
+  if (!r) return;
+  const label = Object.keys(RANGE_CODES).find(k => RANGE_CODES[k] === r);
+  if (label) hpChoice = label;
+  else if (/^\d+$/.test(r)) { hpChoice = "Custom"; hp("hpCount").value = r; }
+  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.range === hpChoice));
+}
+function autoLoadLinkedRange() {
+  if (!pendingView || !pendingView.range || pendingView.repo !== ghProbe.key) return;
+  const pl = plan();
+  if (pl.mode === "every" && pl.calls <= LINK_AUTOLOAD_MAX) hp("hpLoad").click();
+  else setRepoStatus(`This link asks for ${pl.exact ? "" : "about "}${fmt(pl.n)} commits of history, which costs ${fmt(pl.calls)} GitHub requests. Load it below, or pick a shorter range.`);
+}
+function applyPendingView() {
+  const p = pendingView;
+  if (!p || p.repo !== currentRepo) return;
+  pendingView = null;
+  if (p.mode === "heat" && hist) setColorMode("heat");
+  if (p.panel === "hotspots") openSide("hot");
+  if (p.file && bmap.has(p.file)) openDrawer(bmap.get(p.file));
+  if (p.pr) loadPR(p.pr); else syncUrl();
+}
+function onCityBuilt() {
+  if (prState && prState.repo !== currentRepo) clearPR();
+  if (sideMode === "pr" && !prState) closeSide(true); else if (sideMode) renderSide();
+  document.getElementById("prForm").hidden = !currentRepo;
+  if (!ghProbe) applyPendingView();
+  syncUrl();
+}
+
+const toastEl = document.getElementById("toast");
+let toastTimer = 0;
+function toast(msg) {
+  toastEl.textContent = msg; toastEl.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2200);
+}
+document.getElementById("shareBtn").onclick = async () => {
+  if (!currentRepo) return toast("Links work for GitHub repos. Build one first.");
+  const url = shareUrl();
+  try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+  catch (e) { setRepoStatus(`Copy this link: <code>${esc(url)}</code>`); }
+};
+
+// ---------- side panel: hotspots and pull requests ----------
+let sideMode = null;   // "hot" | "pr" | null
+const sidePanel = document.getElementById("side"), sideBody = document.getElementById("sideBody");
+const $ = id => document.getElementById(id);
+function openSide(mode) {
+  sideMode = mode; sidePanel.hidden = false;
+  $("hotBtn").setAttribute("aria-pressed", mode === "hot");
+  renderSide(); syncUrl();
+}
+function closeSide(quiet) {
+  if (sideMode === "pr") clearPR();
+  sideMode = null; sidePanel.hidden = true;
+  $("hotBtn").setAttribute("aria-pressed", "false");
+  if (!quiet) syncUrl();
+}
+function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); }
+let sideQueued = false;
+function refreshSideSoon() {   // the timeline can move many times a frame; redraw the list once
+  if (sideQueued) return;
+  sideQueued = true;
+  requestAnimationFrame(() => { sideQueued = false; renderSide(); });
+}
+$("sideClose").onclick = () => closeSide();
+$("hotBtn").onclick = () => {
+  if (sideMode === "hot") return closeSide();
+  if (hist && colorMode !== "heat") setColorMode("heat");
+  openSide("hot");
+};
+function pathHtml(path) {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? esc(path) : `<i>${esc(path.slice(0, i + 1))}</i>${esc(path.slice(i + 1))}`;
+}
+sideBody.addEventListener("click", e => {
+  const row = e.target.closest("[data-path]");
+  const b = row && bmap.get(row.dataset.path);
+  if (b && b.userData.lines > 0) openDrawer(b);
+});
+sideBody.addEventListener("mouseover", e => {
+  const row = e.target.closest("[data-path]");
+  hovered = row ? bmap.get(row.dataset.path) || null : null;
+});
+sideBody.addEventListener("mouseleave", () => { hovered = null; });
+
+// Hotspots: files that change often *and* are big. Change frequency times size is a well-known
+// predictor of where defects cluster, and it's where refactoring pays off first.
+function hotspotRows(limit) {
+  const rows = [];
+  for (const b of buildings) {
+    const u = b.userData, c = churnSrc.get(u.f.path) || 0;
+    if (u.lines > 0 && c > 0) rows.push({ b, c, lines: u.lines, score: c * u.lines });
+  }
+  return rows.sort((a, z) => z.score - a.score).slice(0, limit);
+}
+function renderHotspots() {
+  $("sideTitle").textContent = "Hotspots";
+  if (!hist) {
+    $("sideSub").textContent = "";
+    sideBody.innerHTML = `<p class="side-note">Hotspots need git history. Build a GitHub repo and load some commits, or try <b>pallets/flask</b>.</p>`;
+    return;
+  }
+  const rows = hotspotRows(15);
+  $("sideSub").textContent = viewNow ? `Top ${rows.length} of ${fmt(buildings.filter(b => b.userData.lines > 0).length)} files` : `As of ${document.getElementById("tlDate").textContent}`;
+  if (!rows.length) { sideBody.innerHTML = `<p class="side-note">No files changed in this range.</p>`; return; }
+  const top = rows[0].score;
+  sideBody.innerHTML = `<p class="side-note">Ranked by <b>commits × lines</b>: big files that keep changing. They are where bugs tend to cluster and where refactoring pays off first.</p>
+    <ol class="rank">${rows.map((r, i) => `<li><button type="button" data-path="${esc(r.b.userData.f.path)}">
+      <span class="n">${i + 1}</span><span class="path">${pathHtml(r.b.userData.f.path)}</span>
+      <span class="meta">${fmt(r.c)} commit${r.c === 1 ? "" : "s"} · ${r.b.userData.f.estimated ? "~" : ""}${fmt(r.lines)} lines</span>
+      <span class="bar"><span style="width:${Math.max(3, Math.round(r.score / top * 100))}%"></span></span>
+    </button></li>`).join("")}</ol>`;
+}
+
+// ---------- pull request view ----------
+let prState = null;   // { n, repo, title, author, url, state, additions, deletions, list, files: Map(path -> status) }
+const prStatus = $("prStatus"), prInput = $("prInput");
+$("prForm").addEventListener("submit", e => { e.preventDefault(); loadPR(prInput.value); });
+
+async function loadPR(input) {
+  const s = String(input).trim();
+  let repo = currentRepo, n = 0, m;
+  if ((m = s.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/i))) { repo = m[1]; n = +m[2]; }
+  else if ((m = s.match(/^#?(\d+)$/))) n = +m[1];
+  if (!n) { prStatus.textContent = "Enter a PR number like 123, or paste its GitHub URL."; return; }
+  if (repo !== currentRepo) {   // a PR from another repo: build that repo first, then show the PR
+    pendingView = { repo, pr: String(n) };
+    $("repoInput").value = "github.com/" + repo;
+    return loadRepo(repo);
+  }
+  prStatus.textContent = `Loading PR #${n}…`;
+  try {
+    const pr = await gh(`/repos/${repo}/pulls/${n}`);
+    const pages = Math.min(30, Math.max(1, Math.ceil(pr.changed_files / 100)));
+    const lists = await pool(Array.from({ length: pages }, (_, i) => i + 1), 4, p => gh(`/repos/${repo}/pulls/${n}/files?per_page=100&page=${p}`));
+    const list = [].concat(...lists);
+    const files = new Map();
+    for (const f of list) {
+      // The city shows the default branch, so a renamed file's building is its old path.
+      if (f.status === "renamed" && f.previous_filename) files.set(f.previous_filename, "renamed");
+      files.set(f.filename, f.status === "removed" ? "removed" : f.status === "added" ? "added" : f.status === "renamed" ? "renamed" : "modified");
+    }
+    prState = { n, repo, title: pr.title, author: pr.user && pr.user.login, url: pr.html_url,
+      state: pr.merged_at ? "merged" : pr.state, additions: pr.additions, deletions: pr.deletions, list, files };
+    prInput.value = String(n);
+    prStatus.textContent = "";
+    openSide("pr");
+  } catch (e) {
+    prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code> to view pull requests." : e.message;
+  }
+}
+function clearPR() { prState = null; prInput.value = ""; }
+
+// A file counts as a hotspot when its change count is in the top tenth of the repo's files.
+function hotThreshold() {
+  const counts = buildings.filter(b => b.userData.lines > 0).map(b => churnSrc.get(b.userData.f.path) || 0).filter(Boolean).sort((a, z) => z - a);
+  return counts.length ? Math.max(2, counts[Math.floor(counts.length * 0.1)] || counts[0]) : Infinity;
+}
+function renderPR() {
+  const p = prState;
+  if (!p) return;
+  $("sideTitle").textContent = `#${p.n} ${p.title}`;
+  $("sideSub").textContent = `${p.state[0].toUpperCase() + p.state.slice(1)}${p.author ? " · by @" + p.author : ""} · ${fmt(p.list.length)} file${p.list.length === 1 ? "" : "s"}`;
+  const hotAt = hist ? hotThreshold() : Infinity;
+  const rows = p.list.map(f => {
+    const path = f.status === "renamed" && f.previous_filename ? f.previous_filename : f.filename;
+    const b = bmap.get(path), c = churnSrc.get(path) || 0;
+    return { f, path, b: b && b.userData.lines > 0 ? b : null, c, hot: c >= hotAt };
+  }).sort((a, z) => (z.hot - a.hot) || (!!z.b - !!a.b) || (z.c - a.c));
+  const hotCount = rows.filter(r => r.hot).length;
+  sideBody.innerHTML = `
+    <p class="side-note"><span class="adds">+${fmt(p.additions)}</span> <span class="dels">−${fmt(p.deletions)}</span> ·
+      ${hist ? (hotCount ? `Touches <b>${hotCount} hotspot${hotCount === 1 ? "" : "s"}</b> (files in the top tenth for changes). Review those closely.` : "Touches no hotspots.") : "Load some history to see which of these files are hotspots."}</p>
+    <div class="side-actions"><a class="btn-link" href="${esc(p.url)}" target="_blank" rel="noopener">Open on GitHub</a></div>
+    <ol class="rank">${rows.map(r => `<li><button type="button" ${r.b ? `data-path="${esc(r.path)}"` : `class="gone" tabindex="-1"`}>
+      <span class="n"><span class="chip ${r.f.status === "removed" ? "removed" : r.f.status === "added" ? "added" : r.f.status === "renamed" ? "renamed" : "modified"}">${r.f.status === "removed" ? "del" : r.f.status === "added" ? "new" : r.f.status === "renamed" ? "mv" : "mod"}</span></span>
+      <span class="path">${pathHtml(r.f.filename)}</span>
+      <span class="meta"><span class="adds">+${fmt(r.f.additions)}</span><span class="dels">−${fmt(r.f.deletions)}</span>${hist && r.c ? `<span>${fmt(r.c)} past commit${r.c === 1 ? "" : "s"}</span>` : ""}${r.hot ? `<span class="chip hot">hotspot</span>` : ""}${r.b ? "" : `<span>${r.f.status === "added" ? "new file, not in the city yet" : "not in the city"}</span>`}</span>
+    </button></li>`).join("")}</ol>`;
+}
+
+// ---------- Sign in with GitHub ----------
+// Two Netlify Functions do the OAuth handshake (they hold the app's secret). The token comes back
+// through this site's own storage, never through a URL, and asks GitHub for no extra permissions:
+// it only identifies the visitor, which raises their limit to 5,000 requests an hour.
+const SIGNIN_URL = "/.netlify/functions/github-login";
+function startSignin() {
+  location.href = SIGNIN_URL + "?return=" + encodeURIComponent(location.pathname + location.search);
+}
+function signOut() {
+  try { localStorage.removeItem(OAUTH_KEY); } catch (e) { /* storage blocked */ }
+  oauthToken = null;
+  $("signedinRow").hidden = true;
+  $("signinRow").hidden = !signinEnabled;
+  syncTokenUi();
+  toast("Signed out of GitHub");
+}
+$("signoutBtn").onclick = signOut;
+async function initSignin() {
+  try {
+    const err = sessionStorage.getItem("codecity.signinError");
+    if (err) { sessionStorage.removeItem("codecity.signinError"); setRepoStatus(esc(err)); }
+  } catch (e) { /* storage blocked */ }
+  try {
+    const r = await fetch(SIGNIN_URL + "?check=1", { cache: "no-store" });
+    signinEnabled = r.ok && !!(await r.json()).enabled;
+  } catch (e) { signinEnabled = false; }   // the claude.ai copy and the local app have no sign-in
+  if (oauthToken) {
+    $("signedinRow").hidden = false;
+    try { $("ghLogin").textContent = "@" + (await gh("/user")).login; }
+    catch (e) { if (/rejected/.test(e.message)) { signOut(); setRepoStatus("Your GitHub sign-in expired. Please sign in again."); } }
+  } else $("signinRow").hidden = !signinEnabled;
+  syncTokenUi();
+}
+
 // ---------- loop ----------
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -1583,7 +1928,12 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-const start = () => { buildCity(sampleCity()); frame(); };
+const start = () => {
+  const link = readLink();
+  buildCity(sampleCity()); frame();
+  initSignin();
+  if (link.repo) { document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
+};
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start, start);
 })();
 </script>

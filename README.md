@@ -20,6 +20,23 @@ Without signing in, GitHub allows **60 requests an hour** per network. Add a Git
 
 Building heights are estimated from file size until you click a building, which loads its real source. Loading all time from the first commit replays real line counts.
 
+### Hotspots, pull requests and links
+
+- **Hotspots** ranks files by *commits × lines*: big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
+- **Show a pull request**: enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots.
+- **Copy link** copies a link that reopens the same view, for example
+  `https://code-city-lakshmi.netlify.app/?repo=sindresorhus/ky&range=1m&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
+  A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
+
+### Sign in with GitHub (site owner setup)
+
+Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitHub for no scopes: the token only identifies the visitor, which raises their limit to 5,000 requests an hour. The token reaches the page through the site's own storage, never through a URL. Until it's set up, the button stays hidden and the paste-a-token box still works.
+
+1. On GitHub: Settings → Developer settings → OAuth Apps → New OAuth App.
+   - Homepage URL: `https://code-city-lakshmi.netlify.app`
+   - Authorization callback URL: `https://code-city-lakshmi.netlify.app/.netlify/functions/github-callback`
+2. In Netlify: Site configuration → Environment variables, add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (mark the secret as secret), then redeploy.
+
 ## Run it locally
 
 Needs Python 3.8+ and git. No other installs.
