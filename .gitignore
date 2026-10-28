@@ -1,0 +1,5 @@
+# Duplicate of site/presets kept for local use
+/presets/
+__pycache__/
+.DS_Store
+*.zip

@@ -1,0 +1,1175 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="description" content="Turn a code repo into a 3D night city: replay its git history and find change hotspots."><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230b1020%22/%3E%3Crect x=%225%22 y=%2214%22 width=%226%22 height=%2214%22 fill=%22%235b8def%22/%3E%3Crect x=%2213%22 y=%225%22 width=%227%22 height=%2223%22 fill=%22%23f2a541%22/%3E%3Crect x=%2222%22 y=%2210%22 width=%225%22 height=%2218%22 fill=%22%234fb38a%22/%3E%3C/svg%3E"><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style></head><body><title>Code City</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Instrument+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: full-bleed night-time 3D city, a floating control card top-left, detail drawer right (bottom sheet on phones), history timeline along the bottom. */
+:root {
+  color-scheme: dark;
+  --night: #0b1020;          /* sky + page */
+  --street: #141a2e;         /* panels */
+  --street-2: #1d2540;       /* raised surfaces */
+  --line: #2c3657;           /* hairlines */
+  --ink: #e6e9f2;            /* primary text */
+  --ink-dim: #9aa3bd;        /* secondary text */
+  --sodium: #f2a541;         /* streetlight accent */
+  --fire: #ff6b2c;           /* TODO fires */
+  --f-display: "Chakra Petch", "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --f-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --tl-h: 0px;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--night); color: var(--ink); font-family: var(--f-body);
+  overflow: hidden; font-size: 14px; line-height: 1.45;
+}
+body.has-timeline { --tl-h: 76px; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; touch-action: none; }
+
+.card {
+  position: fixed; z-index: 5;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  width: 312px; max-width: calc(100vw - 32px);
+  max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: auto; box-sizing: border-box;
+  background: color-mix(in srgb, var(--street) 90%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.brand h1 {
+  margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 26px;
+  letter-spacing: .04em; text-transform: uppercase; line-height: 1;
+}
+.brand h1 span { color: var(--sodium); }
+.intro { margin: -4px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
+.repo { font-family: var(--f-mono); font-size: 12px; color: var(--sodium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-top: -6px; }
+.repo::before { content: "Showing "; color: var(--ink-dim); font-family: var(--f-body); }
+@media (max-width: 640px) { .intro { font-size: 12px; } }
+.tag { font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--sodium); border: 1px solid color-mix(in srgb, var(--sodium) 50%, transparent); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+.stats dd { margin: 0; font-family: var(--f-mono); font-size: 18px; font-variant-numeric: tabular-nums; }
+.stats dd.fire { color: var(--fire); }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > label, .label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+.field small { color: var(--ink-dim); font-size: 12px; }
+.field small:empty { display: none; }
+.field small code { font-family: var(--f-mono); color: var(--ink); background: var(--night); padding: 1px 4px; border-radius: 3px; user-select: all; word-break: break-all; }
+.inline { display: flex; gap: 6px; }
+.inline input { flex: 1; min-width: 0; }
+input[type=text], input[type=search] {
+  font: 13px var(--f-mono); color: var(--ink); background: var(--night);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; box-sizing: border-box;
+}
+.presets { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--ink-dim); align-items: baseline; }
+.linkish { background: none; border: 0; padding: 0; color: var(--sodium); font: 600 12px var(--f-mono); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--sodium) 40%, transparent); }
+.linkish:hover { text-decoration-color: var(--sodium); }
+
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+button {
+  font: 600 13px var(--f-body); color: var(--ink); background: var(--street-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 11px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--sodium); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--sodium); color: #1a1205; border-color: var(--sodium); }
+button.primary:hover { filter: brightness(1.08); }
+button:focus-visible, input:focus-visible, .linkish:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; color: var(--ink-dim); padding: 6px 10px; }
+.seg button[aria-pressed="true"] { background: var(--street-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--sodium); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--ink-dim); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.ramp { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--ink-dim); }
+.ramp .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #22305c, #2f4a8f, #4f6fc4, #c58a3c, #ef8a2e, #ff5a2a, #ffd9a8); }
+.ramp .ends { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; }
+.key { font-size: 12px; color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.key b { color: var(--ink); font-weight: 600; }
+details.more summary { cursor: pointer; font-size: 12px; color: var(--ink-dim); }
+details.more[open] summary { margin-bottom: 8px; }
+
+#drawer {
+  position: fixed; z-index: 6;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
+  width: 380px; max-width: calc(100vw - 32px);
+  background: color-mix(in srgb, var(--street) 94%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.drawer-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+.drawer-head > div { min-width: 0; flex: 1; }
+.drawer-head h2 { margin: 0; font-family: var(--f-mono); font-size: 14px; font-weight: 600; word-break: break-all; }
+.drawer-head p { margin: 2px 0 0; color: var(--ink-dim); font-size: 12px; word-break: break-all; }
+.drawer-body { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.drawer-body h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; }
+.todos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-family: var(--f-mono); font-size: 12px; }
+.todos li { color: var(--fire); word-break: break-word; }
+.todos li em { color: var(--ink-dim); font-style: normal; margin-right: 6px; }
+pre.code {
+  margin: 0; font: 12px/1.5 var(--f-mono); background: var(--night); border: 1px solid var(--line);
+  border-radius: 6px; padding: 10px; overflow: auto; white-space: pre; color: var(--ink);
+}
+.note { color: var(--ink-dim); font-size: 13px; margin: 0; }
+
+#timeline {
+  position: fixed; z-index: 6;
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: color-mix(in srgb, var(--street) 92%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+#playBtn { min-width: 112px; }
+.tl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#scrub { width: 100%; accent-color: var(--sodium); margin: 0; }
+.tl-info { display: flex; gap: 10px; font-size: 12px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; min-width: 0; align-items: baseline; }
+.tl-info #tlDate { color: var(--sodium); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.tl-info code { font-family: var(--f-mono); color: var(--ink-dim); }
+.tl-info #tlMsg { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#speedBtn { font-family: var(--f-mono); min-width: 64px; }
+
+#walkbar {
+  position: fixed; z-index: 7; left: 50%; transform: translateX(-50%);
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; border-radius: 999px;
+  background: color-mix(in srgb, var(--street) 90%, transparent); border: 1px solid var(--line);
+  font-size: 12px; color: var(--ink-dim); white-space: nowrap; max-width: calc(100vw - 32px);
+}
+#walkbar b { color: var(--ink); }
+#crosshair { position: fixed; z-index: 4; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
+#crosshair::before, #crosshair::after { content: ""; position: absolute; background: var(--sodium); opacity: .85; }
+#crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
+#crosshair::after { top: 6px; left: 0; height: 2px; width: 14px; }
+body.walking .card, body.walking #hint { display: none; }
+
+#tip {
+  position: fixed; z-index: 7; pointer-events: none; padding: 6px 9px; border-radius: 6px;
+  background: var(--street-2); border: 1px solid var(--line); font: 12px var(--f-mono); color: var(--ink);
+  white-space: nowrap; transform: translate(12px, 12px);
+}
+#tip.center { transform: translate(-50%, 18px); }
+#tip b { color: var(--sodium); font-weight: 600; }
+#tip b.f { color: var(--fire); }
+
+#hint {
+  position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
+  bottom: calc(14px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
+  font-size: 12px; color: var(--ink-dim); background: color-mix(in srgb, var(--street) 80%, transparent);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+}
+#drop {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
+  background: color-mix(in srgb, var(--night) 80%, transparent); border: 3px dashed var(--sodium);
+  font-family: var(--f-display); font-size: 28px; text-transform: uppercase; letter-spacing: .06em; color: var(--sodium);
+}
+#busy { position: fixed; inset: 0; z-index: 19; display: grid; place-items: center; font-family: var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--night) 70%, transparent); padding: 0 16px; text-align: center; }
+
+@media (max-width: 640px) {
+  body.has-timeline { --tl-h: 92px; }
+  .card { width: auto; right: max(16px, env(safe-area-inset-right, 0px)); padding: 12px; gap: 10px; max-height: 46vh; }
+  .brand h1 { font-size: 22px; }
+  .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .stats dd { font-size: 14px; }
+  #drawer { top: auto; height: 50vh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #hint { display: none; }
+  #timeline { flex-wrap: wrap; gap: 8px; }
+  .tl-main { order: 3; flex-basis: 100%; }
+  #playBtn { flex: 1; }
+}
+@media (hover: none) { #walkBtn { display: none; } }
+</style>
+
+<div id="stage" aria-label="3D city where each building is a file"></div>
+
+<section class="card" aria-label="Controls">
+  <div class="brand">
+    <h1>Code <span>City</span></h1>
+    <span class="tag" id="mode">Sample</span>
+  </div>
+  <p class="intro">See a codebase as a city. Each file is a building, each folder a district. Play the git history to watch it grow, or switch to heat to find the files that change most.</p>
+  <div class="repo" id="repoName">harbor (example repo)</div>
+  <dl class="stats">
+    <div><dt>Files</dt><dd id="sFiles">0</dd></div>
+    <div><dt>Lines</dt><dd id="sLines">0</dd></div>
+    <div><dt>Commits</dt><dd id="sCommits">0</dd></div>
+    <div><dt>Fires</dt><dd id="sFires" class="fire">0</dd></div>
+  </dl>
+
+  <form class="field" id="repoForm" autocomplete="off">
+    <label for="repoInput">Build a public repo</label>
+    <div class="inline">
+      <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
+      <button class="primary" type="submit">Build</button>
+    </div>
+    <small id="repoStatus"></small>
+  </form>
+
+  <div class="actions">
+    <button id="openBtn" type="button">Open a folder</button>
+    <button id="walkBtn" type="button">Walk the streets</button>
+    <button id="resetBtn" type="button">Reset view</button>
+  </div>
+  <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
+
+  <div class="row">
+    <span class="label">Color by</span>
+    <div class="seg" role="group" aria-label="Color buildings by">
+      <button type="button" id="cLang" aria-pressed="true">Language</button>
+      <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="q">Find a file</label>
+    <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false">
+    <small id="qInfo"></small>
+  </div>
+
+  <details class="more" id="howTo">
+    <summary>How to read the city</summary>
+    <div class="legend" id="legend"></div>
+    <div class="key">
+      <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live.
+    </div>
+  </details>
+</section>
+
+<aside id="drawer" hidden aria-label="File details">
+  <div class="drawer-head">
+    <div><h2 id="dName"></h2><p id="dPath"></p></div>
+    <button id="closeBtn" type="button" aria-label="Close details">Close</button>
+  </div>
+  <div class="drawer-body">
+    <dl class="stats" id="dStats"></dl>
+    <div id="dTodos"></div>
+    <div id="dCode"></div>
+  </div>
+</aside>
+
+<div id="timeline" hidden>
+  <button id="playBtn" type="button" class="primary">Play history</button>
+  <div class="tl-main">
+    <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
+    <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
+  </div>
+  <button id="speedBtn" type="button" title="Commits per second">8/s</button>
+</div>
+
+<div id="walkbar" hidden>
+  <span><b>WASD</b> move &middot; <b>Shift</b> run &middot; <b>Space</b> jump &middot; <b>mouse</b> look &middot; <b>click</b> inspect</span>
+  <button id="exitWalkBtn" type="button">Exit (Esc)</button>
+</div>
+<div id="crosshair" hidden></div>
+
+<div id="tip" hidden></div>
+<div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building</div>
+<div id="drop" hidden>Drop a folder or city.json</div>
+<div id="busy" hidden>Surveying files&hellip;</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+"use strict";
+
+// ---------- languages ----------
+const LANGS = {
+  ts:   { name: "TypeScript", color: "#5b8def" },
+  js:   { name: "JavaScript", color: "#e3c34a" },
+  py:   { name: "Python",     color: "#4fb38a" },
+  go:   { name: "Go",         color: "#6fd0e0" },
+  rs:   { name: "Rust",       color: "#d9774b" },
+  java: { name: "Java",       color: "#c75a5a" },
+  kt:   { name: "Kotlin",     color: "#a97bff" },
+  c:    { name: "C / C++",    color: "#9a8cdb" },
+  cs:   { name: "C#",         color: "#7cc46a" },
+  rb:   { name: "Ruby",       color: "#c94a5e" },
+  php:  { name: "PHP",        color: "#8892bf" },
+  swift:{ name: "Swift",      color: "#f08a5d" },
+  css:  { name: "CSS",        color: "#d46fb0" },
+  html: { name: "HTML",       color: "#e0884f" },
+  sql:  { name: "SQL",        color: "#b7a46b" },
+  sh:   { name: "Shell",      color: "#9cc36b" },
+  md:   { name: "Docs",       color: "#8a93a6" },
+  cfg:  { name: "Config",     color: "#5f6884" },
+  other:{ name: "Other",      color: "#7d8597" },
+};
+// Keep in sync with CODE_EXT / SPECIAL / SKIP_DIRS in codecity.py.
+const EXT = {
+  ts:"ts", tsx:"ts", mts:"ts", cts:"ts", js:"js", jsx:"js", mjs:"js", cjs:"js", vue:"js", svelte:"js",
+  py:"py", ipynb:"py", go:"go", rs:"rs", java:"java", scala:"java", kt:"kt", kts:"kt",
+  c:"c", h:"c", cc:"c", cpp:"c", hpp:"c", cxx:"c", cs:"cs", rb:"rb", php:"php", swift:"swift",
+  css:"css", scss:"css", sass:"css", less:"css", html:"html", htm:"html",
+  sql:"sql", sh:"sh", bash:"sh", zsh:"sh", ps1:"sh", md:"md", mdx:"md", rst:"md", txt:"md",
+  json:"cfg", yml:"cfg", yaml:"cfg", toml:"cfg", ini:"cfg", xml:"cfg", gradle:"cfg", lock:"cfg", env:"cfg",
+  dart:"other", lua:"other", ex:"other", exs:"other", hs:"other", ml:"other", r:"other", jl:"other", zig:"other", elm:"other", clj:"other"
+};
+const SPECIAL = { dockerfile:"cfg", makefile:"cfg", gemfile:"rb", rakefile:"rb", procfile:"cfg" };
+const SKIP_DIRS = new Set(["node_modules",".git","dist","build",".next",".nuxt","out","coverage","venv",".venv","env","__pycache__","target","vendor",".idea",".vscode",".turbo",".cache","Pods","DerivedData",".gradle"]);
+const MAX_FILES = 4000, MAX_BYTES = 600 * 1024;
+const PRESETS = { "pallets/flask": "presets/flask.json", "expressjs/express": "presets/express.json" };
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+
+function langOf(path) {
+  const base = path.split("/").pop().toLowerCase();
+  if (SPECIAL[base]) return SPECIAL[base];
+  const m = base.match(/\.([a-z0-9]+)$/);
+  return m && EXT[m[1]] ? EXT[m[1]] : null;
+}
+
+// ---------- analysis (folders opened in the browser) ----------
+const FN_RE = /\b(function|def|func|fn|fun)\b|=>|\bclass\b|\b(public|private|protected|static)\s+[\w<>\[\],\s]+\s+\w+\s*\(/g;
+const TODO_RE = /\b(TODO|FIXME|HACK|XXX)\b/;
+function analyze(path, text) {
+  const lines = text.split("\n");
+  const todos = [];
+  lines.forEach((l, i) => { if (TODO_RE.test(l) && todos.length < 50) todos.push({ line: i + 1, text: l.trim().slice(0, 140) }); });
+  return { path, lines: lines.length, funcs: (text.match(FN_RE) || []).length, todos, text: lines.slice(0, 80).join("\n") };
+}
+
+// ---------- example repo with invented history ----------
+const SAMPLE = [
+  ["package.json",90,0,0],["tsconfig.json",30,0,0],["docs/README.md",180,0,0],["src/api/server.ts",420,18,1],
+  ["src/api/routes/orders.ts",610,22,3],["src/api/routes/users.ts",380,14,0],
+  ["src/api/routes/payments.ts",890,31,4],["src/api/middleware/auth.ts",210,9,1],["src/api/middleware/rateLimit.ts",140,6,0],
+  ["src/ui/App.tsx",260,8,0],["src/ui/components/Cart.tsx",340,12,2],["src/ui/components/Checkout.tsx",720,25,5],
+  ["src/ui/components/ProductCard.tsx",120,4,0],["src/ui/components/Navbar.tsx",160,6,0],["src/ui/components/SearchBar.tsx",210,7,1],
+  ["src/ui/hooks/useCart.ts",180,9,1],["src/ui/hooks/useAuth.ts",150,7,0],["src/ui/styles/theme.css",450,1,0],["src/ui/styles/layout.css",300,1,1],
+  ["src/db/client.ts",130,5,0],["src/db/models/order.ts",310,15,0],["src/db/models/user.ts",240,11,1],["src/db/models/product.ts",200,10,0],
+  ["src/db/migrations/001_init.sql",220,1,0],["src/db/migrations/002_orders.sql",140,1,0],["src/db/migrations/003_payments.sql",90,1,1],
+  ["src/workers/emailQueue.py",280,12,2],["src/workers/reportJob.py",520,19,3],["src/workers/legacy_sync.py",1840,64,9],
+  ["services/search/main.go",300,14,0],["services/search/index.go",680,27,1],["services/search/query.go",410,18,0],
+  ["services/imagery/src/main.rs",220,9,0],["services/imagery/src/resize.rs",540,21,2],["services/imagery/Cargo.toml",40,0,0],
+  ["tests/api/orders.test.ts",520,30,0],["tests/api/payments.test.ts",260,15,1],["tests/api/users.test.ts",300,18,0],
+  ["tests/workers/test_reports.py",200,12,0],["tests/e2e/checkout.spec.ts",380,16,2],
+  ["scripts/deploy.sh",160,6,1],["scripts/seed.ts",230,7,0],["scripts/backfill_orders.py",310,9,2],
+  ["docs/ARCHITECTURE.md",340,0,1],["docs/api.md",520,0,0],
+  ["docker-compose.yml",70,0,0],[".github/workflows/ci.yml",110,0,1],["Dockerfile",45,0,0],
+];
+// Files that existed for a while and were later deleted: [path, peak lines, born, died] as fractions of the timeline.
+const SAMPLE_GONE = [["src/ui/components/OldCart.jsx",420,.08,.6],["src/workers/legacy_cron.py",300,.05,.52],["scripts/migrate_v1.sh",120,.25,.42],["src/api/routes/coupons.ts",260,.3,.78],["src/ui/styles/legacy.css",380,.02,.66]];
+const TODO_TEXT = ["TODO: handle retries", "FIXME: race on concurrent writes", "HACK: remove after migration", "TODO: add tests", "XXX: magic number"];
+
+function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+function sampleCity() {
+  const R = rng(11), N = 160;
+  const files = SAMPLE.map(([path, lines, funcs, todos]) => ({
+    path, lines, funcs, text: null,
+    todos: Array.from({ length: todos }, (_, i) => ({ line: Math.round(lines * (i + 1) / (todos + 1)), text: TODO_TEXT[i % 5] })),
+  }));
+  const plan = files.map((f, i) => ({ path: f.path, final: f.lines, born: i < 4 ? 0 : Math.floor(Math.pow(R(), 1.4) * 0.8 * N) + 1, died: Infinity }));
+  for (const [path, peak, b, d] of SAMPLE_GONE) plan.push({ path, final: peak, born: Math.floor(b * N), died: Math.floor(d * N) });
+  const hot = p => /payments|Checkout|legacy_sync|orders/.test(p) ? 7 : /test|spec/.test(p) ? 2 : /\.md$|\.json$|\.yml$/.test(p) ? 0.4 : 1;
+  const authors = ["maya.r", "oscar", "priya-k", "sam.w", "jules"];
+  const t0 = Date.UTC(2024, 2, 4) / 1000, t1 = Date.UTC(2026, 9, 20) / 1000;
+  const cur = new Map(), commits = [];
+  for (let c = 0; c < N; c++) {
+    const ch = [];
+    for (const p of plan) {
+      if (p.born === c) { const L = Math.max(8, Math.round(p.final * 0.35)); cur.set(p.path, L); ch.push([p.path, L, 0, "A"]); }
+      else if (p.died === c && cur.has(p.path)) { ch.push([p.path, 0, cur.get(p.path), "D"]); cur.delete(p.path); }
+    }
+    const alive = plan.filter(p => cur.has(p.path) && p.born !== c);
+    const total = alive.reduce((s, p) => s + hot(p.path), 0);
+    const picks = new Set();
+    for (let k = 0, n = 1 + Math.floor(R() * 3); k < n && alive.length; k++) {
+      let r = R() * total;
+      for (const p of alive) { r -= hot(p.path); if (r <= 0) { picks.add(p); break; } }
+    }
+    for (const p of picks) {
+      const end = Math.min(p.died, N - 1);
+      const want = Math.round(p.final * (0.35 + 0.65 * Math.min(1, (c - p.born) / Math.max(1, end - p.born))));
+      const L = cur.get(p.path), churn = Math.floor(R() * 25 * hot(p.path));
+      const add = Math.max(0, want - L) + churn, del = Math.max(0, L - want) + Math.floor(churn * 0.8);
+      cur.set(p.path, Math.max(1, L + add - del));
+      ch.push([p.path, add, del, "M"]);
+    }
+    if (!ch.length) continue;
+    const [p0, , , s0] = ch[0], base = p0.split("/").pop(), topic = base.replace(/\.\w+$/, "");
+    const m = s0 === "A" ? `feat: add ${base}` : s0 === "D" ? `chore: remove ${base}` :
+      [`fix: ${topic} edge case`, `refactor ${base}`, `perf: speed up ${topic}`, `fix: retry logic in ${base}`, `chore: tidy ${base}`, `feat: ${topic} improvements`][Math.floor(R() * 6)];
+    commits.push({ h: (0x1000000 + Math.floor(R() * 0xefffffff)).toString(16).slice(0, 8), t: Math.round(t0 + (t1 - t0) * c / (N - 1)), a: authors[Math.floor(R() * authors.length)], m, c: ch });
+  }
+  return { name: "harbor (example repo)", source: "sample", files, history: { base: {}, baseChurn: {}, commits, total: commits.length } };
+}
+
+// ---------- city model ----------
+let nodes = new Map();        // path -> { path, lang, funcs, todos, text, nowLines, maxLines }
+let hist = null;              // { commits, base, baseChurn, total }
+let totalChurn = new Map();
+let state = null;             // replay state while viewing history: { lines: Map, churn: Map }
+let cursor = -1, viewNow = true, playing = false, churnSrc = new Map(), maxChurn = 1;
+let colorMode = "lang", cityName = "", citySource = "sample";
+
+function freshState() {
+  return { lines: new Map(Object.entries(hist.base || {})), churn: new Map(Object.entries(hist.baseChurn || {})) };
+}
+function applyCommit(s, c, fx) {
+  for (const [p, add, del, st, n] of c.c) {
+    if (!nodes.has(p)) continue;
+    s.churn.set(p, (s.churn.get(p) || 0) + (n || 1));
+    if (st === "D") { s.lines.delete(p); fx && fx(p, "del"); }
+    else if (st === "A" || !s.lines.has(p)) { s.lines.set(p, Math.max(1, add)); fx && fx(p, "add"); }
+    else { s.lines.set(p, Math.max(1, s.lines.get(p) + add - del)); fx && fx(p, "mod"); }
+  }
+}
+function stateAt(i) { const s = freshState(); for (let k = 0; k <= i; k++) applyCommit(s, hist.commits[k]); return s; }
+
+function prepare(city) {
+  nodes = new Map(); hist = null; totalChurn = new Map();
+  const ensure = p => {
+    if (!nodes.has(p) && langOf(p)) nodes.set(p, { path: p, lang: langOf(p), funcs: null, todos: [], text: null, nowLines: 0, maxLines: 0 });
+    return nodes.get(p);
+  };
+  for (const f of city.files) {
+    const n = ensure(f.path); if (!n) continue;
+    Object.assign(n, { funcs: f.funcs ?? null, todos: f.todos || [], text: f.text ?? null, nowLines: f.lines, maxLines: f.lines });
+  }
+  if (city.history && city.history.commits && city.history.commits.length) {
+    hist = city.history;
+    for (const p of Object.keys(hist.base || {})) ensure(p);
+    for (const c of hist.commits) for (const row of c.c) ensure(row[0]);
+    const s = freshState();
+    for (const c of hist.commits) {
+      applyCommit(s, c);
+      for (const row of c.c) { const n = nodes.get(row[0]); const L = s.lines.get(row[0]); if (n && L) n.maxLines = Math.max(n.maxLines, L); }
+    }
+    totalChurn = s.churn;
+  }
+  for (const n of nodes.values()) if (n.funcs == null) n.funcs = Math.max(1, Math.round(n.maxLines / 35));
+}
+
+// ---------- tree + treemap ----------
+function buildTree(list) {
+  const root = { name: "", path: "", children: new Map() };
+  let dirs = 0;
+  for (const f of list) {
+    const parts = f.path.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node.children.has(parts[i])) { node.children.set(parts[i], { name: parts[i], path: parts.slice(0, i + 1).join("/"), children: new Map() }); dirs++; }
+      node = node.children.get(parts[i]);
+    }
+    node.children.set(parts[parts.length - 1], { name: parts[parts.length - 1], file: f });
+  }
+  root.dirs = dirs;
+  return root;
+}
+const GAP = 1.1, PAD = 0.9, STEP = 0.35;
+function fileSide(f) { return Math.min(7, 1 + Math.sqrt(f.funcs) * 0.75); }
+function fileHeight(lines) { return lines > 0 ? 0.5 + Math.sqrt(lines) * 0.42 : 0; }
+function weigh(node) {
+  if (node.file) { const s = fileSide(node.file) + GAP; return (node.w = s * s); }
+  let sum = 0; for (const c of node.children.values()) sum += weigh(c);
+  const side = Math.sqrt(sum) + PAD * 2;
+  return (node.w = side * side * 1.08);
+}
+function worst(row, s) {
+  let sum = 0, mx = 0, mn = Infinity;
+  for (const r of row) { sum += r.a; mx = Math.max(mx, r.a); mn = Math.min(mn, r.a); }
+  return Math.max((s * s * mx) / (sum * sum), (sum * sum) / (s * s * mn));
+}
+function layoutRow(row, r, out) {
+  let sum = 0; for (const it of row) sum += it.a;
+  if (r.w >= r.h) {
+    const cw = sum / r.h; let y = r.y;
+    for (const it of row) { const h = it.a / cw; out.push({ it, x: r.x, y, w: cw, h }); y += h; }
+    return { x: r.x + cw, y: r.y, w: r.w - cw, h: r.h };
+  }
+  const rh = sum / r.w; let x = r.x;
+  for (const it of row) { const w = it.a / rh; out.push({ it, x, y: r.y, w, h: rh }); x += w; }
+  return { x: r.x, y: r.y + rh, w: r.w, h: r.h - rh };
+}
+function squarify(list, rect) {
+  const total = list.reduce((s, n) => s + n.w, 0) || 1;
+  const k = (rect.w * rect.h) / total;
+  const items = list.slice().sort((a, b) => b.w - a.w).map(n => ({ n, a: Math.max(n.w * k, 1e-6) }));
+  const out = []; let row = []; let r = { ...rect };
+  while (items.length) {
+    const side = Math.min(r.w, r.h);
+    if (!row.length || worst(row.concat(items[0]), side) <= worst(row, side)) row.push(items.shift());
+    else { r = layoutRow(row, r, out); row = []; }
+  }
+  if (row.length) layoutRow(row, r, out);
+  return out;
+}
+
+// ---------- three.js scene ----------
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+stage.appendChild(renderer.domElement);
+const canvas = renderer.domElement;
+const NIGHT = new THREE.Color("#0b1020");
+const scene = new THREE.Scene();
+scene.background = NIGHT;
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.47; controls.autoRotateSpeed = 0.35;
+scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.55));
+const moon = new THREE.DirectionalLight(0xdfe6ff, 0.75); moon.position.set(-1, 2, 1.2); scene.add(moon);
+const lamp = new THREE.DirectionalLight(0xf2a541, 0.25); lamp.position.set(1.5, 0.6, -1); scene.add(lamp);
+
+// stars
+{
+  const n = 1400, pos = new Float32Array(n * 3), R = rng(3);
+  for (let i = 0; i < n; i++) {
+    const th = R() * Math.PI * 2, ph = Math.acos(1 - R() * 0.95), r = 1800;
+    pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) + 40, r * Math.sin(ph) * Math.sin(th)], i * 3);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xc9d3ff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.7 })));
+}
+
+// demolition dust
+const DUST_N = 1200, dustPos = new Float32Array(DUST_N * 3).fill(-1000), dustVel = new Float32Array(DUST_N * 3), dustLife = new Float32Array(DUST_N);
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc9b9a0, size: 0.35, transparent: true, opacity: 0.85, depthWrite: false }));
+dust.frustumCulled = false; scene.add(dust);
+let dustHead = 0, burstsThisFrame = 0;
+function burst(x, y, z, side, h) {
+  if (reduceMotion || burstsThisFrame++ > 6) return;
+  for (let i = 0; i < 30; i++) {
+    const k = dustHead = (dustHead + 1) % DUST_N, j = k * 3;
+    dustPos[j] = x + (Math.random() - 0.5) * side; dustPos[j + 1] = y + Math.random() * Math.min(h, 6); dustPos[j + 2] = z + (Math.random() - 0.5) * side;
+    dustVel[j] = (Math.random() - 0.5) * 5; dustVel[j + 1] = Math.random() * 4; dustVel[j + 2] = (Math.random() - 0.5) * 5;
+    dustLife[k] = 0.9 + Math.random() * 0.8;
+  }
+}
+function updateDust(dt) {
+  for (let k = 0; k < DUST_N; k++) {
+    if (dustLife[k] <= 0) continue;
+    const j = k * 3;
+    dustLife[k] -= dt;
+    if (dustLife[k] <= 0) { dustPos[j + 1] = -1000; continue; }
+    dustVel[j + 1] -= 7 * dt;
+    dustPos[j] += dustVel[j] * dt; dustPos[j + 1] = Math.max(0, dustPos[j + 1] + dustVel[j + 1] * dt); dustPos[j + 2] += dustVel[j + 2] * dt;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+}
+
+const BOX = new THREE.BoxGeometry(1, 1, 1); BOX.translate(0, 0.5, 0);
+const CONE = new THREE.ConeGeometry(0.5, 1, 7); CONE.translate(0, 0.5, 0);
+const matCache = {};
+function langMat(lang) {
+  if (!matCache[lang]) {
+    const c = new THREE.Color(LANGS[lang].color);
+    matCache[lang] = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 });
+  }
+  return matCache[lang];
+}
+const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#ef8a2e", "#ff5a2a", "#ffd9a8"].map(c => new THREE.Color(c));
+const HEAT_LEVELS = 16;
+const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
+  if (i === 0) return new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 });
+  const t = (i - 1) / (HEAT_LEVELS - 1) * (RAMP.length - 1), a = Math.floor(t), c = RAMP[a].clone().lerp(RAMP[Math.min(a + 1, RAMP.length - 1)], t - a);
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 });
+});
+const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.55, roughness: 0.5 });
+const PICKED = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf2a541, emissiveIntensity: 0.9, roughness: 0.4 });
+const MATCH = new THREE.MeshStandardMaterial({ color: 0xffc46b, emissive: 0xf2a541, emissiveIntensity: 0.45, roughness: 0.5 });
+const DIM = new THREE.MeshStandardMaterial({ color: 0x2b3247, roughness: 0.9, transparent: true, opacity: 0.35 });
+const FLASH = {
+  add: new THREE.MeshStandardMaterial({ color: 0xfff1d0, emissive: 0xf2a541, emissiveIntensity: 1.1, roughness: 0.4 }),
+  mod: new THREE.MeshStandardMaterial({ color: 0xdbe6ff, emissive: 0x7fa2ff, emissiveIntensity: 0.6, roughness: 0.5 }),
+  del: new THREE.MeshStandardMaterial({ color: 0xff7a5c, emissive: 0xff3b1f, emissiveIntensity: 0.8, roughness: 0.6 }),
+};
+const FIRE = new THREE.MeshBasicMaterial({ color: 0xff6b2c, transparent: true, opacity: 0.9 });
+const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
+  color: new THREE.Color("#161d33").lerp(new THREE.Color("#33406a"), d / 6), roughness: 0.95,
+}));
+
+let city = new THREE.Group(); scene.add(city);
+let buildings = [], bmap = new Map(), fires = [], labels = [], plats = [], citySize = 50, built = 0, dirCount = 0;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function clearCity() {
+  scene.remove(city);
+  for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
+  city = new THREE.Group(); scene.add(city);
+  buildings = []; bmap = new Map(); fires = []; labels = []; plats = []; hovered = null; picked = null;
+}
+
+function label(text, x, y, z, size) {
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  const fs = 64, font = `700 ${fs}px "Chakra Petch", "Arial Narrow", sans-serif`;
+  text = text.toUpperCase();
+  ctx.font = font;
+  c.width = Math.ceil(ctx.measureText(text).width * 1.05) + 40; c.height = fs + 30;
+  ctx.font = font;
+  ctx.fillStyle = "rgba(11,16,32,.72)"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+  sp.scale.set(size * c.width / c.height, size, 1); sp.position.set(x, y, z); sp.renderOrder = 10;
+  city.add(sp); labels.push(sp);
+}
+
+function place(node, rect, depth) {
+  if (node.file) {
+    const f = node.file;
+    const side = Math.max(0.4, Math.min(fileSide(f), rect.w - GAP * 0.6, rect.h - GAP * 0.6));
+    const m = new THREE.Mesh(BOX, langMat(f.lang));
+    const cx = rect.x + rect.w / 2, cz = rect.y + rect.h / 2, base = depth * STEP;
+    m.position.set(cx, base, cz); m.scale.set(side, 0.001, side); m.visible = false;
+    m.userData = { f, side, base, lines: 0, target: 0, shown: 0, delay: Math.random() * 0.9, flash: 0, fk: "" };
+    city.add(m); buildings.push(m); bmap.set(f.path, m);
+    if (f.todos.length) {
+      const fire = new THREE.Mesh(CONE, FIRE);
+      const r = Math.min(side * 0.7, 0.5 + f.todos.length * 0.08);
+      fire.position.set(cx, base, cz); fire.scale.set(r, 1, r); fire.visible = false;
+      fire.userData = { fh: 0.6 + Math.min(f.todos.length, 10) * 0.22, phase: Math.random() * 6.28, b: m };
+      city.add(fire); fires.push(fire);
+    }
+    return;
+  }
+  if (depth > 0) {
+    const p = new THREE.Mesh(BOX, platMats[Math.min(depth, 6)]);
+    p.position.set(rect.x + rect.w / 2, (depth - 1) * STEP, rect.y + rect.h / 2);
+    p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
+    city.add(p);
+    plats.push({ x0: rect.x, x1: rect.x + rect.w, z0: rect.y, z1: rect.y + rect.h, top: depth * STEP });
+    if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, Math.max(1.6, Math.min(4, Math.sqrt(rect.w * rect.h) / 9)));
+  }
+  const inner = { x: rect.x + PAD, y: rect.y + PAD, w: Math.max(0.1, rect.w - PAD * 2), h: Math.max(0.1, rect.h - PAD * 2) };
+  for (const { it, x, y, w, h } of squarify([...node.children.values()], inner)) place(it.n, { x, y, w, h }, depth + 1);
+}
+
+function fmt(n) { return n.toLocaleString("en-US"); }
+function short(n) { return n >= 100000 ? Math.round(n / 1000) + "k" : fmt(n); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function buildCity(data) {
+  if (walk.on) exitWalk();
+  playing = false;
+  prepare(data);
+  if (!nodes.size) { setRepoStatus("No source files found there."); return; }
+  cityName = data.name; citySource = data.source;
+  clearCity();
+  const root = buildTree([...nodes.values()]);
+  dirCount = root.dirs;
+  // A single top-level folder becomes the whole city instead of one giant district.
+  let top = root;
+  while (top.children.size === 1 && !top.children.values().next().value.file) top = top.children.values().next().value;
+  const side = Math.sqrt(weigh(top));
+  citySize = side;
+  const g = new THREE.Mesh(BOX, platMats[0]);
+  g.position.set(0, -STEP, 0); g.scale.set(side + 4, STEP, side + 4); city.add(g);
+  place(top, { x: -side / 2, y: -side / 2, w: side, h: side }, 0);
+  built = performance.now();
+  if (reduceMotion) buildings.forEach(b => b.userData.delay = -10);
+
+  scene.fog = new THREE.Fog(NIGHT, side * 1.4, side * 4);
+  camera.far = Math.max(4000, side * 12); camera.updateProjectionMatrix();
+  resetView();
+
+  const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo" };
+  document.getElementById("mode").textContent = tags[data.source] || "Repo";
+  document.getElementById("repoName").textContent = data.name;
+  document.body.classList.toggle("has-timeline", !!hist);
+  document.getElementById("timeline").hidden = !hist;
+  document.getElementById("cHeat").disabled = !hist;
+  document.getElementById("cHeat").title = hist ? "" : "Needs git history: build a repo or open a city.json";
+  if (!hist && colorMode === "heat") setColorMode("lang");
+  if (hist) { scrub.max = hist.commits.length; speedIdx = 0; speedBtn.textContent = speedLabel(); }
+  goNow(true);
+  closeDrawer(); applySearch(); renderLegend();
+}
+
+function setTargets(linesOf) {
+  for (const b of buildings) {
+    const L = linesOf(b.userData.f);
+    b.userData.lines = L; b.userData.target = fileHeight(L);
+    if (reduceMotion) b.userData.shown = b.userData.target;
+  }
+  const prevMax = maxChurn;
+  maxChurn = 1; for (const v of churnSrc.values()) if (v > maxChurn) maxChurn = v;
+  if (colorMode === "heat" && maxChurn !== prevMax) renderLegend();
+  updateStats(); updateHud();
+}
+function goNow(initial) {
+  viewNow = true; playing = false; churnSrc = totalChurn; cursor = hist ? hist.commits.length - 1 : -1;
+  setTargets(f => f.nowLines);
+  if (hist) scrub.value = hist.commits.length;
+  playBtn.textContent = "Play history";
+  controls.autoRotate = false;
+  if (!initial) renderLegend();
+}
+function viewAt(i) {
+  viewNow = false; cursor = i;
+  state = i >= 0 ? stateAt(i) : freshState();
+  churnSrc = state.churn;
+  setTargets(f => state.lines.get(f.path) || 0);
+}
+
+function updateStats() {
+  let files = 0, lines = 0, fireCount = 0;
+  for (const b of buildings) if (b.userData.lines > 0) { files++; lines += b.userData.lines; if (viewNow) fireCount += b.userData.f.todos.length; }
+  document.getElementById("sFiles").textContent = fmt(files);
+  document.getElementById("sLines").textContent = short(lines);
+  document.getElementById("sCommits").textContent = hist ? fmt(viewNow ? hist.total || hist.commits.length : cursorCommitCount()) : "–";
+  document.getElementById("sFires").textContent = viewNow ? fmt(fireCount) : "–";
+}
+function cursorCommitCount() {
+  if (!hist || cursor < 0) return 0;
+  const ratio = (hist.total || hist.commits.length) / hist.commits.length;
+  return Math.round((cursor + 1) * ratio);
+}
+
+function renderLegend() {
+  const el = document.getElementById("legend");
+  if (colorMode === "heat") {
+    el.innerHTML = `<div class="ramp"><div class="bar"></div><div class="ends"><span>changed rarely</span><span>${fmt(maxChurn)} commits</span></div></div>`;
+    return;
+  }
+  const counts = {};
+  for (const n of nodes.values()) counts[n.lang] = (counts[n.lang] || 0) + 1;
+  el.innerHTML = Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+    .map(l => `<span><i style="background:${LANGS[l].color}"></i>${LANGS[l].name}</span>`).join("");
+}
+
+function resetView() {
+  const s = citySize, far = innerWidth < 640 ? 1.6 : 1.15;
+  controls.target.set(0, 0, 0);
+  camera.position.set(s * 0.6 * far, s * 0.75 * far, s * 1.0 * far);
+  focusTo = null;
+}
+
+// ---------- materials ----------
+let hovered = null, picked = null, query = "";
+function matFor(b) {
+  if (b === picked) return PICKED;
+  if (b === hovered) return HOVER;
+  if (b.userData.flash > 0) return FLASH[b.userData.fk];
+  if (query) return b.userData.match ? MATCH : DIM;
+  if (colorMode === "heat") {
+    const c = churnSrc.get(b.userData.f.path) || 0;
+    return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
+  }
+  return langMat(b.userData.f.lang);
+}
+function setColorMode(m) {
+  colorMode = m;
+  document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
+  document.getElementById("cHeat").setAttribute("aria-pressed", m === "heat");
+  renderLegend();
+}
+document.getElementById("cLang").onclick = () => setColorMode("lang");
+document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
+
+// ---------- timeline ----------
+const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
+const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into about 40 seconds
+let speedIdx = 0, playAcc = 0;
+function speed() { return SPEEDS[speedIdx] || Math.max(3, Math.min(120, hist.commits.length / 40)); }
+function speedLabel() { return SPEEDS[speedIdx] ? `${SPEEDS[speedIdx]}/s` : `Auto`; }
+speedBtn.onclick = () => { speedIdx = (speedIdx + 1) % SPEEDS.length; speedBtn.textContent = speedLabel(); };
+
+function fx(path, kind) {
+  const b = bmap.get(path); if (!b) return;
+  b.userData.flash = 1; b.userData.fk = kind;
+  if (kind === "del" && b.userData.shown > 0.05) burst(b.position.x, b.userData.base, b.position.z, b.userData.side, b.userData.shown);
+}
+playBtn.onclick = () => {
+  if (!hist) return;
+  if (playing) { playing = false; playBtn.textContent = "Play history"; controls.autoRotate = false; return; }
+  closeDrawer();
+  if (viewNow || cursor >= hist.commits.length - 1) viewAt(-1);
+  playing = true; playAcc = 0; playBtn.textContent = "Pause";
+  if (!walk.on) controls.autoRotate = !reduceMotion;
+};
+scrub.addEventListener("input", () => {
+  playing = false; playBtn.textContent = "Play history"; controls.autoRotate = false;
+  const v = +scrub.value;
+  if (v >= hist.commits.length) goNow(); else viewAt(v);
+});
+function stepPlayback(dt) {
+  if (!playing) return;
+  playAcc += dt * speed();
+  let moved = false;
+  while (playAcc >= 1 && cursor < hist.commits.length - 1) {
+    cursor++; playAcc -= 1; moved = true;
+    applyCommit(state, hist.commits[cursor], fx);
+  }
+  if (moved) {
+    churnSrc = state.churn;
+    setTargets(f => state.lines.get(f.path) || 0);
+    scrub.value = cursor;
+  }
+  if (cursor >= hist.commits.length - 1 && playAcc >= 1.5 * speed()) goNow();
+}
+const dateFmt = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" });
+function updateHud() {
+  if (!hist) return;
+  const d = document.getElementById("tlDate"), h = document.getElementById("tlHash"), a = document.getElementById("tlAuthor"), m = document.getElementById("tlMsg");
+  if (viewNow) {
+    const last = hist.commits[hist.commits.length - 1];
+    d.textContent = "Now"; h.textContent = ""; a.textContent = "";
+    m.textContent = `Current files · ${fmt(hist.total || hist.commits.length)} commits since ${dateFmt.format(new Date(hist.commits[0].t * 1000))}` + (last ? "" : "");
+  } else if (cursor < 0) {
+    d.textContent = "Start"; h.textContent = ""; a.textContent = ""; m.textContent = "Before the first commit";
+  } else {
+    const c = hist.commits[cursor];
+    d.textContent = dateFmt.format(new Date(c.t * 1000)); h.textContent = c.h; a.textContent = c.a; m.textContent = c.m;
+  }
+}
+
+// ---------- interaction (orbit) ----------
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let pointerMoved = false, downAt = null, focusTo = null, lastPointer = null;
+const tip = document.getElementById("tip");
+
+function pickAt(ndcX, ndcY) {
+  mouse.set(ndcX, ndcY);
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(buildings.filter(b => b.visible), false)[0];
+  return hit ? hit.object : null;
+}
+function pickEvent(ev) {
+  const r = canvas.getBoundingClientRect();
+  return pickAt(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+}
+canvas.addEventListener("pointermove", ev => {
+  lastPointer = ev; pointerMoved = true;
+  if (downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 5) downAt.moved = true;
+  if (walk.on && !document.pointerLockElement && ev.buttons & 1) look(ev.movementX, ev.movementY);
+});
+canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.clientY, moved: false }; });
+canvas.addEventListener("pointerup", ev => {
+  if (downAt && !downAt.moved && ev.button === 0) {
+    if (walk.on) {
+      if (document.pointerLockElement === canvas) { const b = pickAt(0, 0); if (b) openDrawer(b); }
+      else lockPointer();
+    } else {
+      const b = pickEvent(ev);
+      if (b) openDrawer(b); else closeDrawer();
+    }
+  }
+  downAt = null;
+});
+canvas.addEventListener("pointerleave", () => { lastPointer = null; if (!walk.on) tip.hidden = true; if (hovered) hovered = null; });
+
+function showTip(b, x, y, centered) {
+  const f = b.userData.f, c = churnSrc.get(f.path) || 0;
+  tip.innerHTML = `${esc(f.path)} · <b>${fmt(b.userData.lines)}</b> lines` +
+    (hist ? ` · <b>${fmt(c)}</b> commit${c === 1 ? "" : "s"}` : "") +
+    (viewNow && f.todos.length ? ` · <b class="f">${f.todos.length} fires</b>` : "");
+  tip.classList.toggle("center", centered);
+  tip.hidden = false;
+  tip.style.left = (centered ? x : Math.min(x, innerWidth - tip.offsetWidth - 24)) + "px";
+  tip.style.top = y + "px";
+}
+function updateHover() {
+  if (walk.on) {
+    const b = pickAt(0, 0);
+    const near = b && b.position.distanceTo(camera.position) < 40;
+    hovered = near ? b : null;
+    if (near) showTip(b, innerWidth / 2, innerHeight / 2, true); else tip.hidden = true;
+    return;
+  }
+  if (!pointerMoved) return; pointerMoved = false;
+  if (!lastPointer || lastPointer.pointerType === "touch") return;
+  const b = pickEvent(lastPointer);
+  hovered = b;
+  canvas.style.cursor = b ? "pointer" : "";
+  if (b) showTip(b, lastPointer.clientX, lastPointer.clientY, false); else tip.hidden = true;
+}
+
+const drawer = document.getElementById("drawer");
+function openDrawer(b) {
+  picked = b;
+  const f = b.userData.f;
+  const parts = f.path.split("/");
+  document.getElementById("dName").textContent = parts.pop();
+  document.getElementById("dPath").textContent = (parts.join("/") || ".") + "/ · " + LANGS[f.lang].name;
+  const commits = hist ? (churnSrc.get(f.path) || 0) : null;
+  document.getElementById("dStats").innerHTML =
+    `<div><dt>Lines</dt><dd>${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${fmt(f.funcs)}</dd></div>` +
+    `<div><dt>Fires</dt><dd class="fire">${viewNow ? f.todos.length : "–"}</dd></div>` +
+    (hist ? `<div><dt>Commits</dt><dd>${fmt(commits)}</dd></div>` : `<div><dt>Floors</dt><dd>${Math.max(1, Math.round(b.userData.target))}</dd></div>`);
+  document.getElementById("dTodos").innerHTML = !viewNow ? `<p class="note">TODO fires show for current files. Drag the timeline to the end to see them.</p>`
+    : f.todos.length
+    ? `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>`
+    : `<p class="note">No TODOs here. This block is fireproof.</p>`;
+  document.getElementById("dCode").innerHTML = f.text != null
+    ? `<h3>First lines</h3><pre class="code">${esc(f.text)}</pre>`
+    : `<p class="note">${f.nowLines ? (citySource === "sample" ? "This is the example city, so there is no source to show." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here.") : "This file was deleted before today."}</p>`;
+  drawer.hidden = false;
+  if (!walk.on) focusTo = new THREE.Vector3(b.position.x, b.userData.base + b.userData.target * 0.5, b.position.z);
+}
+function closeDrawer() { drawer.hidden = true; picked = null; }
+document.getElementById("closeBtn").onclick = closeDrawer;
+document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(); };
+
+// search
+const qInput = document.getElementById("q"), qInfo = document.getElementById("qInfo");
+function applySearch() {
+  query = qInput.value.trim().toLowerCase();
+  let n = 0;
+  for (const b of buildings) { b.userData.match = !!query && b.userData.f.path.toLowerCase().includes(query); if (b.userData.match && b.userData.lines > 0) n++; }
+  qInfo.textContent = query ? (n ? `${n} building${n === 1 ? "" : "s"} lit up` : "No files match") : "";
+}
+qInput.addEventListener("input", applySearch);
+
+// ---------- walk mode ----------
+const walk = { on: false, pos: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, keys: new Set(), saved: null };
+const EYE = 1.0, BODY_R = 0.28, CLIMB = 0.45;
+const walkbar = document.getElementById("walkbar"), crosshair = document.getElementById("crosshair");
+function lockPointer() {
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag to look instead */ }
+}
+function look(dx, dy) {
+  walk.yaw -= dx * 0.0024;
+  walk.pitch = Math.max(-1.45, Math.min(1.45, walk.pitch - dy * 0.0024));
+}
+function enterWalk() {
+  if (walk.on || !buildings.length) return;
+  closeDrawer(); playing && (controls.autoRotate = false);
+  walk.saved = { pos: camera.position.clone(), target: controls.target.clone() };
+  walk.on = true; controls.enabled = false; controls.autoRotate = false;
+  walk.pos.set(0, 0, citySize / 2 + 1.2); walk.yaw = 0; walk.pitch = 0.08; walk.vy = 0;
+  camera.near = 0.05; camera.updateProjectionMatrix();
+  scene.fog.near = 6; scene.fog.far = 45 + citySize * 0.6;
+  labels.forEach(l => l.visible = false);
+  document.body.classList.add("walking"); walkbar.hidden = false; crosshair.hidden = false;
+  lockPointer();
+}
+function exitWalk() {
+  if (!walk.on) return;
+  walk.on = false; walk.keys.clear();
+  if (document.pointerLockElement) document.exitPointerLock();
+  camera.near = 0.1; camera.updateProjectionMatrix();
+  scene.fog.near = citySize * 1.4; scene.fog.far = citySize * 4;
+  camera.rotation.set(0, 0, 0);
+  camera.position.copy(walk.saved.pos); controls.target.copy(walk.saved.target); controls.enabled = true;
+  labels.forEach(l => l.visible = true);
+  document.body.classList.remove("walking"); walkbar.hidden = true; crosshair.hidden = true; tip.hidden = true; hovered = null;
+}
+document.getElementById("walkBtn").onclick = enterWalk;
+document.getElementById("exitWalkBtn").onclick = exitWalk;
+document.addEventListener("mousemove", e => { if (walk.on && document.pointerLockElement === canvas) look(e.movementX, e.movementY); });
+document.addEventListener("keydown", e => {
+  if (e.target.matches && e.target.matches("input, textarea")) return;
+  if (walk.on) {
+    if (e.key === "Escape") { if (!document.pointerLockElement) exitWalk(); return; }
+    walk.keys.add(e.code);
+    if (/^(Space|Arrow)/.test(e.code)) e.preventDefault();
+    return;
+  }
+  if (e.key === "Escape") closeDrawer();
+});
+document.addEventListener("keyup", e => walk.keys.delete(e.code));
+addEventListener("blur", () => walk.keys.clear());
+
+function groundAt(x, z, feet) {
+  const half = (citySize + 4) / 2;
+  let g = Math.abs(x) <= half && Math.abs(z) <= half ? 0 : -50;
+  for (const p of plats) if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1 && p.top > g && p.top <= feet + CLIMB) g = p.top;
+  for (const b of buildings) {
+    const u = b.userData; if (u.shown < 0.05) continue;
+    const roof = u.base + u.shown, hs = u.side / 2;
+    if (roof > g && roof <= feet + CLIMB && Math.abs(x - b.position.x) <= hs && Math.abs(z - b.position.z) <= hs) g = roof;
+  }
+  return g;
+}
+function blocked(x, z, feet) {
+  const half = (citySize + 4) / 2 - BODY_R;
+  if (Math.abs(x) > half || Math.abs(z) > half) return true;
+  for (const p of plats) if (p.top > feet + CLIMB && x > p.x0 - BODY_R && x < p.x1 + BODY_R && z > p.z0 - BODY_R && z < p.z1 + BODY_R) return true;
+  for (const b of buildings) {
+    const u = b.userData; if (u.shown < 0.05) continue;
+    const hs = u.side / 2 + BODY_R;
+    if (u.base + u.shown > feet + CLIMB && Math.abs(x - b.position.x) < hs && Math.abs(z - b.position.z) < hs) return true;
+  }
+  return false;
+}
+function updateWalk(dt) {
+  const k = walk.keys, sp = (k.has("ShiftLeft") || k.has("ShiftRight") ? 16 : 6) * dt;
+  let fx = 0, fz = 0;
+  if (k.has("KeyW") || k.has("ArrowUp")) fz -= 1;
+  if (k.has("KeyS") || k.has("ArrowDown")) fz += 1;
+  if (k.has("KeyA") || k.has("ArrowLeft")) fx -= 1;
+  if (k.has("KeyD") || k.has("ArrowRight")) fx += 1;
+  const len = Math.hypot(fx, fz);
+  if (len) {
+    fx /= len; fz /= len;
+    const s = Math.sin(walk.yaw), c = Math.cos(walk.yaw);
+    const dx = (fx * c + fz * s) * sp, dz = (-fx * s + fz * c) * sp;
+    if (!blocked(walk.pos.x + dx, walk.pos.z, walk.pos.y)) walk.pos.x += dx;
+    if (!blocked(walk.pos.x, walk.pos.z + dz, walk.pos.y)) walk.pos.z += dz;
+  }
+  const g = groundAt(walk.pos.x, walk.pos.z, walk.pos.y);
+  const grounded = walk.pos.y <= g + 0.01;
+  if (k.has("Space") && grounded) walk.vy = 10;
+  walk.vy -= 24 * dt;
+  walk.pos.y += walk.vy * dt;
+  if (walk.pos.y <= g) { walk.pos.y = g; walk.vy = 0; }
+  camera.position.set(walk.pos.x, walk.pos.y + EYE, walk.pos.z);
+  camera.rotation.set(walk.pitch, walk.yaw, 0, "YXZ");
+}
+
+// ---------- loading repos, folders and city.json ----------
+const busy = document.getElementById("busy"), repoStatus = document.getElementById("repoStatus");
+function setRepoStatus(html) { repoStatus.innerHTML = html; }
+function normRepo(s) {
+  return s.trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
+}
+async function loadRepo(src) {
+  const key = normRepo(src);
+  if (!key) return;
+  setRepoStatus("");
+  busy.hidden = false;
+  try {
+    if (LOCAL) {
+      busy.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
+      const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()));
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Could not build that repo.");
+      buildCity({ ...data, source: data.source || "git" });
+    } else if (PRESETS[key]) {
+      busy.textContent = `Loading ${key}…`;
+      const r = await fetch(PRESETS[key]);
+      if (!r.ok) throw new Error("Could not load the built-in copy of " + key + ".");
+      buildCity({ ...(await r.json()), source: "json" });
+    } else {
+      setRepoStatus(`This page can't reach GitHub. Run the Code City app on your computer and paste it there: <code>python3 codecity.py serve</code> Or export it with <code>python3 codecity.py export ${esc(key)}</code> and drop the JSON here.`);
+    }
+  } catch (e) {
+    setRepoStatus(esc(e.message));
+  } finally { busy.hidden = true; }
+}
+document.getElementById("repoForm").addEventListener("submit", e => { e.preventDefault(); loadRepo(document.getElementById("repoInput").value); });
+
+function loadJsonText(text, fallbackName) {
+  try {
+    const data = JSON.parse(text);
+    if (!data || !Array.isArray(data.files)) throw new Error();
+    buildCity({ name: data.name || fallbackName, source: "json", files: data.files, history: data.history || null });
+    setRepoStatus("");
+  } catch (e) { setRepoStatus("That file isn't a Code City export. Make one with <code>python3 codecity.py export owner/repo</code>"); }
+}
+
+async function ingest(entries, repoName) {
+  const kept = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= MAX_BYTES).slice(0, MAX_FILES);
+  if (!kept.length) { setRepoStatus("No source files found in that folder."); return; }
+  busy.hidden = false;
+  try {
+    const files = [];
+    for (let i = 0; i < kept.length; i += 64) {
+      const chunk = await Promise.all(kept.slice(i, i + 64).map(async e => analyze(e.path, await e.file.text())));
+      files.push(...chunk);
+      busy.textContent = `Surveying files… ${files.length} / ${kept.length}`;
+    }
+    buildCity({ name: repoName + "/", source: "folder", files, history: null });
+    setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
+  } finally { busy.hidden = true; }
+}
+
+const folderInput = document.getElementById("folderInput");
+document.getElementById("openBtn").onclick = () => folderInput.click();
+folderInput.addEventListener("change", () => {
+  const list = [...folderInput.files];
+  if (!list.length) return;
+  const paths = list.map(f => f.webkitRelativePath || f.name);
+  const first = paths[0].split("/")[0];
+  const shared = paths.every(p => p.includes("/") && p.split("/")[0] === first);
+  const strip = shared ? first.length + 1 : 0;
+  ingest(list.map((f, i) => ({ path: paths[i].slice(strip), file: f })), shared ? first : "folder");
+  folderInput.value = "";
+});
+
+const drop = document.getElementById("drop");
+let dragDepth = 0;
+addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; drop.hidden = false; });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; drop.hidden = true; } });
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", async e => {
+  e.preventDefault(); dragDepth = 0; drop.hidden = true;
+  const files = [...e.dataTransfer.files];
+  if (files.length === 1 && /\.json$/i.test(files[0].name)) { loadJsonText(await files[0].text(), files[0].name.replace(/\.json$/i, "")); return; }
+  const roots = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  async function walkEntry(entry, path) {
+    if (out.length > MAX_FILES * 3) return;
+    if (entry.isFile) { out.push({ path, file: await new Promise((res, rej) => entry.file(res, rej)) }); return; }
+    if (SKIP_DIRS.has(entry.name)) return;
+    const reader = entry.createReader();
+    let batch;
+    do {
+      batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      for (const c of batch) await walkEntry(c, path ? path + "/" + c.name : c.name);
+    } while (batch.length);
+  }
+  for (const r of roots) await walkEntry(r, roots.length === 1 && r.isDirectory ? "" : r.name);
+  if (out.length) ingest(out, roots.length === 1 ? roots[0].name : "dropped files");
+});
+
+// ---------- loop ----------
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+  const since = (performance.now() - built) / 1000;
+  burstsThisFrame = 0;
+  stepPlayback(dt);
+  const ease = 1 - Math.exp(-dt * 7);
+  for (const b of buildings) {
+    const u = b.userData;
+    if (since >= u.delay) u.shown += (u.target - u.shown) * ease;
+    if (Math.abs(u.target - u.shown) < 0.002) u.shown = u.target;
+    b.visible = u.shown > 0.01;
+    b.scale.y = Math.max(0.001, u.shown);
+    if (u.flash > 0) u.flash -= dt * 1.6;
+    b.material = matFor(b);
+  }
+  for (const f of fires) {
+    const u = f.userData.b.userData;
+    f.visible = viewNow && u.target > 0 && u.shown >= u.target * 0.98;
+    f.position.y = u.base + u.shown;
+    const flick = reduceMotion ? 1 : 1 + 0.22 * Math.sin(t * 9 + f.userData.phase) + 0.1 * Math.sin(t * 23 + f.userData.phase * 2);
+    f.scale.y = f.userData.fh * flick;
+  }
+  FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
+  updateDust(dt);
+  if (walk.on) updateWalk(dt);
+  else {
+    if (focusTo) {
+      const d = focusTo.clone().sub(controls.target);
+      controls.target.add(d.multiplyScalar(0.12));
+      if (d.length() < 0.01) focusTo = null;
+    }
+    controls.update();
+  }
+  updateHover();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+const start = () => { buildCity(sampleCity()); frame(); };
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start, start);
+})();
+</script>
+</body></html>
