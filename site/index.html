@@ -1047,13 +1047,13 @@ function normRepo(s) {
 // raw.githubusercontent.com, which has no such limit.
 const GH_COMMITS = 30, BYTES_PER_LINE = 32;
 let ghRepo = null;   // { owner, repo, branch } of a city loaded from GitHub
+function rateLimited(reset) {
+  const at = reset ? "after " + new Date(reset * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "in an hour";
+  return new Error(`GitHub allows 60 requests an hour without signing in, and your network has used them up. Try again ${at}, or run the local app for any repo: <code>python3 codecity.py serve</code>`);
+}
 async function gh(path) {
   const r = await fetch("https://api.github.com" + path, { headers: { Accept: "application/vnd.github+json" } });
-  if (r.status === 403 || r.status === 429) {
-    const reset = +r.headers.get("x-ratelimit-reset");
-    const at = reset ? "after " + new Date(reset * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "in an hour";
-    throw new Error(`GitHub allows 60 requests an hour without signing in, and this browser has used them up. Try again ${at}, or run the local app for any repo: <code>python3 codecity.py serve</code>`);
-  }
+  if (r.status === 403 || r.status === 429) throw rateLimited(+r.headers.get("x-ratelimit-reset"));
   if (r.status === 404 || r.status === 451) throw new Error("GitHub says that repo doesn't exist or isn't public.");
   if (!r.ok) throw new Error(`GitHub returned an error (${r.status}). Try again in a moment.`);
   return r.json();
@@ -1065,14 +1065,18 @@ async function loadFromGitHub(key) {
   if (!m) throw new Error("Paste a repo like github.com/owner/name.");
   const [, owner, repo] = m, base = `/repos/${owner}/${repo}`;
   busy.textContent = `Reading ${key} from GitHub…`;
+  // Checking the allowance doesn't use it up. Keep 2 calls for the tree and 1 for the commit list.
+  const limit = await fetch("https://api.github.com/rate_limit").then(r => r.json()).then(d => d.resources.core).catch(() => null);
+  if (limit && limit.remaining < 2) throw rateLimited(limit.reset);
+  const nCommits = limit ? Math.max(0, Math.min(GH_COMMITS, limit.remaining - 3)) : GH_COMMITS;
   const branch = (await gh(base)).default_branch;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
   const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= MAX_BYTES).slice(0, MAX_FILES)
     .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / BYTES_PER_LINE)), funcs: null, todos: [], text: null, estimated: true }));
   if (!files.length) throw new Error("No source files found in that repo.");
 
-  busy.textContent = `Reading the last ${GH_COMMITS} commits of ${key}…`;
-  const list = await gh(`${base}/commits?sha=${encodeURIComponent(branch)}&per_page=${GH_COMMITS}`);
+  busy.textContent = `Reading the last ${nCommits} commits of ${key}…`;
+  const list = nCommits ? await gh(`${base}/commits?sha=${encodeURIComponent(branch)}&per_page=${nCommits}`) : [];
   const details = [];
   for (let i = 0; i < list.length; i += 6) details.push(...await Promise.all(list.slice(i, i + 6).map(c => gh(`${base}/commits/${c.sha}`))));
 
@@ -1102,7 +1106,8 @@ async function loadFromGitHub(key) {
     name: key, source: "github", files, gh: { owner, repo, branch },
     history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: commits.length } : null,
   });
-  setRepoStatus(`Loaded from GitHub: every current file and the last ${commits.length} commits. Heights are estimated from file size until you click a building. For full history, run the local app: <code>python3 codecity.py serve</code>`);
+  const short = nCommits < GH_COMMITS ? ` (GitHub's hourly limit only had room for ${nCommits ? nCommits : "no"} commits)` : "";
+  setRepoStatus(`Loaded from GitHub: every current file and the last ${commits.length} commits${short}. Heights are estimated from file size until you click a building. For full history, run the local app: <code>python3 codecity.py serve</code>`);
 }
 
 async function loadSource(b) {
