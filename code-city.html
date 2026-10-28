@@ -653,15 +653,43 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 stage.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
-const NIGHT = new THREE.Color("#0b1020");
 const scene = new THREE.Scene();
-scene.background = NIGHT;
+// Backlight, part 1: a sky that glows along the horizon behind the city instead of a flat night.
+const HORIZON = new THREE.Color("#1a2650");
+{
+  const c = document.createElement("canvas"); c.width = 16; c.height = 512;
+  const g = c.getContext("2d"), grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, "#070b17"); grad.addColorStop(0.45, "#0d1530"); grad.addColorStop(0.68, "#24346a");
+  grad.addColorStop(0.78, "#1a2650"); grad.addColorStop(1, "#0b1020");
+  g.fillStyle = grad; g.fillRect(0, 0, 16, 512);
+  scene.background = new THREE.CanvasTexture(c);
+}
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.47; controls.autoRotateSpeed = 0.35;
 scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.45));
 const moon = new THREE.DirectionalLight(0xdfe6ff, 0.75); moon.position.set(-1, 2, 1.2); scene.add(moon);
 const lamp = new THREE.DirectionalLight(0xf2a541, 0.25); lamp.position.set(1.5, 0.6, -1); scene.add(lamp);
+// Backlight, part 2: a cool light that always sits behind the city as seen from the camera (moved every frame).
+const backLight = new THREE.DirectionalLight(0x9db6ff, 0.55);
+scene.add(backLight, backLight.target);
+function placeBackLight() {
+  const away = controls.target.clone().sub(camera.position).setY(0).normalize();
+  backLight.target.position.copy(controls.target);
+  backLight.position.copy(controls.target).addScaledVector(away, 100).setY(controls.target.y + 22);   // low, so it grazes walls and roof edges instead of flooding roofs
+}
+// Backlight, part 3: walls catch a cool rim of light where they turn away from the viewer.
+const rimLight = { color: { value: new THREE.Color(0x7f9cff) }, strength: { value: 0.4 } };
+function withRim(mat) {
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uRimColor = rimLight.color;
+    shader.uniforms.uRimStrength = rimLight.strength;
+    shader.fragmentShader = "uniform vec3 uRimColor;\nuniform float uRimStrength;\n" + shader.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+      float rim = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);
+      totalEmissiveRadiance += uRimColor * rim * uRimStrength;`);
+  };
+  return mat;
+}
 
 // Bloom from three.js's post-processing add-ons: only bright things glow (fires, flashes, highlights).
 // Rendering through a multisampled target keeps edges antialiased, which a plain composer would lose.
@@ -670,7 +698,7 @@ const composerTarget = renderer.capabilities.isWebGL2
   : undefined;
 const composer = new THREE.EffectComposer(renderer, composerTarget);
 composer.addPass(new THREE.RenderPass(scene, camera));
-const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.5, 0.66);
+const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.5, 0.82);
 composer.addPass(bloom);
 
 
@@ -718,16 +746,16 @@ const matCache = {};
 function langMat(lang) {
   if (!matCache[lang]) {
     const c = new THREE.Color(LANGS[lang].color);
-    matCache[lang] = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 });
+    matCache[lang] = withRim(new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 }));
   }
   return matCache[lang];
 }
 const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#e8822c", "#f05a2a", "#ff9a6a"].map(c => new THREE.Color(c));
 const HEAT_LEVELS = 16;
 const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
-  if (i === 0) return new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 });
+  if (i === 0) return withRim(new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 }));
   const t = (i - 1) / (HEAT_LEVELS - 1) * (RAMP.length - 1), a = Math.floor(t), c = RAMP[a].clone().lerp(RAMP[Math.min(a + 1, RAMP.length - 1)], t - a);
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.06 + 0.22 * (i / HEAT_LEVELS) ** 2 });
+  return withRim(new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.06 + 0.22 * (i / HEAT_LEVELS) ** 2 }));
 });
 const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.22, roughness: 0.5 });
 const PICKED = new THREE.MeshStandardMaterial({ color: 0xf2a541, emissive: 0xf2a541, emissiveIntensity: 0.32, roughness: 0.4 });
@@ -827,7 +855,7 @@ function buildCity(data) {
   built = performance.now();
   if (reduceMotion) buildings.forEach(b => b.userData.delay = -10);
 
-  scene.fog = new THREE.Fog(NIGHT, side * 1.4, side * 4);
+  scene.fog = new THREE.Fog(HORIZON, side * 1.4, side * 4);
   camera.far = Math.max(4000, side * 12); camera.updateProjectionMatrix();
   resetView();
 
@@ -1894,6 +1922,7 @@ function frame() {
   FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
   updateDust(dt);
   stepFlight();
+  placeBackLight();
   controls.update();
   updateHover();
   composer.render(dt);
