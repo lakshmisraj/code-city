@@ -12,7 +12,7 @@ See a codebase as a 3D city at night. Each file is a building: height is lines o
 Paste any public GitHub repo and press Build. The site reads it straight from GitHub's API:
 
 1. Today's files show right away (about 4 requests).
-2. You pick how much history to replay: a quick range (1 week to all time), or drag the slider to any number of recent commits. The panel shows how many commits that is, the dates, and how many GitHub requests it will cost.
+2. You pick which stretch of history to replay by dragging the two ends of a slider, from the first commit to today. If the stretch ends before today, one extra request carries the city on to today, so the timeline always finishes at the current code. The panel shows how many commits that is, the dates, and how many GitHub requests it will cost.
 3. Each commit costs one request. If the range doesn't fit in what you have left, it loads as coarser steps (GitHub's compare between evenly spaced commits), so you still get the whole range.
 
 Without signing in, GitHub allows **60 requests an hour** per network. Add a GitHub token (a fine-grained token with public repository access only) to get **5,000 an hour**, enough for every commit of most repos. The token is only sent to api.github.com and is kept in the browser only if you tick "Remember on this device".
@@ -24,7 +24,8 @@ Building heights are estimated from file size until you click a building, which 
 - **Hotspots** ranks files by *commits × lines*: big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
 - **Show a pull request**: enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots.
 - **Copy link** copies a link that reopens the same view, for example
-  `https://code-city-lakshmi.netlify.app/?repo=sindresorhus/ky&range=1m&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
+  `https://code-city-lakshmi.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
+  `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.
   A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
 
 ### Sign in with GitHub (site owner setup)

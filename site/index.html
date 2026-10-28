@@ -74,10 +74,20 @@ body.has-timeline { --tl-h: 76px; }
 .hpanel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--street-2); }
 .hpanel p { margin: 0; font-size: 12px; line-height: 1.45; }
 .hp-info { color: var(--ink-dim); }
-.seg.wrap { flex-wrap: wrap; }
-.seg.wrap button { flex: 1 0 auto; }
 .hp-slider { display: flex; flex-direction: column; gap: 4px; }
-#hpSlider { width: 100%; margin: 2px 0 0; accent-color: var(--sodium); }
+.dual { position: relative; height: 22px; margin-top: 2px; }
+.dual-track { position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 2px; background: var(--line); }
+.dual-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--sodium); }
+.dual input[type=range] { position: absolute; inset: 0; width: 100%; height: 22px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; z-index: 2; }
+.dual input[type=range]::-webkit-slider-runnable-track { height: 22px; background: none; }
+.dual input[type=range]::-moz-range-track { height: 22px; background: none; }
+.dual input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: var(--sodium); border: 2px solid var(--night); box-shadow: 0 0 0 1px var(--sodium); cursor: grab; }
+.dual input[type=range]::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%; background: var(--sodium); border: 2px solid var(--night); box-shadow: 0 0 0 1px var(--sodium); cursor: grab; }
+.dual input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--ink); }
+.dual input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--ink); }
+.dual-ticks { position: relative; height: 14px; font: 10px var(--f-mono); color: var(--ink-dim); }
+.dual-ticks span { position: absolute; top: 3px; transform: translateX(-50%); }
+.dual-ticks span::before { content: ""; position: absolute; left: 50%; top: -5px; width: 1px; height: 4px; background: var(--ink-dim); }
 .hp-ends { display: flex; justify-content: space-between; font: 11px var(--f-mono); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
 .hp-limits p { margin: 6px 0 0; color: var(--ink-dim); }
 .hp-limits p b { color: var(--ink); font-weight: 600; }
@@ -261,7 +271,7 @@ pre.code {
     <small id="repoStatus"></small>
     <div class="signin" id="signinRow" hidden>
       <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
-      <span>Raises your limit from 60 to 5,000 GitHub requests an hour</span>
+      <span>Signing in with GitHub raises your limit from 60 to 5,000 GitHub requests an hour</span>
     </div>
     <div class="signin" id="signedinRow" hidden>
       <span>Signed in as <b id="ghLogin">GitHub</b></span>
@@ -281,11 +291,15 @@ pre.code {
   <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
     <div class="label" id="hpTitle">How much history?</div>
     <p class="hp-info" id="hpInfo"></p>
-    <div class="seg wrap" role="group" aria-label="Quick ranges" id="hpRanges"></div>
     <div class="hp-slider">
-      <label class="label" for="hpSlider">Or drag to pick how many recent commits</label>
-      <input id="hpSlider" type="range" min="0" max="1000" step="1">
-      <div class="hp-ends"><span>Latest 1</span><span id="hpSliderMax">All</span></div>
+      <span class="label" id="hpSliderLabel">Drag both ends to pick a stretch of history</span>
+      <div class="dual" id="hpDual">
+        <div class="dual-track"><div class="dual-fill" id="hpFill"></div></div>
+        <input id="hpFrom" type="range" min="0" max="1000" step="1" aria-label="Oldest commit to include">
+        <input id="hpTo" type="range" min="0" max="1000" step="1" aria-label="Newest commit to include">
+      </div>
+      <div class="dual-ticks" id="hpTicks" aria-hidden="true"></div>
+      <div class="hp-ends"><span id="hpFromLabel"></span><span id="hpToLabel"></span></div>
     </div>
     <p class="hp-estimate" id="hpEstimate"></p>
     <p class="hp-warn" id="hpWarn" role="status"></p>
@@ -1235,34 +1249,50 @@ async function loadFromGitHub(key) {
 }
 
 // ---- asking how much history ----
-const RANGES = [["1 week", 7], ["1 month", 30], ["3 months", 91], ["1 year", 365], ["All time", Infinity], ["Custom", null]];
+// A two-handled slider picks a stretch of history: the left handle is the oldest commit to include, the
+// right one the newest. The track runs from the first commit (left) to today (right) on a log scale of
+// age, so recent weeks still get room in a repo that is ten years old.
 const hp = id => document.getElementById(id);
-let hpChoice = "1 month", hpLeft = null, customN = 50;   // hpChoice is a quick range, or "Custom" when the slider was dragged
+const DAY = 86400, MIN_GAP = 8;   // MIN_GAP: slider units the two handles stay apart
+const hpFrom = hp("hpFrom"), hpTo = hp("hpTo");
+let hpLeft = null;
+let hpPinned = null;   // exact times from a link, until the visitor drags a handle (slider steps would round them)
 
-// The slider picks how many recent commits to load. Big repos use a log scale so small ranges stay easy to pick.
-function sliderToN(v) {
-  const t = ghProbe.total;
-  if (t <= 1) return 1;
-  const n = t <= 60 ? 1 + v / 1000 * (t - 1) : Math.exp(v / 1000 * Math.log(t));
-  return Math.max(1, Math.min(t, Math.round(n)));
+function nowT() { return Date.now() / 1000; }
+function maxAgeDays() { return Math.max(1, (nowT() - ghProbe.oldestT) / DAY); }
+function posToT(pos) { return pos >= 1000 ? Infinity : nowT() - Math.expm1((1 - pos / 1000) * Math.log1p(maxAgeDays())) * DAY; }
+function tToPos(t) {
+  if (t === Infinity) return 1000;
+  const age = Math.max(0, (nowT() - t) / DAY);
+  return Math.max(0, Math.min(1000, Math.round((1 - Math.log1p(age) / Math.log1p(maxAgeDays())) * 1000)));
 }
-function nToSlider(n) {
-  const t = ghProbe.total;
-  if (t <= 1) return 1000;
-  return Math.round(t <= 60 ? (n - 1) / (t - 1) * 1000 : Math.log(Math.max(1, n)) / Math.log(t) * 1000);
+function isoDay(t) {   // the visitor's local calendar day, the same day the panel shows
+  const d = new Date(t * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function syncSlider() { hp("hpSlider").value = nToSlider(Math.max(1, plan().n)); }
+function rangeCode(pl) { return `${pl.since <= ghProbe.oldestT ? "start" : isoDay(pl.since)}..${pl.until === Infinity ? "now" : isoDay(pl.until)}`; }
+
+// Week / month / year marks under the track, where they fit.
+function renderTicks() {
+  let last = -1;
+  hp("hpTicks").innerHTML = [[365 * 5, "5y"], [365, "1y"], [30, "1m"], [7, "1w"]]
+    .filter(([d]) => d < maxAgeDays() * 0.9)
+    .map(([d, label]) => [tToPos(nowT() - d * DAY), label])
+    .filter(([pos]) => { const ok = pos > 50 && pos < 950 && pos - last > 70; if (ok) last = pos; return ok; })
+    .map(([pos, label]) => `<span style="left:${pos / 10}%">${label}</span>`).join("");
+}
 
 async function openHistoryPanel() {
   const p = ghProbe;
   const lim = await callsLeft();
   hpLeft = lim ? lim.remaining : null;
-  hp("hpInfo").textContent = `${p.key} has ${fmt(p.total)} commits, from ${day(p.oldestT)} to ${day(p.times[0])}. Today's files are showing. Pick how much history to replay.`;
-  hp("hpRanges").innerHTML = RANGES.filter(r => r[1] !== null).map(([label]) => `<button type="button" aria-pressed="${label === hpChoice}" data-range="${label}">${label}</button>`).join("");
-  hp("hpSliderMax").textContent = `All ${fmt(p.total)}`;
-  customN = Math.min(customN, p.total);
+  hp("hpInfo").textContent = `${p.key} has ${fmt(p.total)} commits, from ${day(p.oldestT)} to ${day(p.times[0])}. Today's files are showing. Drag the two ends of the slider to pick which stretch of history to replay.`;
+  // Start with about the 30 newest commits: never empty, and cheap.
+  hpFrom.value = Math.min(1000 - MIN_GAP, tToPos(timeOfNth(Math.min(30, p.total)) - 1));
+  hpTo.value = 1000;
+  hpPinned = null;
+  renderTicks();
   rangeFromLink();
-  syncSlider();
   renderPlan();
   hp("historyPanel").hidden = false;
   hp("historyPanel").scrollIntoView({ block: "nearest" });
@@ -1287,69 +1317,66 @@ function timeOfNth(n) {
 }
 
 function plan() {
-  const p = ghProbe, now = Date.now() / 1000;
-  let n, since, exact;
-  if (hpChoice === "Custom") {
-    n = Math.max(1, Math.min(p.total, customN));
-    since = null; exact = true;   // a commit count is exact; only its start date is estimated
-  } else {
-    const days = RANGES.find(r => r[0] === hpChoice)[1];
-    since = days === Infinity ? null : now - days * 86400;
-    ({ n, exact } = since == null ? { n: p.total, exact: true } : countSince(since));
-  }
-  const allTime = n >= p.total;
-  const listCalls = Math.max(0, Math.ceil(n / 100) - 1);            // page 1 is already loaded
-  const everyCalls = listCalls + n;
+  const p = ghProbe;
+  const since = Math.max(p.oldestT, hpPinned ? hpPinned.from : posToT(+hpFrom.value)), until = hpPinned ? hpPinned.to : posToT(+hpTo.value);
+  const older = countSince(since), newer = until === Infinity ? { n: 0, exact: true } : countSince(until + 1);
+  const n = Math.max(0, older.n - newer.n), later = newer.n, exact = older.exact && newer.exact;
+  const allTime = since <= p.oldestT && later === 0;
+  const listCalls = Math.max(0, Math.ceil(older.n / 100) - 1);   // page 1 is already loaded
+  const bridge = later > 0 ? 1 : 0;                              // one compare carries the range on to today
+  const everyCalls = listCalls + n + bridge;
   const left = hpLeft ?? Infinity;
   let mode = null, steps = 0, calls = everyCalls;
   if (n === 0) mode = null;
   else if (everyCalls <= left - 1 && n <= MAX_STEPS) mode = "every";
   else {
-    steps = Math.min(MAX_STEPS, left - listCalls - 2, n);
-    if (steps >= MIN_STEPS) { mode = "steps"; calls = listCalls + steps + 1; }
+    steps = Math.min(MAX_STEPS, left - listCalls - bridge - 2, n);
+    if (steps >= MIN_STEPS) { mode = "steps"; calls = listCalls + steps + 1 + bridge; }
   }
-  return { n, since, exact, allTime, mode, steps, calls, everyCalls, from: since ?? (allTime ? p.oldestT : timeOfNth(n)) };
+  return { n, since, until, later, exact, allTime, mode, steps, calls, everyCalls };
 }
 
 function renderPlan() {
   const pl = plan(), token = !!ghToken();
+  const toTxt = pl.until === Infinity ? "today" : day(pl.until);
+  hp("hpFromLabel").textContent = day(pl.since);
+  hp("hpToLabel").textContent = toTxt;
+  hp("hpFill").style.left = (+hpFrom.value / 10) + "%";
+  hp("hpFill").style.right = (100 - +hpTo.value / 10) + "%";
   const calls = pl.mode === "steps" ? pl.calls : pl.everyCalls, secs = Math.round(calls * 0.06);
   hp("hpEstimate").textContent = pl.n === 0
-    ? "No commits in that range."
-    : `${pl.exact ? "" : "About "}${fmt(pl.n)} commit${pl.n === 1 ? "" : "s"}, ${day(pl.from)} to today · ${pl.exact ? "" : "about "}${fmt(calls)} GitHub requests` +
+    ? `No commits between ${day(pl.since)} and ${toTxt}.`
+    : `${pl.exact ? "" : "About "}${fmt(pl.n)} commit${pl.n === 1 ? "" : "s"}, ${day(pl.since)} to ${toTxt} · ${pl.exact ? "" : "about "}${fmt(calls)} GitHub requests` +
       (secs >= 10 ? ` · roughly ${secs < 90 ? secs + " seconds" : Math.round(secs / 60) + " minutes"}` : "");
   const left = hpLeft == null ? "" : ` You have ${fmt(hpLeft)} left this hour.`;
   let warn = `Keep this low: each commit costs 1 GitHub request, and big ranges take a while to load.${left}`;
   if (pl.mode === "steps") warn = `That's more commits than you have requests left, so it would load as ${fmt(pl.steps)} coarser steps instead of one by one.${left}`;
-  if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${left} Drag the slider left to pick fewer commits.`;
+  if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${left} Drag the handles closer together to pick fewer commits.`;
   hp("hpWarn").innerHTML = esc(warn) + (token ? "" : " Or " + moreWithToken());
   hp("hpLimits").innerHTML = `Loading what one commit changed takes <b>1 GitHub request</b>, so a range costs about one request per commit. ` +
     (token
       ? `You're signed in, so GitHub allows <b>5,000 requests an hour</b>: enough for thousands of commits.`
       : `Without signing in, GitHub allows <b>60 requests an hour</b> for your whole network: about 55 commits. Signing in raises that to <b>5,000 an hour</b>: enough for thousands of commits.`) +
     (hpLeft == null ? "" : ` You have <b>${fmt(hpLeft)}</b> left; the count resets every hour.`) +
+    ` If the range ends before today, one more request carries the city on to today.` +
     ` Signing in only lets Code City read public repositories. It can't see private code or change anything.`;
   hp("hpWarn").classList.toggle("over", pl.mode !== "every");
   hp("hpLoad").disabled = !pl.mode;
   hp("hpLoad").textContent = pl.mode === "steps" ? `Load as ${fmt(pl.steps)} steps` : "Load history";
 }
 
-hp("hpRanges").addEventListener("click", e => {
-  const b = e.target.closest("[data-range]"); if (!b) return;
-  hpChoice = b.dataset.range;
-  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
-  syncSlider();
-  renderPlan();
-});
-hp("hpSlider").addEventListener("input", () => {
-  hpChoice = "Custom";
-  customN = sliderToN(+hp("hpSlider").value);
-  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", "false"));
-  renderPlan();
+hpFrom.addEventListener("input", () => { hpPinned = null; if (+hpFrom.value > +hpTo.value - MIN_GAP) hpFrom.value = +hpTo.value - MIN_GAP; renderPlan(); });
+hpTo.addEventListener("input", () => { hpPinned = null; if (+hpTo.value < +hpFrom.value + MIN_GAP) hpTo.value = +hpFrom.value + MIN_GAP; renderPlan(); });
+// The handles share one track, so when they sit close together, put the one nearer the pointer on top.
+hp("hpDual").addEventListener("pointermove", e => {
+  const r = hp("hpDual").getBoundingClientRect(), pos = (e.clientX - r.left) / r.width * 1000;
+  const fromNearer = Math.abs(pos - hpFrom.value) < Math.abs(pos - hpTo.value) || pos < +hpFrom.value;
+  hpFrom.style.zIndex = fromNearer ? 3 : 2;
+  hpTo.style.zIndex = fromNearer ? 2 : 3;
 });
 hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
 hp("hpLoad").onclick = async () => {
-  currentRange = hpChoice === "Custom" ? String(plan().n) : RANGE_CODES[hpChoice];
+  currentRange = rangeCode(plan());
   busy.hidden = false;
   try { await loadHistory(plan()); }
   catch (e) { setRepoStatus(e.message); }
@@ -1359,25 +1386,23 @@ hp("hpLoad").onclick = async () => {
 // ---- step 2: load the chosen range ----
 async function loadHistory(pl) {
   const p = ghProbe, say = t => { busy.textContent = t; };
-  // Newest first: take pages until the range is covered.
-  let list = p.page1.slice();
-  const inRange = c => pl.since == null || when(c) >= pl.since;
-  const want = () => pl.since == null ? list.length >= pl.n : !inRange(list[list.length - 1]);
-  let page = 1;
-  const guess = Math.min(p.pages, Math.ceil(pl.n / 100));
+  // Newest first: take pages until we reach the start of the range.
+  let list = p.page1.slice(), page = 1;
+  const guess = Math.min(p.pages, Math.ceil(countSince(pl.since).n / 100));
   if (guess > 1) {
     const more = await pool(Array.from({ length: guess - 1 }, (_, i) => i + 2), 8, n => gh(p.listPath(n)),
       d => say(`Listing commits… page ${d + 1} of ${guess}`));
     list = list.concat(...more); page = guess;
   }
-  while (!want() && page < p.pages) { page++; say(`Listing commits… page ${page}`); list = list.concat(await gh(p.listPath(page))); }
-  list = (pl.since == null ? list.slice(0, pl.n) : list.filter(inRange)).reverse();   // oldest first
+  while (when(list[list.length - 1]) >= pl.since && page < p.pages) { page++; say(`Listing commits… page ${page}`); list = list.concat(await gh(p.listPath(page))); }
+  const later = pl.until === Infinity ? [] : list.filter(c => when(c) > pl.until);   // after the range, newest first
+  list = list.filter(c => when(c) >= pl.since && (pl.until === Infinity || when(c) <= pl.until)).reverse();   // the range, oldest first
   if (!list.length) throw new Error("No commits in that range.");
-  const allTime = list.length >= p.total || !(list[0].parents || []).length;
+  const allTime = !later.length && !(list[0].parents || []).length;
   const singles = list.filter(c => (c.parents || []).length <= 1);   // merges repeat their branch's changes
 
   const lim = await callsLeft();
-  const left = lim ? lim.remaining : Infinity;
+  const left = (lim ? lim.remaining : Infinity) - (later.length ? 1 : 0);
   const changes = [];   // oldest first: { meta, files }
   let steps = 0;
   if (singles.length <= left - 1 && singles.length <= MAX_STEPS) {
@@ -1405,6 +1430,12 @@ async function loadHistory(pl) {
       changes.push({ meta, files: d.files });
     });
   }
+  // Everything after the range, in one compare, so the timeline still ends at today's city.
+  if (later.length) {
+    say("Bringing the city up to today…");
+    const bridge = await gh(`${p.base}/compare/${list[list.length - 1].sha}...${later[0].sha}`);
+    changes.push({ meta: { ...commitMeta(later[0]), m: `${fmt(later.length)} later commit${later.length === 1 ? "" : "s"}, up to today` }, files: bridge.files });
+  }
 
   const files = p.files.map(f => ({ ...f }));
   const commits = [];
@@ -1425,7 +1456,8 @@ async function loadHistory(pl) {
     name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
     history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: singles.length } : null,
   });
-  setRepoStatus(`Loaded ${fmt(singles.length)} commit${singles.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to today${steps ? `, as ${fmt(commits.length)} steps` : ""}. Press Play history.`);
+  setRepoStatus(`Loaded ${fmt(singles.length)} commit${singles.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
+    `${steps ? `, as ${fmt(steps)} steps` : ""}${later.length ? `, then the ${fmt(later.length)} later commit${later.length === 1 ? "" : "s"} as one step to reach today` : ""}. Press Play history.`);
 }
 
 // The token stays in this browser; it is saved only when the visitor asks.
@@ -1562,7 +1594,6 @@ addEventListener("drop", async e => {
 // ---------- shareable links ----------
 // ?repo=owner/name&range=1m&mode=heat&panel=hotspots&file=src/app.ts&pr=123 reopens the same view.
 const SITE_URL = "https://code-city-lakshmi.netlify.app/";
-const RANGE_CODES = { "1 week": "1w", "1 month": "1m", "3 months": "3m", "1 year": "1y", "All time": "all" };
 const LINK_AUTOLOAD_MAX = 60;   // a link loads its history by itself only when that costs this few GitHub requests
 let currentRepo = null;    // owner/name of the city on screen, when it came from a repo
 let currentRange = null;   // history range loaded from GitHub, as a link code
@@ -1595,22 +1626,30 @@ function shareUrl() {
   const q = linkQuery();
   return base + (q ? "?" + q : "");
 }
-// Pick the linked range in the history panel; load it straight away only when it's cheap.
+// Put the handles where a link's range says. Ranges are dates ("2025-10-01..now", "start..2024-06-30");
+// links made before the slider ("1m", "all", or a commit count) still work.
+const LEGACY_RANGES = { "1w": 7, "1m": 30, "3m": 91, "1y": 365, "all": Infinity };
 function rangeFromLink() {
   const r = pendingView && pendingView.repo === ghProbe.key && pendingView.range;
   if (!r) return;
-  const label = Object.keys(RANGE_CODES).find(k => RANGE_CODES[k] === r);
-  if (label) hpChoice = label;
-  else if (/^\d+$/.test(r)) { hpChoice = "Custom"; customN = Math.max(1, +r); }
-  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.range === hpChoice));
+  let from = null, to = Infinity, m;
+  if ((m = r.match(/^(start|\d{4}-\d{2}-\d{2})\.\.(now|\d{4}-\d{2}-\d{2})$/))) {
+    from = m[1] === "start" ? ghProbe.oldestT : Date.parse(m[1] + "T00:00:00") / 1000;   // local days, as shown
+    to = m[2] === "now" ? Infinity : Date.parse(m[2] + "T23:59:59") / 1000;
+  } else if (r in LEGACY_RANGES) from = LEGACY_RANGES[r] === Infinity ? ghProbe.oldestT : nowT() - LEGACY_RANGES[r] * DAY;
+  else if (/^\d+$/.test(r)) from = timeOfNth(Math.min(+r, ghProbe.total)) - 1;
+  if (from == null || isNaN(from) || isNaN(to)) return;
+  hpFrom.value = Math.min(tToPos(from), 1000 - MIN_GAP);
+  hpTo.value = Math.max(tToPos(to), +hpFrom.value + MIN_GAP);
+  hpPinned = { from, to };
 }
 function autoLoadLinkedRange() {
   if (!pendingView || !pendingView.range || pendingView.repo !== ghProbe.key) return;
   const pl = plan();
   if (pl.n === 0) {   // nothing happened in that range: show today's files and the rest of the view
-    const label = hpChoice === "Custom" ? "that range" : `the last ${hpChoice.toLowerCase().replace(/^1 /, "")}`;
+    const between = `between ${day(pl.since)} and ${pl.until === Infinity ? "today" : day(pl.until)}`;
     hp("hpSkip").click();
-    setRepoStatus(`${esc(ghProbe ? ghProbe.key : currentRepo)} has no commits in ${label}, so there's no history to replay. Showing today's files.`);
+    setRepoStatus(`${esc(currentRepo)} has no commits ${between}, so there's no history to replay. Showing today's files.`);
   } else if (pl.mode === "every" && pl.calls <= LINK_AUTOLOAD_MAX) hp("hpLoad").click();
   else setRepoStatus(`This link asks for ${pl.exact ? "" : "about "}${fmt(pl.n)} commits of history, which costs ${fmt(pl.calls)} GitHub requests. Load it below, or pick a shorter range.`);
 }
