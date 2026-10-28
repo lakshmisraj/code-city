@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Code City: turn a git repo into a 3D city.
+"""Code City: turn a git repo into a 3D city. (Test PR, not for merging.)
 
   python3 codecity.py serve                  open the app; paste any public repo URL
   python3 codecity.py export pallets/flask   write flask.json to drop into the published page
