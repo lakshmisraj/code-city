@@ -62,7 +62,7 @@ jobs:
       - uses: lakshmisraj/code-city@v1
 ```
 
-Options: `history-days` (default `365`) and `site`. Pull requests from forks get a read-only token, so they're skipped with a note.
+Options: `history-days` (default `365`) and `site`. The comment appears within about a minute of opening or updating a pull request. Pull requests from forks get a read-only token, so they're skipped with a note.
 
 ### Sign in with GitHub (site owner setup)
 
