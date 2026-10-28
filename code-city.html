@@ -1911,7 +1911,7 @@ async function initSignin() {
 
 // ---------- Ask the city ----------
 // A question goes to the site's "ask" function with the city's file list; the answer names the files to light up.
-// It needs a GitHub sign-in, which keeps the site's Claude budget from being spent anonymously.
+// It needs a GitHub sign-in, which keeps the site's Gemini budget from being spent anonymously.
 const ASK_URL = "/.netlify/functions/ask";
 let askEnabled = false, askState = null;   // askState: { question, answer, order: [{ path, why }], files: Map(path -> why) }
 async function initAsk() {
@@ -1929,7 +1929,7 @@ async function askCity(question) {
       : "Asking needs a GitHub sign-in or a GitHub token.";
     return;
   }
-  status.textContent = "Asking Claude…";
+  status.textContent = "Asking Gemini…";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
@@ -1957,7 +1957,7 @@ function renderAsk() {
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    `<p class="side-note">Claude only sees file names and sizes, not the code, so treat these as a starting point.</p>`;
+    `<p class="side-note">Gemini only sees file names and sizes, not the code, so treat these as a starting point.</p>`;
 }
 
 // ---------- loop ----------

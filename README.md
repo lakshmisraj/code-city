@@ -30,9 +30,9 @@ Building heights are estimated from file size until you click a building, which 
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Claude reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs a GitHub sign-in, so the site's Claude budget can't be spent anonymously.
+Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs a GitHub sign-in, so the site's Gemini budget can't be spent anonymously.
 
-Site owner setup: add `ANTHROPIC_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with Claude Opus 5.5 at low effort.
+Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with `gemini-3.8-flash` at low thinking.
 
 ### Sign in with GitHub (site owner setup)
 
