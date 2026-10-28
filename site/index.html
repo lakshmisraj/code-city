@@ -76,8 +76,12 @@ body.has-timeline { --tl-h: 76px; }
 .hp-info { color: var(--ink-dim); }
 .seg.wrap { flex-wrap: wrap; }
 .seg.wrap button { flex: 1 0 auto; }
-.hp-custom { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
-.hp-custom input { width: 90px; font: 13px var(--f-mono); color: var(--ink); background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }
+.hp-slider { display: flex; flex-direction: column; gap: 4px; }
+#hpSlider { width: 100%; margin: 2px 0 0; accent-color: var(--sodium); }
+.hp-ends { display: flex; justify-content: space-between; font: 11px var(--f-mono); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.hp-limits p { margin: 6px 0 0; color: var(--ink-dim); }
+.hp-limits p b { color: var(--ink); font-weight: 600; }
+.alt { display: flex; }
 .hp-estimate { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
 .hp-warn { color: var(--sodium); background: color-mix(in srgb, var(--sodium) 12%, transparent); border-left: 2px solid var(--sodium); padding: 6px 8px; border-radius: 0 4px 4px 0; }
 .hp-warn.over { color: var(--fire); background: color-mix(in srgb, var(--fire) 12%, transparent); border-left-color: var(--fire); }
@@ -195,26 +199,12 @@ pre.code {
 .tl-info #tlMsg { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #speedBtn { font-family: var(--f-mono); min-width: 64px; }
 
-#walkbar {
-  position: fixed; z-index: 7; left: 50%; transform: translateX(-50%);
-  top: calc(16px + env(safe-area-inset-top, 0px));
-  display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; border-radius: 999px;
-  background: color-mix(in srgb, var(--street) 90%, transparent); border: 1px solid var(--line);
-  font-size: 12px; color: var(--ink-dim); white-space: nowrap; max-width: calc(100vw - 32px);
-}
-#walkbar b { color: var(--ink); }
-#crosshair { position: fixed; z-index: 4; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
-#crosshair::before, #crosshair::after { content: ""; position: absolute; background: var(--sodium); opacity: .85; }
-#crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
-#crosshair::after { top: 6px; left: 0; height: 2px; width: 14px; }
-body.walking .card, body.walking #hint { display: none; }
 
 #tip {
   position: fixed; z-index: 7; pointer-events: none; padding: 6px 9px; border-radius: 6px;
   background: var(--street-2); border: 1px solid var(--line); font: 12px var(--f-mono); color: var(--ink);
   white-space: nowrap; transform: translate(12px, 12px);
 }
-#tip.center { transform: translate(-50%, 18px); }
 #tip b { color: var(--sodium); font-weight: 600; }
 #tip b.f { color: var(--fire); }
 
@@ -243,7 +233,6 @@ body.walking .card, body.walking #hint { display: none; }
   .tl-main { order: 3; flex-basis: 100%; }
   #playBtn { flex: 1; }
 }
-@media (hover: none) { #walkBtn { display: none; } }
 </style>
 
 <div id="stage" aria-label="3D city where each building is a file"></div>
@@ -268,10 +257,11 @@ body.walking .card, body.walking #hint { display: none; }
       <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
       <button class="primary" type="submit">Build</button>
     </div>
+    <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
     <small id="repoStatus"></small>
     <div class="signin" id="signinRow" hidden>
       <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
-      <span>5,000 GitHub requests an hour instead of 60</span>
+      <span>Raises your limit from 60 to 5,000 GitHub requests an hour</span>
     </div>
     <div class="signin" id="signedinRow" hidden>
       <span>Signed in as <b id="ghLogin">GitHub</b></span>
@@ -283,7 +273,7 @@ body.walking .card, body.walking #hint { display: none; }
         <label for="ghToken">GitHub token</label>
         <input id="ghToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
         <label class="check" for="rememberToken"><input type="checkbox" id="rememberToken"> Remember on this device</label>
-        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, enough for every commit of most repos. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with public repository access only. It is only ever sent to api.github.com.</small>
+        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, the same as signing in. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with public repository access only. It is only ever sent to api.github.com.</small>
       </div>
     </details>
   </form>
@@ -291,13 +281,21 @@ body.walking .card, body.walking #hint { display: none; }
   <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
     <div class="label" id="hpTitle">How much history?</div>
     <p class="hp-info" id="hpInfo"></p>
-    <div class="seg wrap" role="group" aria-label="History range" id="hpRanges"></div>
-    <label class="hp-custom" id="hpCustom" hidden>Latest <input id="hpCount" type="number" min="1" step="1" inputmode="numeric"> commits</label>
+    <div class="seg wrap" role="group" aria-label="Quick ranges" id="hpRanges"></div>
+    <div class="hp-slider">
+      <label class="label" for="hpSlider">Or drag to pick how many recent commits</label>
+      <input id="hpSlider" type="range" min="0" max="1000" step="1">
+      <div class="hp-ends"><span>Latest 1</span><span id="hpSliderMax">All</span></div>
+    </div>
     <p class="hp-estimate" id="hpEstimate"></p>
     <p class="hp-warn" id="hpWarn" role="status"></p>
+    <details class="more hp-limits">
+      <summary>How GitHub's request limit works</summary>
+      <p id="hpLimits"></p>
+    </details>
     <div class="actions">
       <button class="primary" id="hpLoad" type="button">Load history</button>
-      <button id="hpSkip" type="button">Current files only</button>
+      <button id="hpSkip" type="button">Keep this view</button>
     </div>
   </section>
 
@@ -313,8 +311,6 @@ body.walking .card, body.walking #hint { display: none; }
   <div class="actions">
     <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
     <button id="shareBtn" type="button">Copy link</button>
-    <button id="openBtn" type="button">Open a folder</button>
-    <button id="walkBtn" type="button">Walk the streets</button>
     <button id="resetBtn" type="button">Reset view</button>
   </div>
   <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
@@ -372,11 +368,6 @@ body.walking .card, body.walking #hint { display: none; }
   <button id="speedBtn" type="button" title="Commits per second">8/s</button>
 </div>
 
-<div id="walkbar" hidden>
-  <span><b>WASD</b> move &middot; <b>Shift</b> run &middot; <b>Space</b> jump &middot; <b>mouse</b> look &middot; <b>click</b> inspect</span>
-  <button id="exitWalkBtn" type="button">Exit (Esc)</button>
-</div>
-<div id="crosshair" hidden></div>
 
 <div id="tip" hidden></div>
 <div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building</div>
@@ -745,14 +736,14 @@ const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
 }));
 
 let city = new THREE.Group(); scene.add(city);
-let buildings = [], bmap = new Map(), fires = [], labels = [], plats = [], citySize = 50, built = 0, dirCount = 0;
+let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function clearCity() {
   scene.remove(city);
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
-  buildings = []; bmap = new Map(); fires = []; labels = []; plats = []; hovered = null; picked = null;
+  buildings = []; bmap = new Map(); fires = []; labels = []; hovered = null; picked = null;
 }
 
 function label(text, x, y, z, size) {
@@ -793,7 +784,6 @@ function place(node, rect, depth) {
     p.position.set(rect.x + rect.w / 2, (depth - 1) * STEP, rect.y + rect.h / 2);
     p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
     city.add(p);
-    plats.push({ x0: rect.x, x1: rect.x + rect.w, z0: rect.y, z1: rect.y + rect.h, top: depth * STEP });
     if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, Math.max(1.6, Math.min(4, Math.sqrt(rect.w * rect.h) / 9)));
   }
   const inner = { x: rect.x + PAD, y: rect.y + PAD, w: Math.max(0.1, rect.w - PAD * 2), h: Math.max(0.1, rect.h - PAD * 2) };
@@ -805,7 +795,6 @@ function short(n) { return n >= 100000 ? Math.round(n / 1000) + "k" : fmt(n); }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 function buildCity(data) {
-  if (walk.on) exitWalk();
   playing = false;
   prepare(data);
   if (!nodes.size) { setRepoStatus("No source files found there."); return; }
@@ -968,7 +957,7 @@ playBtn.onclick = () => {
   closeDrawer();
   if (viewNow || cursor >= hist.commits.length - 1) viewAt(-1);
   playing = true; playAcc = 0; playBtn.textContent = "Pause";
-  if (!walk.on) controls.autoRotate = !reduceMotion;
+  controls.autoRotate = !reduceMotion;
 };
 scrub.addEventListener("input", () => {
   playing = false; playBtn.textContent = "Play history"; controls.autoRotate = false;
@@ -1024,47 +1013,33 @@ function pickEvent(ev) {
 canvas.addEventListener("pointermove", ev => {
   lastPointer = ev; pointerMoved = true;
   if (downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 5) downAt.moved = true;
-  if (walk.on && !document.pointerLockElement && ev.buttons & 1) look(ev.movementX, ev.movementY);
 });
 canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.clientY, moved: false }; flight = null; });
 canvas.addEventListener("pointerup", ev => {
   if (downAt && !downAt.moved && ev.button === 0) {
-    if (walk.on) {
-      if (document.pointerLockElement === canvas) { const b = pickAt(0, 0); if (b) openDrawer(b); }
-      else lockPointer();
-    } else {
-      const b = pickEvent(ev);
-      if (b) openDrawer(b); else closeDrawer();
-    }
+    const b = pickEvent(ev);
+    if (b) openDrawer(b); else closeDrawer();
   }
   downAt = null;
 });
-canvas.addEventListener("pointerleave", () => { lastPointer = null; if (!walk.on) tip.hidden = true; if (hovered) hovered = null; });
+canvas.addEventListener("pointerleave", () => { lastPointer = null; tip.hidden = true; if (hovered) hovered = null; });
 
-function showTip(b, x, y, centered) {
+function showTip(b, x, y) {
   const f = b.userData.f, c = churnSrc.get(f.path) || 0;
   tip.innerHTML = `${esc(f.path)} · <b>${fmt(b.userData.lines)}</b> lines` +
     (hist ? ` · <b>${fmt(c)}</b> commit${c === 1 ? "" : "s"}` : "") +
     (viewNow && f.todos.length ? ` · <b class="f">${f.todos.length} fires</b>` : "");
-  tip.classList.toggle("center", centered);
   tip.hidden = false;
-  tip.style.left = (centered ? x : Math.min(x, innerWidth - tip.offsetWidth - 24)) + "px";
+  tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
   tip.style.top = y + "px";
 }
 function updateHover() {
-  if (walk.on) {
-    const b = pickAt(0, 0);
-    const near = b && b.position.distanceTo(camera.position) < 40;
-    hovered = near ? b : null;
-    if (near) showTip(b, innerWidth / 2, innerHeight / 2, true); else tip.hidden = true;
-    return;
-  }
   if (!pointerMoved) return; pointerMoved = false;
   if (!lastPointer || lastPointer.pointerType === "touch") return;
   const b = pickEvent(lastPointer);
   hovered = b;
   canvas.style.cursor = b ? "pointer" : "";
-  if (b) showTip(b, lastPointer.clientX, lastPointer.clientY, false); else tip.hidden = true;
+  if (b) showTip(b, lastPointer.clientX, lastPointer.clientY); else tip.hidden = true;
 }
 
 const drawer = document.getElementById("drawer");
@@ -1096,7 +1071,7 @@ function openDrawer(b) {
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   drawer.hidden = false;
-  if (!walk.on && picked !== prevPicked) flyToBuilding(b);
+  if (picked !== prevPicked) flyToBuilding(b);
   syncUrl();
 }
 function closeDrawer() { const had = picked; drawer.hidden = true; picked = null; if (had) syncUrl(); }
@@ -1113,102 +1088,10 @@ function applySearch() {
 }
 qInput.addEventListener("input", applySearch);
 
-// ---------- walk mode ----------
-const walk = { on: false, pos: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, keys: new Set(), saved: null };
-const EYE = 1.0, BODY_R = 0.28, CLIMB = 0.45;
-const walkbar = document.getElementById("walkbar"), crosshair = document.getElementById("crosshair");
-function lockPointer() {
-  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag to look instead */ }
-}
-function look(dx, dy) {
-  walk.yaw -= dx * 0.0024;
-  walk.pitch = Math.max(-1.45, Math.min(1.45, walk.pitch - dy * 0.0024));
-}
-function enterWalk() {
-  if (walk.on || !buildings.length) return;
-  closeDrawer(); playing && (controls.autoRotate = false);
-  walk.saved = { pos: camera.position.clone(), target: controls.target.clone() };
-  walk.on = true; controls.enabled = false; controls.autoRotate = false;
-  walk.pos.set(0, 0, citySize / 2 + 1.2); walk.yaw = 0; walk.pitch = 0.08; walk.vy = 0;
-  camera.near = 0.05; camera.updateProjectionMatrix();
-  scene.fog.near = 6; scene.fog.far = 45 + citySize * 0.6;
-  labels.forEach(l => l.visible = false);
-  document.body.classList.add("walking"); walkbar.hidden = false; crosshair.hidden = false;
-  lockPointer();
-}
-function exitWalk() {
-  if (!walk.on) return;
-  walk.on = false; walk.keys.clear();
-  if (document.pointerLockElement) document.exitPointerLock();
-  camera.near = 0.1; camera.updateProjectionMatrix();
-  scene.fog.near = citySize * 1.4; scene.fog.far = citySize * 4;
-  camera.rotation.set(0, 0, 0);
-  camera.position.copy(walk.saved.pos); controls.target.copy(walk.saved.target); controls.enabled = true;
-  labels.forEach(l => l.visible = true);
-  document.body.classList.remove("walking"); walkbar.hidden = true; crosshair.hidden = true; tip.hidden = true; hovered = null;
-}
-document.getElementById("walkBtn").onclick = enterWalk;
-document.getElementById("exitWalkBtn").onclick = exitWalk;
-document.addEventListener("mousemove", e => { if (walk.on && document.pointerLockElement === canvas) look(e.movementX, e.movementY); });
 document.addEventListener("keydown", e => {
   if (e.target.matches && e.target.matches("input, textarea")) return;
-  if (walk.on) {
-    if (e.key === "Escape") { if (!document.pointerLockElement) exitWalk(); return; }
-    walk.keys.add(e.code);
-    if (/^(Space|Arrow)/.test(e.code)) e.preventDefault();
-    return;
-  }
   if (e.key === "Escape") closeDrawer();
 });
-document.addEventListener("keyup", e => walk.keys.delete(e.code));
-addEventListener("blur", () => walk.keys.clear());
-
-function groundAt(x, z, feet) {
-  const half = (citySize + 4) / 2;
-  let g = Math.abs(x) <= half && Math.abs(z) <= half ? 0 : -50;
-  for (const p of plats) if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1 && p.top > g && p.top <= feet + CLIMB) g = p.top;
-  for (const b of buildings) {
-    const u = b.userData; if (u.shown < 0.05) continue;
-    const roof = u.base + u.shown, hs = u.side / 2;
-    if (roof > g && roof <= feet + CLIMB && Math.abs(x - b.position.x) <= hs && Math.abs(z - b.position.z) <= hs) g = roof;
-  }
-  return g;
-}
-function blocked(x, z, feet) {
-  const half = (citySize + 4) / 2 - BODY_R;
-  if (Math.abs(x) > half || Math.abs(z) > half) return true;
-  for (const p of plats) if (p.top > feet + CLIMB && x > p.x0 - BODY_R && x < p.x1 + BODY_R && z > p.z0 - BODY_R && z < p.z1 + BODY_R) return true;
-  for (const b of buildings) {
-    const u = b.userData; if (u.shown < 0.05) continue;
-    const hs = u.side / 2 + BODY_R;
-    if (u.base + u.shown > feet + CLIMB && Math.abs(x - b.position.x) < hs && Math.abs(z - b.position.z) < hs) return true;
-  }
-  return false;
-}
-function updateWalk(dt) {
-  const k = walk.keys, sp = (k.has("ShiftLeft") || k.has("ShiftRight") ? 16 : 6) * dt;
-  let fx = 0, fz = 0;
-  if (k.has("KeyW") || k.has("ArrowUp")) fz -= 1;
-  if (k.has("KeyS") || k.has("ArrowDown")) fz += 1;
-  if (k.has("KeyA") || k.has("ArrowLeft")) fx -= 1;
-  if (k.has("KeyD") || k.has("ArrowRight")) fx += 1;
-  const len = Math.hypot(fx, fz);
-  if (len) {
-    fx /= len; fz /= len;
-    const s = Math.sin(walk.yaw), c = Math.cos(walk.yaw);
-    const dx = (fx * c + fz * s) * sp, dz = (-fx * s + fz * c) * sp;
-    if (!blocked(walk.pos.x + dx, walk.pos.z, walk.pos.y)) walk.pos.x += dx;
-    if (!blocked(walk.pos.x, walk.pos.z + dz, walk.pos.y)) walk.pos.z += dz;
-  }
-  const g = groundAt(walk.pos.x, walk.pos.z, walk.pos.y);
-  const grounded = walk.pos.y <= g + 0.01;
-  if (k.has("Space") && grounded) walk.vy = 10;
-  walk.vy -= 24 * dt;
-  walk.pos.y += walk.vy * dt;
-  if (walk.pos.y <= g) { walk.pos.y = g; walk.vy = 0; }
-  camera.position.set(walk.pos.x, walk.pos.y + EYE, walk.pos.z);
-  camera.rotation.set(walk.pitch, walk.yaw, 0, "YXZ");
-}
 
 // ---------- loading repos, folders and city.json ----------
 const busy = document.getElementById("busy"), repoStatus = document.getElementById("repoStatus");
@@ -1248,8 +1131,8 @@ function rateLimited(reset) {
 // Shown to visitors without a token wherever the request limit comes up.
 function moreWithToken() {
   return signinEnabled
-    ? `<button class="linkish" type="button" data-signin>sign in with GitHub</button> to get 5,000 requests an hour instead of 60.`
-    : `<button class="linkish" type="button" data-open-token>add a GitHub token</button> to get 5,000 requests an hour instead of 60.`;
+    ? `<button class="linkish" type="button" data-signin>sign in with GitHub</button> to raise your limit from 60 to 5,000 requests an hour.`
+    : `<button class="linkish" type="button" data-open-token>add a GitHub token</button> to raise your limit from 60 to 5,000 requests an hour.`;
 }
 document.addEventListener("click", e => {
   if (e.target.closest("[data-signin]")) return startSignin();
@@ -1354,17 +1237,32 @@ async function loadFromGitHub(key) {
 // ---- asking how much history ----
 const RANGES = [["1 week", 7], ["1 month", 30], ["3 months", 91], ["1 year", 365], ["All time", Infinity], ["Custom", null]];
 const hp = id => document.getElementById(id);
-let hpChoice = "1 month", hpLeft = null;
+let hpChoice = "1 month", hpLeft = null, customN = 50;   // hpChoice is a quick range, or "Custom" when the slider was dragged
+
+// The slider picks how many recent commits to load. Big repos use a log scale so small ranges stay easy to pick.
+function sliderToN(v) {
+  const t = ghProbe.total;
+  if (t <= 1) return 1;
+  const n = t <= 60 ? 1 + v / 1000 * (t - 1) : Math.exp(v / 1000 * Math.log(t));
+  return Math.max(1, Math.min(t, Math.round(n)));
+}
+function nToSlider(n) {
+  const t = ghProbe.total;
+  if (t <= 1) return 1000;
+  return Math.round(t <= 60 ? (n - 1) / (t - 1) * 1000 : Math.log(Math.max(1, n)) / Math.log(t) * 1000);
+}
+function syncSlider() { hp("hpSlider").value = nToSlider(Math.max(1, plan().n)); }
 
 async function openHistoryPanel() {
   const p = ghProbe;
   const lim = await callsLeft();
   hpLeft = lim ? lim.remaining : null;
   hp("hpInfo").textContent = `${p.key} has ${fmt(p.total)} commits, from ${day(p.oldestT)} to ${day(p.times[0])}. Today's files are showing. Pick how much history to replay.`;
-  hp("hpRanges").innerHTML = RANGES.map(([label]) => `<button type="button" aria-pressed="${label === hpChoice}" data-range="${label}">${label}</button>`).join("");
-  hp("hpCount").max = p.total;
-  if (!hp("hpCount").value) hp("hpCount").value = Math.min(50, p.total);
+  hp("hpRanges").innerHTML = RANGES.filter(r => r[1] !== null).map(([label]) => `<button type="button" aria-pressed="${label === hpChoice}" data-range="${label}">${label}</button>`).join("");
+  hp("hpSliderMax").textContent = `All ${fmt(p.total)}`;
+  customN = Math.min(customN, p.total);
   rangeFromLink();
+  syncSlider();
   renderPlan();
   hp("historyPanel").hidden = false;
   hp("historyPanel").scrollIntoView({ block: "nearest" });
@@ -1392,8 +1290,8 @@ function plan() {
   const p = ghProbe, now = Date.now() / 1000;
   let n, since, exact;
   if (hpChoice === "Custom") {
-    n = Math.max(1, Math.min(p.total, Math.floor(+hp("hpCount").value || 1)));
-    since = null; exact = p.pages === 1 || n <= p.times.length;
+    n = Math.max(1, Math.min(p.total, customN));
+    since = null; exact = true;   // a commit count is exact; only its start date is estimated
   } else {
     const days = RANGES.find(r => r[0] === hpChoice)[1];
     since = days === Infinity ? null : now - days * 86400;
@@ -1415,17 +1313,22 @@ function plan() {
 
 function renderPlan() {
   const pl = plan(), token = !!ghToken();
-  hp("hpCustom").hidden = hpChoice !== "Custom";
   const calls = pl.mode === "steps" ? pl.calls : pl.everyCalls, secs = Math.round(calls * 0.06);
   hp("hpEstimate").textContent = pl.n === 0
     ? "No commits in that range."
     : `${pl.exact ? "" : "About "}${fmt(pl.n)} commit${pl.n === 1 ? "" : "s"}, ${day(pl.from)} to today · ${pl.exact ? "" : "about "}${fmt(calls)} GitHub requests` +
       (secs >= 10 ? ` · roughly ${secs < 90 ? secs + " seconds" : Math.round(secs / 60) + " minutes"}` : "");
-  const leftTxt = hpLeft == null ? "" : ` You have ${fmt(hpLeft)} left this hour${token ? "" : " without a token"}.`;
-  let warn = `Keep this low: each commit costs one GitHub request, and big ranges take a while to load.${leftTxt}`;
-  if (pl.mode === "steps") warn = `That's more commits than you have requests left, so it would load as ${fmt(pl.steps)} coarser steps instead of one by one.${leftTxt}`;
-  if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${leftTxt} Pick a shorter range.`;
+  const left = hpLeft == null ? "" : ` You have ${fmt(hpLeft)} left this hour.`;
+  let warn = `Keep this low: each commit costs 1 GitHub request, and big ranges take a while to load.${left}`;
+  if (pl.mode === "steps") warn = `That's more commits than you have requests left, so it would load as ${fmt(pl.steps)} coarser steps instead of one by one.${left}`;
+  if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${left} Drag the slider left to pick fewer commits.`;
   hp("hpWarn").innerHTML = esc(warn) + (token ? "" : " Or " + moreWithToken());
+  hp("hpLimits").innerHTML = `Loading what one commit changed takes <b>1 GitHub request</b>, so a range costs about one request per commit. ` +
+    (token
+      ? `You're signed in, so GitHub allows <b>5,000 requests an hour</b>: enough for thousands of commits.`
+      : `Without signing in, GitHub allows <b>60 requests an hour</b> for your whole network: about 55 commits. Signing in raises that to <b>5,000 an hour</b>: enough for thousands of commits.`) +
+    (hpLeft == null ? "" : ` You have <b>${fmt(hpLeft)}</b> left; the count resets every hour.`) +
+    ` Signing in only lets Code City read public repositories. It can't see private code or change anything.`;
   hp("hpWarn").classList.toggle("over", pl.mode !== "every");
   hp("hpLoad").disabled = !pl.mode;
   hp("hpLoad").textContent = pl.mode === "steps" ? `Load as ${fmt(pl.steps)} steps` : "Load history";
@@ -1435,10 +1338,15 @@ hp("hpRanges").addEventListener("click", e => {
   const b = e.target.closest("[data-range]"); if (!b) return;
   hpChoice = b.dataset.range;
   hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  syncSlider();
   renderPlan();
-  if (hpChoice === "Custom") hp("hpCount").focus();
 });
-hp("hpCount").addEventListener("input", renderPlan);
+hp("hpSlider").addEventListener("input", () => {
+  hpChoice = "Custom";
+  customN = sliderToN(+hp("hpSlider").value);
+  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", "false"));
+  renderPlan();
+});
 hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
 hp("hpLoad").onclick = async () => {
   currentRange = hpChoice === "Custom" ? String(plan().n) : RANGE_CODES[hpChoice];
@@ -1693,7 +1601,7 @@ function rangeFromLink() {
   if (!r) return;
   const label = Object.keys(RANGE_CODES).find(k => RANGE_CODES[k] === r);
   if (label) hpChoice = label;
-  else if (/^\d+$/.test(r)) { hpChoice = "Custom"; hp("hpCount").value = r; }
+  else if (/^\d+$/.test(r)) { hpChoice = "Custom"; customN = Math.max(1, +r); }
   hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.range === hpChoice));
 }
 function autoLoadLinkedRange() {
@@ -1793,7 +1701,7 @@ function renderHotspots() {
   $("sideTitle").textContent = "Hotspots";
   if (!hist) {
     $("sideSub").textContent = "";
-    sideBody.innerHTML = `<p class="side-note">Hotspots need git history. Build a GitHub repo and load some commits, or try <b>pallets/flask</b>.</p>`;
+    sideBody.innerHTML = `<p class="side-note">Hotspots need git history. Build a GitHub repo and load some commits.</p>`;
     return;
   }
   const rows = hotspotRows(15);
@@ -1946,11 +1854,8 @@ function frame() {
   }
   FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
   updateDust(dt);
-  if (walk.on) updateWalk(dt);
-  else {
-    stepFlight();
-    controls.update();
-  }
+  stepFlight();
+  controls.update();
   updateHover();
   composer.render(dt);
   requestAnimationFrame(frame);
