@@ -1,19 +1,26 @@
 // "Ask the city": answer a question about a repo by pointing at the files that matter.
-// Claude sees the repo's file list (paths, sizes, languages), not file contents, and returns a short answer
-// plus the files to light up. Asking needs a GitHub sign-in, checked with GitHub here, so the site's Claude
-// budget can't be spent anonymously. Needs ANTHROPIC_API_KEY in the site's environment variables.
+// Gemini sees the repo's file list (paths and sizes), not file contents, and returns a short answer plus the
+// files to light up. Asking needs a GitHub sign-in, checked with GitHub here, so the site's Gemini budget
+// can't be spent anonymously. Needs GEMINI_API_KEY in the site's environment variables.
 // GET tells the page whether asking is set up.
-const Anthropic = require("@anthropic-ai/sdk").default;
-const { betaZodOutputFormat } = require("@anthropic-ai/sdk/helpers/beta/zod");
-const { z } = require("zod");
+const { GoogleGenAI } = require("@google/genai");
 
+const MODEL = "gemini-3.8-flash";
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12;
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
 
-const Answer = z.object({
-  answer: z.string(),
-  files: z.array(z.object({ path: z.string(), why: z.string() })),
-});
+const ANSWER_SCHEMA = {
+  type: "object",
+  properties: {
+    answer: { type: "string" },
+    files: {
+      type: "array",
+      maxItems: MAX_ANSWER_FILES,
+      items: { type: "object", properties: { path: { type: "string" }, why: { type: "string" } }, required: ["path", "why"] },
+    },
+  },
+  required: ["answer", "files"],
+};
 
 const SYSTEM = `You help developers find their way around a codebase that is shown to them as a 3D city, one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a question.
@@ -37,7 +44,7 @@ function json(statusCode, body) {
 }
 
 exports.handler = async event => {
-  const enabled = !!process.env.ANTHROPIC_API_KEY;
+  const enabled = !!process.env.GEMINI_API_KEY;
   if (event.httpMethod === "GET") return json(200, { enabled });
   if (event.httpMethod !== "POST") return json(405, { error: "Use POST." });
   if (!enabled) return json(503, { error: "Ask the city isn't set up on this site yet." });
@@ -61,36 +68,29 @@ exports.handler = async event => {
   const total = files.length;
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
-  const client = new Anthropic({ timeout: 9000, maxRetries: 0 });   // stay inside the function's time limit
-  let res;
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  let reply;
   try {
-    res = await client.beta.messages.parse({
-      model: "claude-opus-5-5",
-      max_tokens: 4000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "low", format: betaZodOutputFormat(Answer) },
-      system: SYSTEM,
-      messages: [{
-        role: "user",
-        content: [
-          // The file list goes first and is cached, so more questions about the same repo are cheaper.
-          { type: "text", text: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}`, cache_control: { type: "ephemeral" } },
-          { type: "text", text: `Question: ${question}` },
-        ],
-      }],
-    });
+    const interaction = await client.interactions.create({
+      model: MODEL,
+      system_instruction: SYSTEM,
+      // The file list goes first and the question last, so repeat questions about one repo share a prefix.
+      input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\nQuestion: ${question}`,
+      generation_config: { thinking_level: "low", max_output_tokens: 4000 },
+      response_format: { type: "text", mime_type: "application/json", schema: ANSWER_SCHEMA },
+    }, { timeout_ms: 9000 });   // stay inside the function's time limit
+    reply = JSON.parse(interaction.output_text || "");
   } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) return json(429, { error: "Lots of questions right now. Try again in a minute." });
-    if (e instanceof Anthropic.APIConnectionTimeoutError) return json(504, { error: "That took too long to answer. Try a narrower question." });
-    if (e instanceof Anthropic.APIError) return json(502, { error: "Claude couldn't answer just now. Try again in a moment." });
-    throw e;
+    if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
+    if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: "That took too long to answer. Try a narrower question." });
+    return json(502, { error: "Gemini couldn't answer just now. Try again in a moment." });
   }
-  if (res.stop_reason === "refusal") return json(200, { answer: "Claude couldn't help with that question. Try asking about the code in another way.", files: [] });
-  const out = res.parsed_output;
-  if (!out) return json(502, { error: "Claude's answer came back in an unexpected shape. Try again." });
+  if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   const known = new Set(files.map(f => f.path));
-  return json(200, { answer: out.answer, files: out.files.filter(f => known.has(f.path)).slice(0, MAX_ANSWER_FILES) });
+  return json(200, {
+    answer: reply.answer,
+    files: reply.files.filter(f => f && known.has(f.path)).map(f => ({ path: f.path, why: String(f.why || "") })).slice(0, MAX_ANSWER_FILES),
+  });
 };
 
 exports.fileList = fileList;   // for tests
