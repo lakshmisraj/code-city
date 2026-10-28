@@ -34,6 +34,36 @@ Type a question such as "where is authentication handled?". Gemini reads the cit
 
 Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
 
+### Guided tours
+
+Press **Tour** next to the Ask box for a newcomer's overview, or type a topic first ("how checkout works"). Gemini plans four to eight stops; the camera flies from building to building while the panel narrates each one. Step through with Back / Next, jump to any stop, or press Auto-play.
+
+### Timelapse video
+
+**Record video** in the timeline bar replays the history from the first commit and saves it as a 1280×720 video (MP4 where the browser supports it, otherwise WebM), with the repo name, date and commit message drawn in.
+
+### PR summary bot (GitHub Action)
+
+Add this file to a repo as `.github/workflows/code-city.yml`. Every pull request then gets one comment (updated on each push) listing the files it touches, which of them are hotspots, who has changed them most, and a link to the PR in Code City's 3D view. It runs in the repo's own GitHub Actions, so the code never leaves GitHub, and it never fails a build.
+
+```yaml
+name: Code City PR summary
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history is needed for hotspots and owners
+      - uses: lakshmisraj/code-city@v1
+```
+
+Options: `history-days` (default `365`) and `site`. Pull requests from forks get a read-only token, so they're skipped with a note.
+
 ### Sign in with GitHub (site owner setup)
 
 Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitHub for no scopes: the token only identifies the visitor, which raises their limit to 5,000 requests an hour. The token reaches the page through the site's own storage, never through a URL. Until it's set up, the button stays hidden and the paste-a-token box still works.

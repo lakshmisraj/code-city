@@ -1,4 +1,5 @@
-// "Ask the city": answer a question about a repo by pointing at the files that matter.
+// "Ask the city": answer a question about a repo by pointing at the files that matter, or (mode "tour")
+// plan a guided tour: an ordered walk through the files that explain a topic.
 // Gemini sees the repo's file list (paths and sizes), not file contents, and returns a short answer plus the
 // files to light up. Asking needs a GitHub sign-in, checked with GitHub here, so the site's Gemini budget
 // can't be spent anonymously. Needs GEMINI_API_KEY in the site's environment variables.
@@ -6,7 +7,7 @@
 const { GoogleGenAI } = require("@google/genai");
 
 const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model: answers well inside Netlify's 10 s limit
-const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12;
+const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_TOUR_STOPS = 8;
 const BUDGET_MS = 8500;   // Netlify stops the function at 10 s; always answer before that
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
 
@@ -28,6 +29,31 @@ You get the repository name, its file list grouped by folder (each file with its
 Answer in two to four plain sentences. Then pick the files that best answer the question, most relevant first, at most ${MAX_ANSWER_FILES}, each with a reason under fifteen words.
 Use paths exactly as they appear in the list, joined with their folder. You only see names and sizes, not the code, so say "likely" when you infer from names.
 If nothing in the list answers the question, say so and return no files.`;
+
+const TOUR_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    steps: {
+      type: "array",
+      maxItems: MAX_TOUR_STOPS,
+      items: {
+        type: "object",
+        properties: { path: { type: "string" }, title: { type: "string" }, narration: { type: "string" } },
+        required: ["path", "title", "narration"],
+      },
+    },
+  },
+  required: ["title", "steps"],
+};
+
+const TOUR_SYSTEM = `You are a friendly guide giving a newcomer a tour of a codebase that is shown as a 3D city, one building per file.
+You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
+Plan a walk of four to ${MAX_TOUR_STOPS} stops that explains the topic in a sensible order: start where a newcomer should start, then follow how the pieces connect.
+For each stop give the file path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration saying what this file is for and how it leads to the next stop.
+Give the tour a short title. You only see names and sizes, not the code, so say "likely" when you infer from names.`;
+
+const DEFAULT_TOUR = "Give a newcomer an overview: where to start reading and how the main parts fit together.";
 
 // Folder headers followed by file names keeps the list compact, which keeps the request fast.
 function fileList(files) {
@@ -62,7 +88,8 @@ exports.handler = async event => {
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch (e) { return json(400, { error: "That request wasn't valid JSON." }); }
-  const question = String(body.question || "").trim().slice(0, MAX_QUESTION);
+  const tour = body.mode === "tour";
+  const question = (String(body.question || "").trim() || (tour ? DEFAULT_TOUR : "")).slice(0, MAX_QUESTION);
   const repo = String(body.repo || "this repository").slice(0, 120);
   let files = (Array.isArray(body.files) ? body.files : [])
     .filter(f => f && typeof f.path === "string" && f.path.length <= 300)
@@ -80,11 +107,11 @@ exports.handler = async event => {
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
     const interaction = await Promise.race([client.interactions.create({
       model: MODEL,
-      system_instruction: SYSTEM,
+      system_instruction: tour ? TOUR_SYSTEM : SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
-      input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\nQuestion: ${question}`,
+      input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n${tour ? "Topic" : "Question"}: ${question}`,
       generation_config: { max_output_tokens: 4000 },
-      response_format: { type: "text", mime_type: "application/json", schema: ANSWER_SCHEMA },
+      response_format: { type: "text", mime_type: "application/json", schema: tour ? TOUR_SCHEMA : ANSWER_SCHEMA },
     }, { timeout_ms: Math.max(1000, left()) }), deadline]).finally(() => clearTimeout(timer));
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     reply = JSON.parse(interaction.output_text || "");
@@ -96,8 +123,16 @@ exports.handler = async event => {
     const reason = String((e && e.message) || "").replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 200);
     return json(502, { error: `Gemini couldn't answer just now${e && e.status ? ` (${e.status})` : ""}${reason ? `: ${reason}` : ""}` });
   }
-  if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   const known = new Set(files.map(f => f.path));
+  if (tour) {
+    if (!reply || !Array.isArray(reply.steps)) return json(502, { error: "Gemini's tour came back in an unexpected shape. Try again." });
+    const steps = reply.steps.filter(st => st && known.has(st.path))
+      .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, 400) }))
+      .slice(0, MAX_TOUR_STOPS);
+    if (!steps.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
+    return json(200, { title: String(reply.title || "A tour of the city").slice(0, 100), steps });
+  }
+  if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   return json(200, {
     answer: reply.answer,
     files: reply.files.filter(f => f && known.has(f.path)).map(f => ({ path: f.path, why: String(f.why || "") })).slice(0, MAX_ANSWER_FILES),

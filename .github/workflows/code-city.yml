@@ -1,0 +1,14 @@
+# Code City's own PRs get the summary too, using the action from this repo.
+name: Code City PR summary
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./

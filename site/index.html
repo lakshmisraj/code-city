@@ -160,6 +160,10 @@ details.more[open] summary { margin-bottom: 8px; }
 .adds { color: var(--added); font-family: var(--f-mono); } .dels { color: var(--fire); font-family: var(--f-mono); }
 .side-note { font-size: 12px; line-height: 1.5; color: var(--ink-dim); margin: 0; }
 .side-note b { color: var(--ink); font-weight: 600; }
+.drawer-body .tour-stop h3 { margin: 0 0 2px; font: 700 18px var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--ink); }
+.tour-path { margin: 0 0 8px; font: 12px var(--f-mono); color: var(--ink-dim); word-break: break-all; }
+.tour-path i { font-style: normal; }
+.rank button[aria-current="step"] { background: var(--street-2); box-shadow: inset 2px 0 0 var(--sodium); }
 .ask-answer { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); }
 .side-note a { color: var(--sodium); }
 .side-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -209,6 +213,7 @@ pre.code {
 .tl-info code { font-family: var(--f-mono); color: var(--ink-dim); }
 .tl-info #tlMsg { color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #speedBtn { font-family: var(--f-mono); min-width: 64px; }
+#recBtn { white-space: nowrap; }
 
 
 #tip {
@@ -339,10 +344,11 @@ pre.code {
   </div>
 
   <form class="field" id="askForm" autocomplete="off" hidden>
-    <label for="askInput">Ask the city</label>
+    <label for="askInput">Ask the city, or take a tour</label>
     <div class="inline">
       <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
       <button class="primary" type="submit">Ask</button>
+      <button type="button" id="tourBtn" title="A guided walk through the code. Type a topic to focus it.">Tour</button>
     </div>
     <small id="askStatus"></small>
   </form>
@@ -390,6 +396,7 @@ pre.code {
     <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
   </div>
   <button id="speedBtn" type="button" title="Commits per second">8/s</button>
+  <button id="recBtn" type="button" title="Replay the history and save it as a video">Record video</button>
 </div>
 
 
@@ -987,6 +994,7 @@ function matFor(b) {
   if (query) return b.userData.match ? MATCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
+  if (tourState) { const p = b.userData.f.path; return p === tourState.steps[tourState.i].path ? PICKED : tourState.steps.some(s => s.path === p) ? MATCH : DIM; }
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
@@ -1715,7 +1723,7 @@ function applyPendingView() {
 }
 function onCityBuilt() {
   if (prState && prState.repo !== currentRepo) clearPR();
-  if (askState) { askState = null; if (sideMode === "ask") closeSide(true); }   // answers belong to the city they were asked about
+  if (askState || tourState) { askState = null; endTour(); if (sideMode === "ask" || sideMode === "tour") closeSide(true); }   // answers and tours belong to the city they were made for
   if (sideMode === "pr" && !prState) closeSide(true); else if (sideMode) renderSide();
   document.getElementById("prForm").hidden = !currentRepo;
   if (!ghProbe) applyPendingView();
@@ -1747,11 +1755,12 @@ function openSide(mode) {
 function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
   if (sideMode === "ask") askState = null;
+  if (sideMode === "tour") endTour();
   sideMode = null; sidePanel.hidden = true;
   $("hotBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); }
+function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline can move many times a frame; redraw the list once
   if (sideQueued) return;
@@ -1960,6 +1969,155 @@ function renderAsk() {
     `<p class="side-note">Gemini only sees file names and sizes, not the code, so treat these as a starting point.</p>`;
 }
 
+// ---------- guided tours ----------
+// Gemini plans an ordered walk through the files; the camera flies stop to stop while the panel narrates.
+const TOUR_STEP_MS = 7000;   // auto-play pace
+let tourState = null;        // { title, steps: [{ path, title, narration }], i, playing, timer }
+$("tourBtn").onclick = () => startTour($("askInput").value);
+async function startTour(topic) {
+  const status = $("askStatus");
+  if (!ghToken()) {
+    status.innerHTML = signinEnabled
+      ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to take a tour. Signing in keeps tours free for everyone.`
+      : "Tours need a GitHub sign-in or a GitHub token.";
+    return;
+  }
+  status.textContent = "Planning a tour…";
+  const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
+  try {
+    const r = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + ghToken() },
+      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      status.innerHTML = esc(data.error || `Couldn't plan a tour (error ${r.status}). Try again.`) +
+        (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
+      return;
+    }
+    status.textContent = "";
+    if (askState) askState = null;
+    tourState = { title: data.title, steps: data.steps, i: 0, playing: false, timer: 0 };
+    openSide("tour");
+    goToStop(0);
+  } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
+}
+function goToStop(i) {
+  const t = tourState;
+  if (!t) return;
+  t.i = Math.max(0, Math.min(t.steps.length - 1, i));
+  const b = bmap.get(t.steps[t.i].path);
+  if (b) flyToBuilding(b);
+  renderTour();
+  clearTimeout(t.timer);
+  if (t.playing) {
+    if (t.i < t.steps.length - 1) t.timer = setTimeout(() => goToStop(t.i + 1), reduceMotion ? TOUR_STEP_MS * 1.5 : TOUR_STEP_MS);
+    else t.playing = false;
+  }
+}
+function endTour() { if (tourState) clearTimeout(tourState.timer); tourState = null; }
+function renderTour() {
+  const t = tourState, st = t.steps[t.i];
+  $("sideTitle").textContent = t.title;
+  $("sideSub").textContent = `Stop ${t.i + 1} of ${t.steps.length}`;
+  sideBody.innerHTML = `
+    <div class="tour-stop">
+      <h3>${esc(st.title)}</h3>
+      <p class="tour-path">${pathHtml(st.path)}</p>
+      <p class="ask-answer">${esc(st.narration)}</p>
+    </div>
+    <div class="side-actions">
+      <button type="button" data-tour="back" ${t.i === 0 ? "disabled" : ""}>Back</button>
+      <button type="button" class="primary" data-tour="next">${t.i === t.steps.length - 1 ? "Finish tour" : "Next stop"}</button>
+      <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
+    </div>
+    <ol class="rank">${t.steps.map((s, k) => `<li><button type="button" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}>
+      <span class="n">${k + 1}</span><span class="path">${esc(s.title)}</span><span class="meta">${pathHtml(s.path)}</span></button></li>`).join("")}</ol>
+    <p class="side-note">Gemini plans tours from file names and sizes, not the code, so treat them as a starting point.</p>`;
+}
+sideBody.addEventListener("click", e => {
+  if (sideMode !== "tour" || !tourState) return;
+  const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]");
+  if (stop) { e.stopPropagation(); return goToStop(+stop.dataset.stop); }
+  if (!act) return;
+  const t = tourState;
+  if (act.dataset.tour === "back") goToStop(t.i - 1);
+  else if (act.dataset.tour === "next") { if (t.i === t.steps.length - 1) { closeSide(); resetView(true); } else goToStop(t.i + 1); }
+  else { t.playing = !t.playing; goToStop(t.playing && t.i === t.steps.length - 1 ? 0 : t.i); }
+}, true);
+
+// ---------- timelapse video ----------
+// Replays the history from the first commit and records it, with the repo name, date and commit drawn into
+// the video so it still makes sense when shared. Ends on today's city, then offers the file.
+const recBtn = $("recBtn");
+const REC_W = 1280, REC_H = 720, REC_HOLD_MS = 1800;
+let rec = null;   // { canvas, ctx, recorder, chunks, ending, mime }
+function recMime() {
+  if (typeof MediaRecorder === "undefined") return null;
+  return ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || null;
+}
+recBtn.hidden = !recMime() || !HTMLCanvasElement.prototype.captureStream;
+recBtn.onclick = () => {
+  if (rec && rec.url) return saveRecording();
+  if (rec) return stopRecording();
+  if (!hist) return;
+  const canvas = Object.assign(document.createElement("canvas"), { width: REC_W, height: REC_H });
+  const mime = recMime();
+  const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: mime, videoBitsPerSecond: 8e6 });
+  rec = { canvas, ctx: canvas.getContext("2d"), recorder, chunks: [], ending: 0, mime };
+  recorder.ondataavailable = e => { if (e.data.size) rec.chunks.push(e.data); };
+  recorder.onstop = () => {
+    rec.url = URL.createObjectURL(new Blob(rec.chunks, { type: mime.split(";")[0] }));
+    recBtn.textContent = "Download video";
+    recBtn.classList.add("primary");
+    toast("Video ready");
+  };
+  closeDrawer(); closeSide(true);
+  viewAt(-1);
+  playing = true; playAcc = 0; playBtn.textContent = "Pause";
+  controls.autoRotate = !reduceMotion;
+  recorder.start(1000);
+  recBtn.textContent = "Stop recording";
+};
+function stopRecording() {
+  if (rec && rec.recorder.state === "recording") rec.recorder.stop();
+}
+function saveRecording() {
+  const ext = rec.mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const a = Object.assign(document.createElement("a"), { href: rec.url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-timelapse.${ext}` });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => { URL.revokeObjectURL(rec.url); rec = null; recBtn.textContent = "Record video"; recBtn.classList.remove("primary"); }, 1000);
+}
+// Called right after each render: copy the 3D view into the video frame and draw the captions on top.
+function recordFrame() {
+  if (!rec || rec.recorder.state !== "recording") return;
+  const { ctx } = rec, src = renderer.domElement;
+  const scale = Math.max(REC_W / src.width, REC_H / src.height), w = src.width * scale, h = src.height * scale;
+  ctx.drawImage(src, (REC_W - w) / 2, (REC_H - h) / 2, w, h);
+  const grad = ctx.createLinearGradient(0, REC_H - 170, 0, REC_H);
+  grad.addColorStop(0, "rgba(11,16,32,0)"); grad.addColorStop(1, "rgba(11,16,32,0.92)");
+  ctx.fillStyle = grad; ctx.fillRect(0, REC_H - 170, REC_W, 170);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#e6e9f2"; ctx.font = `700 38px "Chakra Petch", "Arial Narrow", sans-serif`;
+  ctx.fillText(currentRepo || cityName || "Code City", 48, REC_H - 92);
+  const c = !viewNow && cursor >= 0 ? hist.commits[cursor] : null;
+  ctx.fillStyle = "#f2a541"; ctx.font = `600 24px "JetBrains Mono", Menlo, monospace`;
+  ctx.fillText(viewNow ? "Today" : c ? dateFmt.format(new Date(c.t * 1000)) : "The first commit", 48, REC_H - 54);
+  if (c) {
+    ctx.fillStyle = "#9aa3bd"; ctx.font = `400 20px "Instrument Sans", Arial, sans-serif`;
+    let msg = c.m; while (msg.length > 4 && ctx.measureText(msg).width > REC_W - 96) msg = msg.slice(0, -2);
+    ctx.fillText(msg === c.m ? msg : msg + "…", 48, REC_H - 24);
+  }
+  ctx.fillStyle = "rgba(230,233,242,0.75)"; ctx.font = `600 18px "JetBrains Mono", Menlo, monospace`;
+  ctx.textAlign = "right"; ctx.fillText("code-city-lakshmi.netlify.app", REC_W - 32, 40); ctx.textAlign = "left";
+  // The replay ends by returning to today; hold that view briefly, then finish.
+  if (!playing) {
+    if (!rec.ending) rec.ending = performance.now();
+    else if (performance.now() - rec.ending > REC_HOLD_MS) stopRecording();
+  }
+}
+
 // ---------- loop ----------
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -2003,6 +2161,7 @@ function frame() {
   controls.update();
   updateHover();
   composer.render(dt);
+  recordFrame();
   requestAnimationFrame(frame);
 }
 
