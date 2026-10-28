@@ -1,0 +1,9 @@
+{
+  "name": "code-city",
+  "private": true,
+  "description": "Netlify Functions for Code City (sign-in and Ask the city)",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "zod": "^4.6.7"
+  }
+}

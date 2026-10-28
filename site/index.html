@@ -160,6 +160,7 @@ details.more[open] summary { margin-bottom: 8px; }
 .adds { color: var(--added); font-family: var(--f-mono); } .dels { color: var(--fire); font-family: var(--f-mono); }
 .side-note { font-size: 12px; line-height: 1.5; color: var(--ink-dim); margin: 0; }
 .side-note b { color: var(--ink); font-weight: 600; }
+.ask-answer { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); }
 .side-note a { color: var(--sodium); }
 .side-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .btn-link { font: 600 13px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; text-decoration: none; }
@@ -336,6 +337,15 @@ pre.code {
       <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
     </div>
   </div>
+
+  <form class="field" id="askForm" autocomplete="off" hidden>
+    <label for="askInput">Ask the city</label>
+    <div class="inline">
+      <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
+      <button class="primary" type="submit">Ask</button>
+    </div>
+    <small id="askStatus"></small>
+  </form>
 
   <div class="field">
     <label for="q">Find a file</label>
@@ -976,6 +986,7 @@ function matFor(b) {
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
   if (query) return b.userData.match ? MATCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
+  if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
@@ -1704,6 +1715,7 @@ function applyPendingView() {
 }
 function onCityBuilt() {
   if (prState && prState.repo !== currentRepo) clearPR();
+  if (askState) { askState = null; if (sideMode === "ask") closeSide(true); }   // answers belong to the city they were asked about
   if (sideMode === "pr" && !prState) closeSide(true); else if (sideMode) renderSide();
   document.getElementById("prForm").hidden = !currentRepo;
   if (!ghProbe) applyPendingView();
@@ -1734,11 +1746,12 @@ function openSide(mode) {
 }
 function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
+  if (sideMode === "ask") askState = null;
   sideMode = null; sidePanel.hidden = true;
   $("hotBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); }
+function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline can move many times a frame; redraw the list once
   if (sideQueued) return;
@@ -1896,6 +1909,57 @@ async function initSignin() {
   syncTokenUi();
 }
 
+// ---------- Ask the city ----------
+// A question goes to the site's "ask" function with the city's file list; the answer names the files to light up.
+// It needs a GitHub sign-in, which keeps the site's Claude budget from being spent anonymously.
+const ASK_URL = "/.netlify/functions/ask";
+let askEnabled = false, askState = null;   // askState: { question, answer, order: [{ path, why }], files: Map(path -> why) }
+async function initAsk() {
+  try { const r = await fetch(ASK_URL, { cache: "no-store" }); askEnabled = r.ok && !!(await r.json()).enabled; }
+  catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
+  $("askForm").hidden = !askEnabled;
+}
+$("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
+async function askCity(question) {
+  const q = question.trim(), status = $("askStatus");
+  if (!q) return;
+  if (!ghToken()) {
+    status.innerHTML = signinEnabled
+      ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to ask questions. Signing in keeps asking free for everyone.`
+      : "Asking needs a GitHub sign-in or a GitHub token.";
+    return;
+  }
+  status.textContent = "Asking Claude…";
+  const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
+  try {
+    const r = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + ghToken() },
+      body: JSON.stringify({ question: q, repo: currentRepo || cityName, files }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      status.innerHTML = esc(data.error || "Couldn't get an answer. Try again.") +
+        (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
+      return;
+    }
+    askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])) };
+    status.textContent = "";
+    openSide("ask");
+  } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
+}
+function renderAsk() {
+  $("sideTitle").textContent = "Ask the city";
+  $("sideSub").textContent = askState.question;
+  sideBody.innerHTML = `<p class="ask-answer">${esc(askState.answer)}</p>` +
+    (askState.order.length ? `<ol class="rank">${askState.order.map((f, i) => {
+      const b = bmap.get(f.path), live = b && b.userData.lines > 0;
+      return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
+        <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
+    }).join("")}</ol>` : "") +
+    `<p class="side-note">Claude only sees file names and sizes, not the code, so treat these as a starting point.</p>`;
+}
+
 // ---------- loop ----------
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -1946,6 +2010,7 @@ const start = () => {
   const link = readLink();
   buildCity(sampleCity()); frame();
   initSignin();
+  initAsk();
   if (link.repo) { document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
 };
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start, start);

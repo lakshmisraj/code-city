@@ -28,6 +28,12 @@ Building heights are estimated from file size until you click a building, which 
   `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.
   A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
 
+### Ask the city
+
+Type a question such as "where is authentication handled?". Claude reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs a GitHub sign-in, so the site's Claude budget can't be spent anonymously.
+
+Site owner setup: add `ANTHROPIC_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with Claude Opus 5.5 at low effort.
+
 ### Sign in with GitHub (site owner setup)
 
 Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitHub for no scopes: the token only identifies the visitor, which raises their limit to 5,000 requests an hour. The token reaches the page through the site's own storage, never through a URL. Until it's set up, the button stays hidden and the paste-a-token box still works.
