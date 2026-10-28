@@ -5,7 +5,7 @@
 // GET tells the page whether asking is set up.
 const { GoogleGenAI } = require("@google/genai");
 
-const MODEL = "gemini-3.8-flash";
+const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model: answers well inside Netlify's 10 s limit
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12;
 const BUDGET_MS = 8500;   // Netlify stops the function at 10 s; always answer before that
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
@@ -75,14 +75,17 @@ exports.handler = async event => {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   let reply;
   try {
-    const interaction = await client.interactions.create({
+    // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
+    let timer;
+    const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
+    const interaction = await Promise.race([client.interactions.create({
       model: MODEL,
       system_instruction: SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
       input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\nQuestion: ${question}`,
-      generation_config: { thinking_level: "low", max_output_tokens: 4000 },
+      generation_config: { max_output_tokens: 4000 },
       response_format: { type: "text", mime_type: "application/json", schema: ANSWER_SCHEMA },
-    }, { timeout_ms: Math.max(1000, left()) });
+    }, { timeout_ms: Math.max(1000, left()) }), deadline]).finally(() => clearTimeout(timer));
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     reply = JSON.parse(interaction.output_text || "");
   } catch (e) {
