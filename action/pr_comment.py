@@ -51,13 +51,21 @@ def history(ref, days):
     return churn, authors
 
 
+def pr_authors(base, head, login):
+    """Everyone who wrote commits in the PR, plus whoever opened it, so they are never suggested as its reviewer."""
+    names = {n.strip().lower() for n in git("log", "--format=%aN", f"{base}..{head}").splitlines() if n.strip()}
+    if login:
+        names.add(login.lower())
+    return names
+
+
 def hot_threshold(churn):
     """A file is a hotspot when its change count is in the top tenth of the repo's files (at least 2 changes)."""
     counts = sorted(churn.values(), reverse=True)
     return max(2, counts[len(counts) // 10]) if counts else float("inf")
 
 
-def build_comment(repo, number, files, churn, authors, days, site):
+def build_comment(repo, number, files, churn, authors, days, site, exclude=frozenset()):
     hot_at = hot_threshold(churn)
     rows = []
     for status, path, old in files:
@@ -70,7 +78,11 @@ def build_comment(repo, number, files, churn, authors, days, site):
     rows.sort(key=lambda r: (not r["hot"], -r["churn"], r["path"]))
 
     hot = [r for r in rows if r["hot"]]
-    solo = [r for r in rows if r["solo"]]
+    # Reviewer hints: a file only one person has changed, when that person isn't writing this PR. Grouped by person.
+    experts = {}
+    for r in rows:
+        if r["solo"] and r["owner"] and r["owner"].lower() not in exclude:
+            experts.setdefault(r["owner"], []).append(r["path"])
     label = {"A": "new", "D": "deleted", "R": "renamed", "M": "changed"}
     period = "last year" if days == 365 else f"last {days} days"
     lines = [MARKER, f"### 🏙 Code City: this PR touches {len(rows)} file{'s' if len(rows) != 1 else ''}", ""]
@@ -78,8 +90,9 @@ def build_comment(repo, number, files, churn, authors, days, site):
         lines.append(f"⚠️ **{len(hot)} hotspot{'s' if len(hot) != 1 else ''}**: files that change more often than nine in ten others. Bugs tend to cluster in them, so review these closely.")
     else:
         lines.append("✅ No hotspots: none of these files is among the repo's most often changed.")
-    for r in solo[:3]:
-        lines.append(f"👤 Only **{r['owner']}** has changed `{r['path']}` in the {period}. They may be the best reviewer for it.")
+    for owner, paths in list(experts.items())[:3]:
+        shown = ", ".join(f"`{p}`" for p in paths[:3]) + (f" and {len(paths) - 3} more" if len(paths) > 3 else "")
+        lines.append(f"👤 **{owner}** is the only person who has changed {shown} in the {period}. They may be the best reviewer.")
     lines += ["", f"| | File | Commits ({period}) | Changed most by |", "|---|---|---|---|"]
     for r in rows[:MAX_ROWS]:
         flag = "🔥" if r["hot"] else ""
@@ -132,7 +145,7 @@ def main():
         print("Code City: this PR changes no files.")
         return
     churn, authors = history(base, days)
-    body = build_comment(repo, number, files, churn, authors, days, site)
+    body = build_comment(repo, number, files, churn, authors, days, site, pr_authors(base, head, (pr.get("user") or {}).get("login")))
     if os.environ.get("DRY_RUN"):
         print(body)
         return
