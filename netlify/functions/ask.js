@@ -80,7 +80,7 @@ exports.handler = async event => {
       system_instruction: SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
       input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\nQuestion: ${question}`,
-      generation_config: { thinking_level: "minimal", max_output_tokens: 4000 },
+      generation_config: { thinking_level: "low", max_output_tokens: 4000 },
       response_format: { type: "text", mime_type: "application/json", schema: ANSWER_SCHEMA },
     }, { timeout_ms: Math.max(1000, left()) });
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
