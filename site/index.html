@@ -322,6 +322,12 @@ body.walking .card, body.walking #hint { display: none; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 (() => {
 "use strict";
@@ -561,9 +567,42 @@ scene.background = NIGHT;
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.47; controls.autoRotateSpeed = 0.35;
-scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.55));
+scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.45));
 const moon = new THREE.DirectionalLight(0xdfe6ff, 0.75); moon.position.set(-1, 2, 1.2); scene.add(moon);
 const lamp = new THREE.DirectionalLight(0xf2a541, 0.25); lamp.position.set(1.5, 0.6, -1); scene.add(lamp);
+
+// Bloom from three.js's post-processing add-ons: only bright things glow (lit windows, fires, flashes, highlights).
+// Rendering through a multisampled target keeps edges antialiased, which a plain composer would lose.
+const composerTarget = renderer.capabilities.isWebGL2
+  ? new THREE.WebGLMultisampleRenderTarget(1, 1, { format: THREE.RGBAFormat })
+  : undefined;
+const composer = new THREE.EffectComposer(renderer, composerTarget);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.5, 0.66);
+composer.addPass(bloom);
+
+// Lit windows: a grid drawn in world space on every wall, so it lines up across buildings of any size.
+// A few windows switch on and off over time.
+const windowTime = { value: 0 };
+function withWindows(mat) {
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uTime = windowTime;
+    shader.vertexShader = "varying vec3 vWPos;\nvarying vec3 vWNormal;\n" + shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>
+      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      vWNormal = normalize(mat3(modelMatrix) * objectNormal);`);
+    shader.fragmentShader = "uniform float uTime;\nvarying vec3 vWPos;\nvarying vec3 vWNormal;\n" + shader.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+      if (abs(vWNormal.y) < 0.5) {
+        float across = abs(vWNormal.x) > 0.5 ? vWPos.z : vWPos.x;
+        float depth = abs(vWNormal.x) > 0.5 ? vWPos.x : vWPos.z;
+        vec2 g = vec2(across / 0.45, vWPos.y / 0.6), f = fract(g), cell = floor(g);
+        float pane = step(0.28, f.x) * step(f.x, 0.72) * step(0.32, f.y) * step(f.y, 0.78);
+        float h = fract(sin(dot(vec3(cell, floor(depth * 4.0)), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        float on = step(0.66, fract(h * 13.7 + floor(uTime * 0.08 + h * 7.0) * 0.618));
+        totalEmissiveRadiance += pane * on * vec3(1.0, 0.78, 0.45) * (0.8 + 0.6 * h);
+      }`);
+  };
+  return mat;
+}
 
 // stars
 {
@@ -609,24 +648,24 @@ const matCache = {};
 function langMat(lang) {
   if (!matCache[lang]) {
     const c = new THREE.Color(LANGS[lang].color);
-    matCache[lang] = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 });
+    matCache[lang] = withWindows(new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 }));
   }
   return matCache[lang];
 }
 const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#ef8a2e", "#ff5a2a", "#ffd9a8"].map(c => new THREE.Color(c));
 const HEAT_LEVELS = 16;
 const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
-  if (i === 0) return new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 });
+  if (i === 0) return withWindows(new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 }));
   const t = (i - 1) / (HEAT_LEVELS - 1) * (RAMP.length - 1), a = Math.floor(t), c = RAMP[a].clone().lerp(RAMP[Math.min(a + 1, RAMP.length - 1)], t - a);
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 });
+  return withWindows(new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 }));
 });
-const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.55, roughness: 0.5 });
-const PICKED = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf2a541, emissiveIntensity: 0.9, roughness: 0.4 });
-const MATCH = new THREE.MeshStandardMaterial({ color: 0xffc46b, emissive: 0xf2a541, emissiveIntensity: 0.45, roughness: 0.5 });
+const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.22, roughness: 0.5 });
+const PICKED = new THREE.MeshStandardMaterial({ color: 0xf2a541, emissive: 0xf2a541, emissiveIntensity: 0.32, roughness: 0.4 });
+const MATCH = new THREE.MeshStandardMaterial({ color: 0xffc46b, emissive: 0xf2a541, emissiveIntensity: 0.2, roughness: 0.5 });
 const DIM = new THREE.MeshStandardMaterial({ color: 0x2b3247, roughness: 0.9, transparent: true, opacity: 0.35 });
 const FLASH = {
-  add: new THREE.MeshStandardMaterial({ color: 0xfff1d0, emissive: 0xf2a541, emissiveIntensity: 1.1, roughness: 0.4 }),
-  mod: new THREE.MeshStandardMaterial({ color: 0xdbe6ff, emissive: 0x7fa2ff, emissiveIntensity: 0.6, roughness: 0.5 }),
+  add: new THREE.MeshStandardMaterial({ color: 0xffe2b0, emissive: 0xf2a541, emissiveIntensity: 0.6, roughness: 0.4 }),
+  mod: new THREE.MeshStandardMaterial({ color: 0xb9cbff, emissive: 0x7fa2ff, emissiveIntensity: 0.45, roughness: 0.5 }),
   del: new THREE.MeshStandardMaterial({ color: 0xff7a5c, emissive: 0xff3b1f, emissiveIntensity: 0.8, roughness: 0.6 }),
 };
 const FIRE = new THREE.MeshBasicMaterial({ color: 0xff6b2c, transparent: true, opacity: 0.9 });
@@ -784,11 +823,32 @@ function renderLegend() {
     .map(l => `<span><i style="background:${LANGS[l].color}"></i>${LANGS[l].name}</span>`).join("");
 }
 
-function resetView() {
+function resetView(animate) {
   const s = citySize, far = innerWidth < 640 ? 1.6 : 1.15;
-  controls.target.set(0, 0, 0);
-  camera.position.set(s * 0.6 * far, s * 0.75 * far, s * 1.0 * far);
-  focusTo = null;
+  const target = new THREE.Vector3(0, 0, 0), pos = new THREE.Vector3(s * 0.6 * far, s * 0.75 * far, s * 1.0 * far);
+  if (animate) return flyTo(target, pos);
+  flight = null; controls.target.copy(target); camera.position.copy(pos);
+}
+
+// Camera flights: target and position ease together, and any drag cancels them.
+let flight = null;
+function flyTo(target, pos, dur = 1.1) {
+  if (reduceMotion) { controls.target.copy(target); camera.position.copy(pos); flight = null; return; }
+  flight = { t0: performance.now(), dur: dur * 1000, fromT: controls.target.clone(), fromP: camera.position.clone(), toT: target, toP: pos };
+}
+function flyToBuilding(b) {
+  const u = b.userData, target = new THREE.Vector3(b.position.x, u.base + u.target * 0.5, b.position.z);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  const dist = Math.max(14, u.target * 2.4 + u.side * 4);
+  flyTo(target, target.clone().add(dir.multiplyScalar(dist)));
+}
+function stepFlight() {
+  if (!flight) return;
+  const k = Math.min(1, (performance.now() - flight.t0) / flight.dur);
+  const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;   // ease in-out cubic
+  controls.target.lerpVectors(flight.fromT, flight.toT, e);
+  camera.position.lerpVectors(flight.fromP, flight.toP, e);
+  if (k >= 1) flight = null;
 }
 
 // ---------- materials ----------
@@ -872,7 +932,7 @@ function updateHud() {
 
 // ---------- interaction (orbit) ----------
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
-let pointerMoved = false, downAt = null, focusTo = null, lastPointer = null;
+let pointerMoved = false, downAt = null, lastPointer = null;
 const tip = document.getElementById("tip");
 
 function pickAt(ndcX, ndcY) {
@@ -890,7 +950,7 @@ canvas.addEventListener("pointermove", ev => {
   if (downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 5) downAt.moved = true;
   if (walk.on && !document.pointerLockElement && ev.buttons & 1) look(ev.movementX, ev.movementY);
 });
-canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.clientY, moved: false }; });
+canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.clientY, moved: false }; flight = null; });
 canvas.addEventListener("pointerup", ev => {
   if (downAt && !downAt.moved && ev.button === 0) {
     if (walk.on) {
@@ -933,6 +993,7 @@ function updateHover() {
 
 const drawer = document.getElementById("drawer");
 function openDrawer(b) {
+  const prevPicked = picked;   // reopened after a file loads: don't fly again
   picked = b;
   const f = b.userData.f;
   const parts = f.path.split("/");
@@ -959,11 +1020,11 @@ function openDrawer(b) {
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   drawer.hidden = false;
-  if (!walk.on) focusTo = new THREE.Vector3(b.position.x, b.userData.base + b.userData.target * 0.5, b.position.z);
+  if (!walk.on && picked !== prevPicked) flyToBuilding(b);
 }
 function closeDrawer() { drawer.hidden = true; picked = null; }
 document.getElementById("closeBtn").onclick = closeDrawer;
-document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(); };
+document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(true); };
 
 // search
 const qInput = document.getElementById("q"), qInfo = document.getElementById("qInfo");
@@ -1501,6 +1562,7 @@ addEventListener("drop", async e => {
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
 }
 addEventListener("resize", resize); resize();
 
@@ -1510,11 +1572,15 @@ function frame() {
   const since = (performance.now() - built) / 1000;
   burstsThisFrame = 0;
   stepPlayback(dt);
-  const ease = 1 - Math.exp(-dt * 7);
   for (const b of buildings) {
     const u = b.userData;
-    if (since >= u.delay) u.shown += (u.target - u.shown) * ease;
-    if (Math.abs(u.target - u.shown) < 0.002) u.shown = u.target;
+    // A slightly underdamped spring: buildings overshoot a little as they rise and jolt as they drop.
+    if (since >= u.delay && u.shown !== u.target) {
+      u.vel = (u.vel || 0) + (u.target - u.shown) * 90 * dt;
+      u.vel *= Math.exp(-11 * dt);
+      u.shown = Math.max(0, u.shown + u.vel * dt);
+      if (Math.abs(u.target - u.shown) < 0.002 && Math.abs(u.vel) < 0.02) { u.shown = u.target; u.vel = 0; }
+    }
     b.visible = u.shown > 0.01;
     b.scale.y = Math.max(0.001, u.shown);
     if (u.flash > 0) u.flash -= dt * 1.6;
@@ -1528,18 +1594,15 @@ function frame() {
     f.scale.y = f.userData.fh * flick;
   }
   FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
+  if (!reduceMotion) windowTime.value = t;
   updateDust(dt);
   if (walk.on) updateWalk(dt);
   else {
-    if (focusTo) {
-      const d = focusTo.clone().sub(controls.target);
-      controls.target.add(d.multiplyScalar(0.12));
-      if (d.length() < 0.01) focusTo = null;
-    }
+    stepFlight();
     controls.update();
   }
   updateHover();
-  renderer.render(scene, camera);
+  composer.render(dt);
   requestAnimationFrame(frame);
 }
 
