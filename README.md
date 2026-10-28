@@ -86,3 +86,7 @@ Histories longer than 1,500 commits are merged into 1,500 steps, so the timelaps
 | `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |
+
+## License
+
+MIT. See [LICENSE](LICENSE).
