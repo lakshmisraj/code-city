@@ -62,7 +62,27 @@ jobs:
       - uses: lakshmisraj/code-city@v1
 ```
 
-Options: `history-days` (default `365`) and `site`. Pull requests from forks get a read-only token, so they're skipped with a note.
+Action inputs: `quiet`, `history-days`, `config` (settings file path) and `site`. Pull requests from forks get a read-only token, so they're skipped with a note.
+
+The comment flags hotspots, code changes with no test changes (in repos that have tests), and files only one other person has changed (never the PR's own author).
+
+#### Settings: `.codecity.yml`
+
+Put a `.codecity.yml` in the repo root to tune the summary. It's read from the base branch, so a pull request can't switch off its own checks.
+
+```yaml
+ignore:                   # folders (ending in /) or file patterns left out of the summary
+  - vendor/
+  - dist/
+  - "**/*.generated.ts"
+hotspot-top-percent: 10   # a hotspot is a file in the top 10% for changes
+owner-hints: true         # suggest a reviewer when only one other person has changed a file
+test-check: true          # flag code changes with no test changes
+quiet: false              # true: only comment when something is worth flagging
+history-days: 365         # how much history counts
+```
+
+**Quiet mode** comments only when a hotspot is touched, tests look missing, or there's a reviewer hint. If a later push clears everything, it updates its earlier comment to "nothing to flag" instead of leaving old warnings.
 
 ### Sign in with GitHub (site owner setup)
 

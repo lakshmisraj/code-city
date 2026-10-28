@@ -8,9 +8,15 @@ inputs:
   github-token:
     description: "Token used to post the comment. The default works when the workflow grants `pull-requests: write`."
     default: ${{ github.token }}
+  quiet:
+    description: "Only comment when something is worth flagging (a hotspot, missing tests, or a reviewer hint). Overrides `quiet` in .codecity.yml."
+    default: ""
   history-days:
-    description: "How many days of history count towards hotspots and owners."
-    default: "365"
+    description: "How many days of history count towards hotspots and owners. Overrides `history-days` in .codecity.yml (default 365)."
+    default: ""
+  config:
+    description: "Path of the settings file, read from the base branch."
+    default: ".codecity.yml"
   site:
     description: "Code City site the comment links to."
     default: https://code-city-lakshmi.netlify.app
@@ -21,5 +27,7 @@ runs:
       run: python3 "${{ github.action_path }}/action/pr_comment.py"
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        CODE_CITY_QUIET: ${{ inputs.quiet }}
         CODE_CITY_DAYS: ${{ inputs.history-days }}
+        CODE_CITY_CONFIG: ${{ inputs.config }}
         CODE_CITY_SITE: ${{ inputs.site }}
