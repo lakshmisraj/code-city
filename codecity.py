@@ -29,6 +29,7 @@ SPECIAL = {"dockerfile", "makefile", "gemfile", "rakefile", "procfile"}
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", "out", "coverage", "venv", ".venv", "env",
              "__pycache__", "target", "vendor", ".idea", ".vscode", ".turbo", ".cache", "Pods", "DerivedData", ".gradle"}
 MAX_FILES, MAX_BYTES, MAX_COMMITS, PREVIEW_LINES = 4000, 600 * 1024, 1500, 80
+NB_MAX_BYTES = 25 * 1024 * 1024
 
 FN_RE = re.compile(r"\b(?:function|def|func|fn|fun)\b|=>|\bclass\b|\b(?:public|private|protected|static)\s+[\w<>\[\],\s]+\s+\w+\s*\(")
 TODO_RE = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b")
@@ -85,14 +86,33 @@ def resolve(src):
     return dest, f"{owner}/{name}"
 
 
+def notebook_code(text):
+    """A notebook's code cells joined like a "# %%" script, or the raw text if it isn't valid JSON."""
+    try:
+        nb = json.loads(text)
+        cells = nb.get("cells") or [c for w in nb.get("worksheets", []) for c in w.get("cells", [])]  # nbformat 4, or 3
+        parts = []
+        for c in cells:
+            if c.get("cell_type") != "code":
+                continue
+            src = c.get("source", c.get("input", []))
+            src = "".join(src) if isinstance(src, list) else str(src)
+            parts.append(f"# %% [cell {len(parts) + 1}]\n" + src.rstrip("\n"))
+        return "\n\n".join(parts)
+    except (ValueError, AttributeError, TypeError):
+        return text
+
+
 def analyze(repo, paths, with_source):
     files = []
     for p in paths:
         if not is_code(p):
             continue
         full = os.path.join(repo, p)
+        is_nb = p.lower().endswith(".ipynb")
         try:
-            if os.path.getsize(full) > MAX_BYTES:
+            # Notebooks are mostly saved outputs, so they get a higher limit; only their code cells count.
+            if os.path.getsize(full) > (NB_MAX_BYTES if is_nb else MAX_BYTES):
                 continue
             with open(full, "rb") as fh:
                 raw = fh.read()
@@ -101,6 +121,8 @@ def analyze(repo, paths, with_source):
         if b"\0" in raw[:8000]:
             continue
         text = raw.decode("utf-8", "replace")
+        if is_nb:
+            text = notebook_code(text)
         lines = text.split("\n")
         todos = [{"line": i + 1, "text": l.strip()[:140]} for i, l in enumerate(lines) if TODO_RE.search(l)][:50]
         f = {"path": p, "lines": len(lines), "funcs": len(FN_RE.findall(text)), "todos": todos}

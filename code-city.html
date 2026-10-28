@@ -400,6 +400,7 @@ const LANGS = {
   ts:   { name: "TypeScript", color: "#5b8def" },
   js:   { name: "JavaScript", color: "#e3c34a" },
   py:   { name: "Python",     color: "#4fb38a" },
+  nb:   { name: "Jupyter",    color: "#f37626" },
   go:   { name: "Go",         color: "#6fd0e0" },
   rs:   { name: "Rust",       color: "#d9774b" },
   java: { name: "Java",       color: "#c75a5a" },
@@ -420,7 +421,7 @@ const LANGS = {
 // Keep in sync with CODE_EXT / SPECIAL / SKIP_DIRS in codecity.py.
 const EXT = {
   ts:"ts", tsx:"ts", mts:"ts", cts:"ts", js:"js", jsx:"js", mjs:"js", cjs:"js", vue:"js", svelte:"js",
-  py:"py", ipynb:"py", go:"go", rs:"rs", java:"java", scala:"java", kt:"kt", kts:"kt",
+  py:"py", ipynb:"nb", go:"go", rs:"rs", java:"java", scala:"java", kt:"kt", kts:"kt",
   c:"c", h:"c", cc:"c", cpp:"c", hpp:"c", cxx:"c", cs:"cs", rb:"rb", php:"php", swift:"swift",
   css:"css", scss:"css", sass:"css", less:"css", html:"html", htm:"html",
   sql:"sql", sh:"sh", bash:"sh", zsh:"sh", ps1:"sh", md:"md", mdx:"md", rst:"md", txt:"md",
@@ -430,6 +431,9 @@ const EXT = {
 const SPECIAL = { dockerfile:"cfg", makefile:"cfg", gemfile:"rb", rakefile:"rb", procfile:"cfg" };
 const SKIP_DIRS = new Set(["node_modules",".git","dist","build",".next",".nuxt","out","coverage","venv",".venv","env","__pycache__","target","vendor",".idea",".vscode",".turbo",".cache","Pods","DerivedData",".gradle"]);
 const MAX_FILES = 4000, MAX_BYTES = 600 * 1024;
+// Notebooks are mostly saved outputs (images, tables), so they get a much higher limit; only their code cells count.
+const NB_MAX_BYTES = 25 * 1024 * 1024, NB_RE = /\.ipynb$/i;
+function maxBytes(path) { return NB_RE.test(path) ? NB_MAX_BYTES : MAX_BYTES; }
 const PRESETS = { "pallets/flask": "presets/flask.json", "expressjs/express": "presets/express.json" };
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 
@@ -443,7 +447,18 @@ function langOf(path) {
 // ---------- analysis (folders opened in the browser) ----------
 const FN_RE = /\b(function|def|func|fn|fun)\b|=>|\bclass\b|\b(public|private|protected|static)\s+[\w<>\[\],\s]+\s+\w+\s*\(/g;
 const TODO_RE = /\b(TODO|FIXME|HACK|XXX)\b/;
+// A notebook's code cells, joined like a "# %%" script. Falls back to the raw text if it isn't valid JSON.
+function notebookCode(text) {
+  try {
+    const nb = JSON.parse(text);
+    const cells = nb.cells || [].concat(...(nb.worksheets || []).map(w => w.cells || []));   // nbformat 4, or 3
+    return cells.filter(c => c.cell_type === "code")
+      .map((c, i) => `# %% [cell ${i + 1}]\n` + [].concat(c.source ?? c.input ?? []).join("").replace(/\n$/, ""))
+      .join("\n\n");
+  } catch (e) { return text; }
+}
 function analyze(path, text) {
+  if (NB_RE.test(path)) text = notebookCode(text);
   const lines = text.split("\n");
   const todos = [];
   lines.forEach((l, i) => { if (TODO_RE.test(l) && todos.length < 50) todos.push({ line: i + 1, text: l.trim().slice(0, 140) }); });
@@ -537,6 +552,8 @@ function applyCommit(s, c, fx) {
     else { s.lines.set(p, Math.max(1, s.lines.get(p) + add - del)); fx && fx(p, "mod"); }
   }
 }
+const NB_HISTORY_SCALE = 0.15;   // typical code share of a notebook's JSON, for notebooks deleted before today
+function histLines(f) { const L = state.lines.get(f.path) || 0; return f.histScale ? Math.max(L ? 1 : 0, Math.round(L * f.histScale)) : L; }
 function stateAt(i) { const s = freshState(); for (let k = 0; k <= i; k++) applyCommit(s, hist.commits[k]); return s; }
 
 function prepare(city) {
@@ -559,6 +576,13 @@ function prepare(city) {
       for (const row of c.c) { const n = nodes.get(row[0]); const L = s.lines.get(row[0]); if (n && L) n.maxLines = Math.max(n.maxLines, L); }
     }
     totalChurn = s.churn;
+    // Git counts a notebook's JSON lines (outputs included); scale its history so the last step matches today's code lines.
+    for (const n of nodes.values()) {
+      if (n.lang !== "nb") continue;
+      const end = s.lines.get(n.path);
+      n.histScale = end && n.nowLines ? n.nowLines / end : NB_HISTORY_SCALE;
+      n.maxLines = Math.round(n.maxLines * n.histScale);
+    }
   }
   for (const n of nodes.values()) if (n.funcs == null) n.funcs = Math.max(1, Math.round(n.maxLines / 35));
 }
@@ -844,7 +868,7 @@ function viewAt(i) {
   viewNow = false; cursor = i;
   state = i >= 0 ? stateAt(i) : freshState();
   churnSrc = state.churn;
-  setTargets(f => state.lines.get(f.path) || 0);
+  setTargets(histLines);
 }
 
 function updateStats() {
@@ -961,7 +985,7 @@ function stepPlayback(dt) {
   }
   if (moved) {
     churnSrc = state.churn;
-    setTargets(f => state.lines.get(f.path) || 0);
+    setTargets(histLines);
     scrub.value = cursor;
   }
   if (cursor >= hist.commits.length - 1 && playAcc >= 1.5 * speed()) goNow();
@@ -1307,8 +1331,8 @@ async function loadFromGitHub(key) {
 
   const branch = (await gh(base)).default_branch;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-  const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= MAX_BYTES).slice(0, MAX_FILES)
-    .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / BYTES_PER_LINE)), funcs: null, todos: [], text: null, estimated: true }));
+  const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= maxBytes(e.path)).slice(0, MAX_FILES)
+    .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / (NB_RE.test(e.path) ? BYTES_PER_LINE * 8 : BYTES_PER_LINE))), funcs: null, todos: [], text: null, estimated: true }));
   if (!files.length) throw new Error("No source files found in that repo.");
 
   // Newest page of commits; its Link header gives the page count, and the last page gives the first commit.
@@ -1480,7 +1504,7 @@ async function loadHistory(pl) {
   if (allTime) {
     lines = new Map();
     for (const ch of changes) { const rows = forwardRows(ch.files, lines); if (rows.length) commits.push({ ...ch.meta, c: rows }); }
-    for (const f of files) if (lines.has(f.path)) { f.lines = lines.get(f.path); f.estimated = false; }   // replayed counts are real
+    for (const f of files) if (lines.has(f.path) && !NB_RE.test(f.path)) { f.lines = lines.get(f.path); f.estimated = false; }   // replayed counts are real (notebooks replay JSON lines)
     lines = new Map();
   } else {
     lines = new Map(files.map(f => [f.path, f.lines]));
@@ -1543,7 +1567,7 @@ async function loadRepo(src) {
       const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()));
       const data = await r.json();
       if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
-      buildCity({ ...data, repoKey: key, source: data.source || "git" });
+      buildCity({ ...data, repoKey: /^[\w.-]+\/[\w.-]+$/.test(key) ? key : null, source: data.source || "git" });   // local folders can't be shared as links
     } else if (PRESETS[key]) {
       busy.textContent = `Loading ${key}…`;
       const r = await fetch(PRESETS[key]);
@@ -1573,7 +1597,7 @@ function loadJsonText(text, fallbackName) {
 }
 
 async function ingest(entries, repoName) {
-  const kept = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= MAX_BYTES).slice(0, MAX_FILES);
+  const kept = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= maxBytes(e.path)).slice(0, MAX_FILES);
   if (!kept.length) { setRepoStatus("No source files found in that folder."); return; }
   busy.hidden = false;
   try {
