@@ -8,6 +8,12 @@ See a codebase as a 3D city at night. Each file is a building: height is lines o
 - **Change heat**: color buildings by how many commits touched them. Hot files are where bugs tend to live and where refactoring pays off.
 - **Walk the streets**: WASD to move, mouse to look, Shift to run, Space to jump (you can land on roofs), click to inspect.
 
+## On the hosted site
+
+Paste any public GitHub repo and press Build. The site reads it straight from GitHub's API: every current file plus the last 30 commits for the timelapse and heat map. Without signing in, GitHub allows 60 API requests an hour per visitor, which is about one repo an hour. Building heights are estimated from file size until you click a building, which loads its real source.
+
+For full history from the first commit, run it locally.
+
 ## Run it locally
 
 Needs Python 3.8+ and git. No other installs.
@@ -18,7 +24,7 @@ Opens http://localhost:8787. Paste any public GitHub, GitLab or Bitbucket URL (o
 
 ## Export a repo for the hosted site
 
-The hosted site can't clone repos, so export one and drag the JSON onto the page:
+To show a repo's full history on the hosted site, export it and drag the JSON onto the page:
 
     python3 codecity.py export owner/repo              # writes repo.json
     python3 codecity.py export owner/repo --no-source  # smaller, without file previews
@@ -31,4 +37,4 @@ Histories longer than 1,500 commits are merged into 1,500 steps, so the timelaps
 |---|---|
 | `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, walk mode |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
-| `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html` |
+| `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |

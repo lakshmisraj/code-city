@@ -681,7 +681,8 @@ function buildCity(data) {
   camera.far = Math.max(4000, side * 12); camera.updateProjectionMatrix();
   resetView();
 
-  const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo" };
+  ghRepo = data.gh || null;
+  const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo", github: "GitHub" };
   document.getElementById("mode").textContent = tags[data.source] || "Repo";
   document.getElementById("repoName").textContent = data.name;
   document.body.classList.toggle("has-timeline", !!hist);
@@ -902,16 +903,24 @@ function openDrawer(b) {
   document.getElementById("dPath").textContent = (parts.join("/") || ".") + "/ · " + LANGS[f.lang].name;
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   document.getElementById("dStats").innerHTML =
-    `<div><dt>Lines</dt><dd>${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${fmt(f.funcs)}</dd></div>` +
+    `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${f.estimated ? "–" : fmt(f.funcs)}</dd></div>` +
     `<div><dt>Fires</dt><dd class="fire">${viewNow ? f.todos.length : "–"}</dd></div>` +
     (hist ? `<div><dt>Commits</dt><dd>${fmt(commits)}</dd></div>` : `<div><dt>Floors</dt><dd>${Math.max(1, Math.round(b.userData.target))}</dd></div>`);
   document.getElementById("dTodos").innerHTML = !viewNow ? `<p class="note">TODO fires show for current files. Drag the timeline to the end to see them.</p>`
     : f.todos.length
     ? `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>`
     : `<p class="note">No TODOs here. This block is fireproof.</p>`;
-  document.getElementById("dCode").innerHTML = f.text != null
+  const fromGitHub = ghRepo && f.nowLines && f.text == null;
+  if (fromGitHub && !f.failed) {
+    document.getElementById("dTodos").innerHTML = "";
+    document.getElementById("dCode").innerHTML = `<p class="note">Loading the source from GitHub…</p>`;
+    loadSource(b);
+  } else document.getElementById("dCode").innerHTML = f.text != null
     ? `<h3>First lines</h3><pre class="code">${esc(f.text)}</pre>`
-    : `<p class="note">${f.nowLines ? (citySource === "sample" ? "This is the example city, so there is no source to show." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here.") : "This file was deleted before today."}</p>`;
+    : `<p class="note">${!f.nowLines ? "This file was deleted before today."
+        : fromGitHub ? "GitHub didn't return this file's source."
+        : citySource === "sample" ? "This is the example city, so there is no source to show."
+        : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   drawer.hidden = false;
   if (!walk.on) focusTo = new THREE.Vector3(b.position.x, b.userData.base + b.userData.target * 0.5, b.position.z);
 }
@@ -1032,6 +1041,86 @@ function setRepoStatus(html) { repoStatus.innerHTML = html; }
 function normRepo(s) {
   return s.trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
 }
+// Straight from GitHub (hosted site). Without signing in, GitHub allows 60 API calls an hour per visitor,
+// so this reads the current file tree (2 calls) and the newest GH_COMMITS commits (1 call each).
+// Building heights come from file sizes until a file is opened; its source then comes from
+// raw.githubusercontent.com, which has no such limit.
+const GH_COMMITS = 30, BYTES_PER_LINE = 32;
+let ghRepo = null;   // { owner, repo, branch } of a city loaded from GitHub
+async function gh(path) {
+  const r = await fetch("https://api.github.com" + path, { headers: { Accept: "application/vnd.github+json" } });
+  if (r.status === 403 || r.status === 429) {
+    const reset = +r.headers.get("x-ratelimit-reset");
+    const at = reset ? "after " + new Date(reset * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "in an hour";
+    throw new Error(`GitHub allows 60 requests an hour without signing in, and this browser has used them up. Try again ${at}, or run the local app for any repo: <code>python3 codecity.py serve</code>`);
+  }
+  if (r.status === 404 || r.status === 451) throw new Error("GitHub says that repo doesn't exist or isn't public.");
+  if (!r.ok) throw new Error(`GitHub returned an error (${r.status}). Try again in a moment.`);
+  return r.json();
+}
+function keepPath(p) { return !p.split("/").slice(0, -1).some(s => SKIP_DIRS.has(s)) && !!langOf(p); }
+
+async function loadFromGitHub(key) {
+  const m = key.match(/^([\w.-]+)\/([\w.-]+)$/);
+  if (!m) throw new Error("Paste a repo like github.com/owner/name.");
+  const [, owner, repo] = m, base = `/repos/${owner}/${repo}`;
+  busy.textContent = `Reading ${key} from GitHub…`;
+  const branch = (await gh(base)).default_branch;
+  const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+  const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= MAX_BYTES).slice(0, MAX_FILES)
+    .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / BYTES_PER_LINE)), funcs: null, todos: [], text: null, estimated: true }));
+  if (!files.length) throw new Error("No source files found in that repo.");
+
+  busy.textContent = `Reading the last ${GH_COMMITS} commits of ${key}…`;
+  const list = await gh(`${base}/commits?sha=${encodeURIComponent(branch)}&per_page=${GH_COMMITS}`);
+  const details = [];
+  for (let i = 0; i < list.length; i += 6) details.push(...await Promise.all(list.slice(i, i + 6).map(c => gh(`${base}/commits/${c.sha}`))));
+
+  // Walk newest -> oldest, undoing each commit, to recover every file's size before the window.
+  const lines = new Map(files.map(f => [f.path, f.lines]));
+  const commits = [];
+  for (const d of details) {
+    const rows = [];
+    for (const f of d.files || []) {
+      const p = f.filename, add = f.additions || 0, del = f.deletions || 0, L = lines.get(p) ?? Math.max(1, add);
+      if (f.status === "renamed" && f.previous_filename) {
+        lines.delete(p);
+        if (keepPath(p)) rows.push([p, L, 0, "A"]);
+        if (keepPath(f.previous_filename)) { const before = Math.max(1, L - add + del); rows.push([f.previous_filename, 0, before, "D"]); lines.set(f.previous_filename, before); }
+      } else if (!keepPath(p)) continue;
+      else if (f.status === "added") { rows.push([p, L, 0, "A"]); lines.delete(p); }
+      else if (f.status === "removed") { rows.push([p, 0, del, "D"]); lines.set(p, Math.max(1, del)); }
+      else { rows.push([p, add, del, "M"]); lines.set(p, Math.max(1, L - add + del)); }
+    }
+    if (rows.length) commits.push({
+      h: d.sha.slice(0, 8), t: Math.round(Date.parse(d.commit.author.date) / 1000),
+      a: (d.author && d.author.login) || d.commit.author.name, m: d.commit.message.split("\n")[0].slice(0, 120), c: rows,
+    });
+  }
+  commits.reverse();
+  buildCity({
+    name: key, source: "github", files, gh: { owner, repo, branch },
+    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: commits.length } : null,
+  });
+  setRepoStatus(`Loaded from GitHub: every current file and the last ${commits.length} commits. Heights are estimated from file size until you click a building. For full history, run the local app: <code>python3 codecity.py serve</code>`);
+}
+
+async function loadSource(b) {
+  const f = b.userData.f;
+  if (f.loading || f.failed) return;
+  f.loading = true;
+  try {
+    const path = f.path.split("/").map(encodeURIComponent).join("/");
+    const r = await fetch(`https://raw.githubusercontent.com/${ghRepo.owner}/${ghRepo.repo}/${encodeURIComponent(ghRepo.branch)}/${path}`);
+    if (!r.ok) throw new Error(r.status);
+    const a = analyze(f.path, await r.text());
+    Object.assign(f, { text: a.text, funcs: a.funcs, todos: a.todos, nowLines: a.lines, estimated: false });
+    if (viewNow) { b.userData.lines = a.lines; b.userData.target = fileHeight(a.lines); updateStats(); }
+  } catch (e) { f.failed = true; }
+  f.loading = false;
+  if (picked === b) openDrawer(b);
+}
+
 async function loadRepo(src) {
   const key = normRepo(src);
   if (!key) return;
@@ -1042,7 +1131,7 @@ async function loadRepo(src) {
       busy.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
       const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()));
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Could not build that repo.");
+      if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
       buildCity({ ...data, source: data.source || "git" });
     } else if (PRESETS[key]) {
       busy.textContent = `Loading ${key}…`;
@@ -1050,10 +1139,15 @@ async function loadRepo(src) {
       if (!r.ok) throw new Error("Could not load the built-in copy of " + key + ".");
       buildCity({ ...(await r.json()), source: "json" });
     } else {
-      setRepoStatus(`This page can't reach GitHub. Run the Code City app on your computer and paste it there: <code>python3 codecity.py serve</code> Or export it with <code>python3 codecity.py export ${esc(key)}</code> and drop the JSON here.`);
+      try { await loadFromGitHub(key); }
+      catch (e) {
+        // A TypeError means the request never left the page: the claude.ai copy blocks GitHub, or the visitor is offline.
+        if (!(e instanceof TypeError)) throw e;
+        setRepoStatus(`This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
+      }
     }
   } catch (e) {
-    setRepoStatus(esc(e.message));
+    setRepoStatus(e.message);
   } finally { busy.hidden = true; }
 }
 document.getElementById("repoForm").addEventListener("submit", e => { e.preventDefault(); loadRepo(document.getElementById("repoInput").value); });
