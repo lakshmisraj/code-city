@@ -1,4 +1,4 @@
-# Code City's own PRs get the summary too, using the action from this repo.
+# Code City's own PRs get the summary from the published action.
 name: Code City PR summary
 on: pull_request
 permissions:
@@ -11,4 +11,4 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./
+      - uses: lakshmisraj/code-city-pr-summary@v1
