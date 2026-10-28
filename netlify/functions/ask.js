@@ -89,7 +89,9 @@ exports.handler = async event => {
     console.log(`ask: failed after ${Date.now() - started} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).slice(0, 300)}`);
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: "That took too long to answer. Try a narrower question." });
-    return json(502, { error: "Gemini couldn't answer just now. Try again in a moment." });
+    // Google's own reason (e.g. "API key not valid", "model not found") helps fix setup problems; it never contains the key.
+    const reason = String((e && e.message) || "").replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 200);
+    return json(502, { error: `Gemini couldn't answer just now${e && e.status ? ` (${e.status})` : ""}${reason ? `: ${reason}` : ""}` });
   }
   if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   const known = new Set(files.map(f => f.path));
