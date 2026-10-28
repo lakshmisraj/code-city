@@ -1939,7 +1939,7 @@ async function askCity(question) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
-      status.innerHTML = esc(data.error || "Couldn't get an answer. Try again.") +
+      status.innerHTML = esc(data.error || `Couldn't get an answer (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
       return;
     }

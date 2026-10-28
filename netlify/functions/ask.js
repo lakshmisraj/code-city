@@ -7,6 +7,7 @@ const { GoogleGenAI } = require("@google/genai");
 
 const MODEL = "gemini-3.8-flash";
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12;
+const BUDGET_MS = 8500;   // Netlify stops the function at 10 s; always answer before that
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
 
 const ANSWER_SCHEMA = {
@@ -44,6 +45,7 @@ function json(statusCode, body) {
 }
 
 exports.handler = async event => {
+  const started = Date.now(), left = () => BUDGET_MS - (Date.now() - started);
   const enabled = !!process.env.GEMINI_API_KEY;
   if (event.httpMethod === "GET") return json(200, { enabled });
   if (event.httpMethod !== "POST") return json(405, { error: "Use POST." });
@@ -53,8 +55,10 @@ exports.handler = async event => {
   if (!token) return json(401, { error: "Sign in with GitHub to ask questions." });
   const who = await fetch("https://api.github.com/user", {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "code-city" },
+    signal: AbortSignal.timeout(2000),
   }).catch(() => null);
-  if (!who || !who.ok) return json(401, { error: "Your GitHub sign-in has expired. Sign in again to ask questions." });
+  if (!who) { console.log("ask: GitHub check failed to respond"); return json(503, { error: "Couldn't check your GitHub sign-in just now. Try again in a moment." }); }
+  if (!who.ok) return json(401, { error: "Your GitHub sign-in has expired. Sign in again to ask questions." });
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch (e) { return json(400, { error: "That request wasn't valid JSON." }); }
@@ -76,11 +80,13 @@ exports.handler = async event => {
       system_instruction: SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
       input: `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\nQuestion: ${question}`,
-      generation_config: { thinking_level: "low", max_output_tokens: 4000 },
+      generation_config: { thinking_level: "minimal", max_output_tokens: 4000 },
       response_format: { type: "text", mime_type: "application/json", schema: ANSWER_SCHEMA },
-    }, { timeout_ms: 9000 });   // stay inside the function's time limit
+    }, { timeout_ms: Math.max(1000, left()) });
+    console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     reply = JSON.parse(interaction.output_text || "");
   } catch (e) {
+    console.log(`ask: failed after ${Date.now() - started} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).slice(0, 300)}`);
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: "That took too long to answer. Try a narrower question." });
     return json(502, { error: "Gemini couldn't answer just now. Try again in a moment." });
