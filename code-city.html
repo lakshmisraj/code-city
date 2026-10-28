@@ -1675,7 +1675,11 @@ function rangeFromLink() {
 function autoLoadLinkedRange() {
   if (!pendingView || !pendingView.range || pendingView.repo !== ghProbe.key) return;
   const pl = plan();
-  if (pl.mode === "every" && pl.calls <= LINK_AUTOLOAD_MAX) hp("hpLoad").click();
+  if (pl.n === 0) {   // nothing happened in that range: show today's files and the rest of the view
+    const label = hpChoice === "Custom" ? "that range" : `the last ${hpChoice.toLowerCase().replace(/^1 /, "")}`;
+    hp("hpSkip").click();
+    setRepoStatus(`${esc(ghProbe ? ghProbe.key : currentRepo)} has no commits in ${label}, so there's no history to replay. Showing today's files.`);
+  } else if (pl.mode === "every" && pl.calls <= LINK_AUTOLOAD_MAX) hp("hpLoad").click();
   else setRepoStatus(`This link asks for ${pl.exact ? "" : "about "}${fmt(pl.n)} commits of history, which costs ${fmt(pl.calls)} GitHub requests. Load it below, or pick a shorter range.`);
 }
 function applyPendingView() {
