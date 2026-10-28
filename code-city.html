@@ -64,6 +64,21 @@ body.has-timeline { --tl-h: 76px; }
 .field > label, .label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
 .field small { color: var(--ink-dim); font-size: 12px; }
 .field small:empty { display: none; }
+.field small.help { line-height: 1.45; }
+.field small a { color: var(--sodium); }
+.check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); cursor: pointer; }
+.check input { accent-color: var(--sodium); margin: 0; }
+#tokenBox .field { margin-top: 2px; }
+.hpanel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--street-2); }
+.hpanel p { margin: 0; font-size: 12px; line-height: 1.45; }
+.hp-info { color: var(--ink-dim); }
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { flex: 1 0 auto; }
+.hp-custom { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
+.hp-custom input { width: 90px; font: 13px var(--f-mono); color: var(--ink); background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }
+.hp-estimate { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.hp-warn { color: var(--sodium); background: color-mix(in srgb, var(--sodium) 12%, transparent); border-left: 2px solid var(--sodium); padding: 6px 8px; border-radius: 0 4px 4px 0; }
+.hp-warn.over { color: var(--fire); background: color-mix(in srgb, var(--fire) 12%, transparent); border-left-color: var(--fire); }
 .field small code { font-family: var(--f-mono); color: var(--ink); background: var(--night); padding: 1px 4px; border-radius: 3px; user-select: all; word-break: break-all; }
 .inline { display: flex; gap: 6px; }
 .inline input { flex: 1; min-width: 0; }
@@ -219,7 +234,29 @@ body.walking .card, body.walking #hint { display: none; }
       <button class="primary" type="submit">Build</button>
     </div>
     <small id="repoStatus"></small>
+    <details class="more" id="tokenBox">
+      <summary id="tokenSummary">Get more GitHub requests: add a token</summary>
+      <div class="field">
+        <label for="ghToken">GitHub token</label>
+        <input id="ghToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+        <label class="check" for="rememberToken"><input type="checkbox" id="rememberToken"> Remember on this device</label>
+        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, enough for every commit of most repos. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with public repository access only. It is only ever sent to api.github.com.</small>
+      </div>
+    </details>
   </form>
+
+  <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
+    <div class="label" id="hpTitle">How much history?</div>
+    <p class="hp-info" id="hpInfo"></p>
+    <div class="seg wrap" role="group" aria-label="History range" id="hpRanges"></div>
+    <label class="hp-custom" id="hpCustom" hidden>Latest <input id="hpCount" type="number" min="1" step="1" inputmode="numeric"> commits</label>
+    <p class="hp-estimate" id="hpEstimate"></p>
+    <p class="hp-warn" id="hpWarn" role="status"></p>
+    <div class="actions">
+      <button class="primary" id="hpLoad" type="button">Load history</button>
+      <button id="hpSkip" type="button">Current files only</button>
+    </div>
+  </section>
 
   <div class="actions">
     <button id="openBtn" type="button">Open a folder</button>
@@ -903,7 +940,7 @@ function openDrawer(b) {
   document.getElementById("dPath").textContent = (parts.join("/") || ".") + "/ · " + LANGS[f.lang].name;
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   document.getElementById("dStats").innerHTML =
-    `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${f.estimated ? "–" : fmt(f.funcs)}</dd></div>` +
+    `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${ghRepo && f.text == null ? "–" : fmt(f.funcs)}</dd></div>` +
     `<div><dt>Fires</dt><dd class="fire">${viewNow ? f.todos.length : "–"}</dd></div>` +
     (hist ? `<div><dt>Commits</dt><dd>${fmt(commits)}</dd></div>` : `<div><dt>Floors</dt><dd>${Math.max(1, Math.round(b.userData.target))}</dd></div>`);
   document.getElementById("dTodos").innerHTML = !viewNow ? `<p class="note">TODO fires show for current files. Drag the timeline to the end to see them.</p>`
@@ -1041,74 +1078,313 @@ function setRepoStatus(html) { repoStatus.innerHTML = html; }
 function normRepo(s) {
   return s.trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
 }
-// Straight from GitHub (hosted site). Without signing in, GitHub allows 60 API calls an hour per visitor,
-// so this reads the current file tree (2 calls) and the newest GH_COMMITS commits (1 call each).
-// Building heights come from file sizes until a file is opened; its source then comes from
-// raw.githubusercontent.com, which has no such limit.
-const GH_COMMITS = 30, BYTES_PER_LINE = 32;
-let ghRepo = null;   // { owner, repo, branch } of a city loaded from GitHub
+// Straight from GitHub (hosted site). GitHub allows 60 API calls an hour per network without a token and
+// 5,000 with one, and seeing which files a commit changed costs one call per commit. So loading happens in two steps:
+//   1. probe: today's files plus the size and age of the history (about 4 calls), then ask how much history to load
+//   2. load the chosen range one commit at a time, or, when that won't fit in what's left, as coarser steps
+//      using GitHub's compare between evenly spaced commits
+// Heights come from file sizes (or replayed line counts) until a file is opened; its source then comes
+// from raw.githubusercontent.com, which has no such limit.
+const API = "https://api.github.com", MAX_STEPS = 1500, MIN_STEPS = 10, BYTES_PER_LINE = 32;
+const TOKEN_KEY = "codecity.githubToken";
+let ghRepo = null;    // { owner, repo, branch } of a city loaded from GitHub
+let ghProbe = null;   // what step 1 learned about the repo, until history is loaded or skipped
+const tokenInput = document.getElementById("ghToken"), rememberToken = document.getElementById("rememberToken");
+
+function ghToken() { return tokenInput.value.trim(); }
+function ghHeaders() {
+  const h = { Accept: "application/vnd.github+json" };
+  if (ghToken()) h.Authorization = "Bearer " + ghToken();
+  return h;
+}
 function rateLimited(reset) {
   const at = reset ? "after " + new Date(reset * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "in an hour";
-  return new Error(`GitHub allows 60 requests an hour without signing in, and your network has used them up. Try again ${at}, or run the local app for any repo: <code>python3 codecity.py serve</code>`);
+  return new Error(ghToken()
+    ? `Your GitHub token has used its 5,000 requests for this hour. Try again ${at}.`
+    : `GitHub allows 60 requests an hour without a token, and your network has used them up. Try again ${at}, or ${MORE_WITH_TOKEN}`);
 }
-async function gh(path) {
-  const r = await fetch("https://api.github.com" + path, { headers: { Accept: "application/vnd.github+json" } });
+// Shown to visitors without a token wherever the request limit comes up.
+const MORE_WITH_TOKEN = `<button class="linkish" type="button" data-open-token>Sign in with a GitHub token</button> to get 5,000 requests an hour instead of 60.`;
+document.addEventListener("click", e => {
+  if (!e.target.closest("[data-open-token]")) return;
+  const box = document.getElementById("tokenBox");
+  box.open = true; box.scrollIntoView({ block: "nearest" }); tokenInput.focus();
+});
+async function ghRes(path) {
+  const r = await fetch(API + path, { headers: ghHeaders() });
+  if (r.status === 401) throw new Error("GitHub rejected that token. Check that it is pasted in full and hasn't expired.");
   if (r.status === 403 || r.status === 429) throw rateLimited(+r.headers.get("x-ratelimit-reset"));
-  if (r.status === 404 || r.status === 451) throw new Error("GitHub says that repo doesn't exist or isn't public.");
-  if (!r.ok) throw new Error(`GitHub returned an error (${r.status}). Try again in a moment.`);
-  return r.json();
+  if (r.status === 404 || r.status === 451) throw Object.assign(new Error("GitHub says that repo doesn't exist or isn't public."), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(`GitHub returned an error (${r.status}). Try again in a moment.`), { status: r.status });
+  return r;
+}
+async function gh(path) { return (await ghRes(path)).json(); }
+async function callsLeft() {   // asking doesn't use up a call
+  return fetch(API + "/rate_limit", { headers: ghHeaders() }).then(r => r.ok ? r.json() : null).then(d => d && d.resources.core).catch(() => null);
 }
 function keepPath(p) { return !p.split("/").slice(0, -1).some(s => SKIP_DIRS.has(s)) && !!langOf(p); }
+function when(c) { return Math.round(Date.parse(c.commit.author.date) / 1000); }
+function day(t) { return dateFmt.format(new Date(t * 1000)); }
 
+// Run fn over items, n at a time, keeping order.
+async function pool(items, n, fn, progress) {
+  const out = new Array(items.length);
+  let next = 0, done = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) { const k = next++; out[k] = await fn(items[k]); if (progress) progress(++done, items.length); }
+  }));
+  return out;
+}
+
+// A commit's (or a compare's) changed files as change rows, replayed forward from what came before...
+function forwardRows(files, lines) {
+  const rows = [];
+  for (const f of files || []) {
+    const p = f.filename, add = f.additions || 0, del = f.deletions || 0;
+    if (f.status === "renamed" && f.previous_filename) {
+      const prev = f.previous_filename, before = lines.get(prev) ?? Math.max(1, del), L = Math.max(1, before + add - del);
+      lines.delete(prev); lines.set(p, L);
+      if (keepPath(prev)) rows.push([prev, 0, before, "D"]);
+      if (keepPath(p)) rows.push([p, L, 0, "A"]);
+    } else if (f.status === "added") { lines.set(p, Math.max(1, add)); if (keepPath(p)) rows.push([p, Math.max(1, add), 0, "A"]); }
+    else if (f.status === "removed") { const before = lines.get(p) ?? Math.max(1, del); lines.delete(p); if (keepPath(p)) rows.push([p, 0, before, "D"]); }
+    else { lines.set(p, Math.max(1, (lines.get(p) || 0) + add - del)); if (keepPath(p)) rows.push([p, add, del, "M"]); }
+  }
+  return rows;
+}
+// ...or undone backward from what came after (used when the range doesn't start at the first commit).
+function backwardRows(files, lines) {
+  const rows = [];
+  for (const f of files || []) {
+    const p = f.filename, add = f.additions || 0, del = f.deletions || 0, L = lines.get(p) ?? Math.max(1, add);
+    if (f.status === "renamed" && f.previous_filename) {
+      lines.delete(p);
+      if (keepPath(p)) rows.push([p, L, 0, "A"]);
+      const before = Math.max(1, L - add + del);
+      lines.set(f.previous_filename, before);
+      if (keepPath(f.previous_filename)) rows.push([f.previous_filename, 0, before, "D"]);
+    } else if (f.status === "added") { lines.delete(p); if (keepPath(p)) rows.push([p, L, 0, "A"]); }
+    else if (f.status === "removed") { lines.set(p, Math.max(1, del)); if (keepPath(p)) rows.push([p, 0, Math.max(1, del), "D"]); }
+    else { lines.set(p, Math.max(1, L - add + del)); if (keepPath(p)) rows.push([p, add, del, "M"]); }
+  }
+  return rows;
+}
+function commitMeta(c) {
+  return { h: c.sha.slice(0, 8), t: when(c), a: (c.author && c.author.login) || c.commit.author.name, m: c.commit.message.split("\n")[0].slice(0, 120) };
+}
+
+// ---- step 1: today's files and the shape of the history ----
 async function loadFromGitHub(key) {
   const m = key.match(/^([\w.-]+)\/([\w.-]+)$/);
   if (!m) throw new Error("Paste a repo like github.com/owner/name.");
   const [, owner, repo] = m, base = `/repos/${owner}/${repo}`;
   busy.textContent = `Reading ${key} from GitHub…`;
-  // Checking the allowance doesn't use it up. Keep 2 calls for the tree and 1 for the commit list.
-  const limit = await fetch("https://api.github.com/rate_limit").then(r => r.json()).then(d => d.resources.core).catch(() => null);
-  if (limit && limit.remaining < 2) throw rateLimited(limit.reset);
-  const nCommits = limit ? Math.max(0, Math.min(GH_COMMITS, limit.remaining - 3)) : GH_COMMITS;
+  const limit = await callsLeft();
+  if (limit && limit.remaining < 4) throw rateLimited(limit.reset);
+
   const branch = (await gh(base)).default_branch;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
   const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= MAX_BYTES).slice(0, MAX_FILES)
     .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / BYTES_PER_LINE)), funcs: null, todos: [], text: null, estimated: true }));
   if (!files.length) throw new Error("No source files found in that repo.");
 
-  busy.textContent = `Reading the last ${nCommits} commits of ${key}…`;
-  const list = nCommits ? await gh(`${base}/commits?sha=${encodeURIComponent(branch)}&per_page=${nCommits}`) : [];
-  const details = [];
-  for (let i = 0; i < list.length; i += 6) details.push(...await Promise.all(list.slice(i, i + 6).map(c => gh(`${base}/commits/${c.sha}`))));
+  // Newest page of commits; its Link header gives the page count, and the last page gives the first commit.
+  const listPath = p => `${base}/commits?sha=${encodeURIComponent(branch)}&per_page=100&page=${p}`;
+  const first = await ghRes(listPath(1));
+  const page1 = await first.json();
+  const lastLink = (first.headers.get("link") || "").match(/[?&]page=(\d+)>;\s*rel="last"/);
+  const pages = lastLink ? +lastLink[1] : 1;
+  let total = page1.length, oldest = page1[page1.length - 1];
+  if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
-  // Walk newest -> oldest, undoing each commit, to recover every file's size before the window.
-  const lines = new Map(files.map(f => [f.path, f.lines]));
-  const commits = [];
-  for (const d of details) {
-    const rows = [];
-    for (const f of d.files || []) {
-      const p = f.filename, add = f.additions || 0, del = f.deletions || 0, L = lines.get(p) ?? Math.max(1, add);
-      if (f.status === "renamed" && f.previous_filename) {
-        lines.delete(p);
-        if (keepPath(p)) rows.push([p, L, 0, "A"]);
-        if (keepPath(f.previous_filename)) { const before = Math.max(1, L - add + del); rows.push([f.previous_filename, 0, before, "D"]); lines.set(f.previous_filename, before); }
-      } else if (!keepPath(p)) continue;
-      else if (f.status === "added") { rows.push([p, L, 0, "A"]); lines.delete(p); }
-      else if (f.status === "removed") { rows.push([p, 0, del, "D"]); lines.set(p, Math.max(1, del)); }
-      else { rows.push([p, add, del, "M"]); lines.set(p, Math.max(1, L - add + del)); }
-    }
-    if (rows.length) commits.push({
-      h: d.sha.slice(0, 8), t: Math.round(Date.parse(d.commit.author.date) / 1000),
-      a: (d.author && d.author.login) || d.commit.author.name, m: d.commit.message.split("\n")[0].slice(0, 120), c: rows,
+  buildCity({ name: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch }, history: null });
+  if (!page1.length) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
+  ghProbe = { key, owner, repo, base, branch, files, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) };
+  setRepoStatus("");
+  await openHistoryPanel();
+}
+
+// ---- asking how much history ----
+const RANGES = [["1 week", 7], ["1 month", 30], ["3 months", 91], ["1 year", 365], ["All time", Infinity], ["Custom", null]];
+const hp = id => document.getElementById(id);
+let hpChoice = "1 month", hpLeft = null;
+
+async function openHistoryPanel() {
+  const p = ghProbe;
+  const lim = await callsLeft();
+  hpLeft = lim ? lim.remaining : null;
+  hp("hpInfo").textContent = `${p.key} has ${fmt(p.total)} commits, from ${day(p.oldestT)} to ${day(p.times[0])}. Today's files are showing. Pick how much history to replay.`;
+  hp("hpRanges").innerHTML = RANGES.map(([label]) => `<button type="button" aria-pressed="${label === hpChoice}" data-range="${label}">${label}</button>`).join("");
+  hp("hpCount").max = p.total;
+  if (!hp("hpCount").value) hp("hpCount").value = Math.min(50, p.total);
+  renderPlan();
+  hp("historyPanel").hidden = false;
+  hp("historyPanel").scrollIntoView({ block: "nearest" });
+}
+function closeHistoryPanel() { hp("historyPanel").hidden = true; ghProbe = null; }
+
+// How many of the repo's commits are newer than t. Exact within the newest 100, estimated beyond that.
+function countSince(t) {
+  const p = ghProbe, lastT = p.times[p.times.length - 1];
+  if (t <= p.oldestT) return { n: p.total, exact: true };
+  if (t >= lastT || p.pages === 1) return { n: p.times.filter(x => x >= t).length, exact: true };
+  const frac = (lastT - t) / Math.max(1, lastT - p.oldestT);
+  return { n: Math.max(p.times.length, Math.round(p.times.length + (p.total - p.times.length) * frac)), exact: false };
+}
+// Roughly when the nth newest commit was made.
+function timeOfNth(n) {
+  const p = ghProbe;
+  if (n <= p.times.length) return p.times[n - 1];
+  const lastT = p.times[p.times.length - 1], frac = (n - p.times.length) / Math.max(1, p.total - p.times.length);
+  return Math.round(lastT - frac * (lastT - p.oldestT));
+}
+
+function plan() {
+  const p = ghProbe, now = Date.now() / 1000;
+  let n, since, exact;
+  if (hpChoice === "Custom") {
+    n = Math.max(1, Math.min(p.total, Math.floor(+hp("hpCount").value || 1)));
+    since = null; exact = p.pages === 1 || n <= p.times.length;
+  } else {
+    const days = RANGES.find(r => r[0] === hpChoice)[1];
+    since = days === Infinity ? null : now - days * 86400;
+    ({ n, exact } = since == null ? { n: p.total, exact: true } : countSince(since));
+  }
+  const allTime = n >= p.total;
+  const listCalls = Math.max(0, Math.ceil(n / 100) - 1);            // page 1 is already loaded
+  const everyCalls = listCalls + n;
+  const left = hpLeft ?? Infinity;
+  let mode = null, steps = 0, calls = everyCalls;
+  if (n === 0) mode = null;
+  else if (everyCalls <= left - 1 && n <= MAX_STEPS) mode = "every";
+  else {
+    steps = Math.min(MAX_STEPS, left - listCalls - 2, n);
+    if (steps >= MIN_STEPS) { mode = "steps"; calls = listCalls + steps + 1; }
+  }
+  return { n, since, exact, allTime, mode, steps, calls, everyCalls, from: since ?? (allTime ? p.oldestT : timeOfNth(n)) };
+}
+
+function renderPlan() {
+  const pl = plan(), token = !!ghToken();
+  hp("hpCustom").hidden = hpChoice !== "Custom";
+  const calls = pl.mode === "steps" ? pl.calls : pl.everyCalls, secs = Math.round(calls * 0.06);
+  hp("hpEstimate").textContent = pl.n === 0
+    ? "No commits in that range."
+    : `${pl.exact ? "" : "About "}${fmt(pl.n)} commit${pl.n === 1 ? "" : "s"}, ${day(pl.from)} to today · ${pl.exact ? "" : "about "}${fmt(calls)} GitHub requests` +
+      (secs >= 10 ? ` · roughly ${secs < 90 ? secs + " seconds" : Math.round(secs / 60) + " minutes"}` : "");
+  const leftTxt = hpLeft == null ? "" : ` You have ${fmt(hpLeft)} left this hour${token ? "" : " without a token"}.`;
+  let warn = `Keep this low: each commit costs one GitHub request, and big ranges take a while to load.${leftTxt}`;
+  if (pl.mode === "steps") warn = `That's more commits than you have requests left, so it would load as ${fmt(pl.steps)} coarser steps instead of one by one.${leftTxt}`;
+  if (!pl.mode && pl.n > 0) warn = `Not enough GitHub requests left for this range.${leftTxt} Pick a shorter range.`;
+  hp("hpWarn").innerHTML = esc(warn) + (token ? "" : " " + MORE_WITH_TOKEN);
+  hp("hpWarn").classList.toggle("over", pl.mode !== "every");
+  hp("hpLoad").disabled = !pl.mode;
+  hp("hpLoad").textContent = pl.mode === "steps" ? `Load as ${fmt(pl.steps)} steps` : "Load history";
+}
+
+hp("hpRanges").addEventListener("click", e => {
+  const b = e.target.closest("[data-range]"); if (!b) return;
+  hpChoice = b.dataset.range;
+  hp("hpRanges").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  renderPlan();
+  if (hpChoice === "Custom") hp("hpCount").focus();
+});
+hp("hpCount").addEventListener("input", renderPlan);
+hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); };
+hp("hpLoad").onclick = async () => {
+  busy.hidden = false;
+  try { await loadHistory(plan()); }
+  catch (e) { setRepoStatus(e.message); }
+  finally { busy.hidden = true; }
+};
+
+// ---- step 2: load the chosen range ----
+async function loadHistory(pl) {
+  const p = ghProbe, say = t => { busy.textContent = t; };
+  // Newest first: take pages until the range is covered.
+  let list = p.page1.slice();
+  const inRange = c => pl.since == null || when(c) >= pl.since;
+  const want = () => pl.since == null ? list.length >= pl.n : !inRange(list[list.length - 1]);
+  let page = 1;
+  const guess = Math.min(p.pages, Math.ceil(pl.n / 100));
+  if (guess > 1) {
+    const more = await pool(Array.from({ length: guess - 1 }, (_, i) => i + 2), 8, n => gh(p.listPath(n)),
+      d => say(`Listing commits… page ${d + 1} of ${guess}`));
+    list = list.concat(...more); page = guess;
+  }
+  while (!want() && page < p.pages) { page++; say(`Listing commits… page ${page}`); list = list.concat(await gh(p.listPath(page))); }
+  list = (pl.since == null ? list.slice(0, pl.n) : list.filter(inRange)).reverse();   // oldest first
+  if (!list.length) throw new Error("No commits in that range.");
+  const allTime = list.length >= p.total || !(list[0].parents || []).length;
+  const singles = list.filter(c => (c.parents || []).length <= 1);   // merges repeat their branch's changes
+
+  const lim = await callsLeft();
+  const left = lim ? lim.remaining : Infinity;
+  const changes = [];   // oldest first: { meta, files }
+  let steps = 0;
+  if (singles.length <= left - 1 && singles.length <= MAX_STEPS) {
+    const details = await pool(singles, 8, c => gh(`${p.base}/commits/${c.sha}`),
+      (d, n) => say(`Reading commits… ${fmt(d)} / ${fmt(n)}`));
+    for (const d of details) changes.push({ meta: commitMeta(d), files: d.files });
+  } else {
+    steps = Math.min(MAX_STEPS, left - 2, list.length);
+    if (steps < MIN_STEPS) throw rateLimited(lim && lim.reset);
+    // Boundaries spread evenly across the range; each step is GitHub's compare between two of them.
+    const idx = [...new Set(Array.from({ length: steps }, (_, j) => Math.round((j + 1) * (list.length - 1) / steps)))];
+    let start, startIdx;
+    if (allTime) {
+      const root = await gh(`${p.base}/commits/${list[0].sha}`);
+      changes.push({ meta: commitMeta(root), files: root.files });
+      start = list[0].sha; startIdx = 0;
+    } else { start = list[0].parents[0].sha; startIdx = -1; }
+    const pairs = idx.filter(b => b > startIdx).map((b, j, arr) => [j ? list[arr[j - 1]].sha : start, b, j ? arr[j - 1] : startIdx]);
+    const diffs = await pool(pairs, 6, ([a, b]) => gh(`${p.base}/compare/${a}...${list[b].sha}`).catch(e => { if (e.status) return null; throw e; }),
+      (d, n) => say(`Reading history… step ${fmt(d)} / ${fmt(n)}`));
+    diffs.forEach((d, j) => {
+      if (!d) return;
+      const [, b, a] = pairs[j], meta = commitMeta(list[b]);
+      if (b - a > 1) meta.m += `  (+${fmt(b - a - 1)} more commits)`;
+      changes.push({ meta, files: d.files });
     });
   }
-  commits.reverse();
+
+  const files = p.files.map(f => ({ ...f }));
+  const commits = [];
+  let lines;
+  if (allTime) {
+    lines = new Map();
+    for (const ch of changes) { const rows = forwardRows(ch.files, lines); if (rows.length) commits.push({ ...ch.meta, c: rows }); }
+    for (const f of files) if (lines.has(f.path)) { f.lines = lines.get(f.path); f.estimated = false; }   // replayed counts are real
+    lines = new Map();
+  } else {
+    lines = new Map(files.map(f => [f.path, f.lines]));
+    for (const ch of changes.slice().reverse()) { const rows = backwardRows(ch.files, lines); if (rows.length) commits.push({ ...ch.meta, c: rows }); }
+    commits.reverse();
+  }
+  const key = p.key;
+  closeHistoryPanel();
   buildCity({
-    name: key, source: "github", files, gh: { owner, repo, branch },
-    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: commits.length } : null,
+    name: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
+    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: singles.length } : null,
   });
-  const short = nCommits < GH_COMMITS ? ` (GitHub's hourly limit only had room for ${nCommits ? nCommits : "no"} commits)` : "";
-  setRepoStatus(`Loaded from GitHub: every current file and the last ${commits.length} commits${short}. Heights are estimated from file size until you click a building. For full history, run the local app: <code>python3 codecity.py serve</code>`);
+  setRepoStatus(`Loaded ${fmt(singles.length)} commit${singles.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to today${steps ? `, as ${fmt(commits.length)} steps` : ""}. Press Play history.`);
 }
+
+// The token stays in this browser; it is saved only when the visitor asks.
+function syncTokenUi() {
+  document.getElementById("tokenSummary").textContent = ghToken() ? "GitHub token added: 5,000 requests an hour" : "Get more GitHub requests: add a token";
+}
+try {
+  const saved = localStorage.getItem(TOKEN_KEY);
+  if (saved) { tokenInput.value = saved; rememberToken.checked = true; }
+} catch (e) { /* storage blocked: the token just isn't remembered */ }
+function saveToken() {
+  try { if (rememberToken.checked && ghToken()) localStorage.setItem(TOKEN_KEY, ghToken()); else localStorage.removeItem(TOKEN_KEY); } catch (e) { /* storage blocked */ }
+  syncTokenUi();
+}
+tokenInput.addEventListener("input", () => { saveToken(); if (ghProbe) callsLeft().then(l => { hpLeft = l ? l.remaining : null; renderPlan(); }); });
+rememberToken.addEventListener("change", saveToken);
+syncTokenUi();
 
 async function loadSource(b) {
   const f = b.userData.f;
@@ -1147,7 +1423,7 @@ async function loadRepo(src) {
       try { await loadFromGitHub(key); }
       catch (e) {
         // A TypeError means the request never left the page: the claude.ai copy blocks GitHub, or the visitor is offline.
-        if (!(e instanceof TypeError)) throw e;
+        if (!(e instanceof TypeError) || !/fetch|network|load failed/i.test(e.message)) throw e;
         setRepoStatus(`This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
       }
     }
