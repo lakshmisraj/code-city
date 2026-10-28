@@ -1712,10 +1712,13 @@ function autoLoadLinkedRange() {
   } else if (pl.mode === "every" && pl.calls <= LINK_AUTOLOAD_MAX) hp("hpLoad").click();
   else setRepoStatus(`This link asks for ${pl.exact ? "" : "about "}${fmt(pl.n)} commits of history, which costs ${fmt(pl.calls)} GitHub requests. Load it below, or pick a shorter range.`);
 }
+// A link's PR, file and panel show as soon as the repo's files are on screen. Only what needs history waits
+// for it: a linked history range (loaded first) and heat colours (applied once history is in).
 function applyPendingView() {
   const p = pendingView;
   if (!p || p.repo !== currentRepo) return;
-  pendingView = null;
+  if (ghProbe && p.range) return;
+  pendingView = p.mode === "heat" && !hist ? { repo: p.repo, mode: "heat" } : null;
   if (p.mode === "heat" && hist) setColorMode("heat");
   if (p.panel === "hotspots") openSide("hot");
   if (p.file && bmap.has(p.file)) openDrawer(bmap.get(p.file));
@@ -1726,7 +1729,7 @@ function onCityBuilt() {
   if (askState || tourState) { askState = null; endTour(); if (sideMode === "ask" || sideMode === "tour") closeSide(true); }   // answers and tours belong to the city they were made for
   if (sideMode === "pr" && !prState) closeSide(true); else if (sideMode) renderSide();
   document.getElementById("prForm").hidden = !currentRepo;
-  if (!ghProbe) applyPendingView();
+  applyPendingView();
   syncUrl();
 }
 
