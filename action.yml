@@ -1,18 +1,18 @@
 name: Code City PR summary
-description: Comments on each pull request with the hotspots and owners of the files it touches, and a link to see it in Code City's 3D view.
+description: "Comments on each pull request with the hotspots and owners of the files it touches, and a link to see it in Code City's 3D view."
 author: Lakshmi Shibu Raj
 branding:
   icon: map
   color: orange
 inputs:
   github-token:
-    description: Token used to post the comment. The default works when the workflow grants `pull-requests: write`.
+    description: "Token used to post the comment. The default works when the workflow grants `pull-requests: write`."
     default: ${{ github.token }}
   history-days:
-    description: How many days of history count towards hotspots and owners.
+    description: "How many days of history count towards hotspots and owners."
     default: "365"
   site:
-    description: Code City site the comment links to.
+    description: "Code City site the comment links to."
     default: https://code-city-lakshmi.netlify.app
 runs:
   using: composite
