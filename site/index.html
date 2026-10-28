@@ -670,15 +670,15 @@ controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarA
 scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.45));
 const moon = new THREE.DirectionalLight(0xdfe6ff, 0.75); moon.position.set(-1, 2, 1.2); scene.add(moon);
 const lamp = new THREE.DirectionalLight(0xf2a541, 0.25); lamp.position.set(1.5, 0.6, -1); scene.add(lamp);
-// Backlight, part 2: a cool light that always sits behind the city as seen from the camera (moved every frame).
+// Backlight, part 2: a cool, level light that always sits behind the city as seen from the camera (moved every frame).
 const backLight = new THREE.DirectionalLight(0x9db6ff, 0.55);
 scene.add(backLight, backLight.target);
 function placeBackLight() {
   const away = controls.target.clone().sub(camera.position).setY(0).normalize();
   backLight.target.position.copy(controls.target);
-  backLight.position.copy(controls.target).addScaledVector(away, 100).setY(controls.target.y + 22);   // low, so it grazes walls and roof edges instead of flooding roofs
+  backLight.position.copy(controls.target).addScaledVector(away, 100).setY(controls.target.y);   // level, so it lights walls and never the roofs
 }
-// Backlight, part 3: walls catch a cool rim of light where they turn away from the viewer.
+// Backlight, part 3: walls (not roofs) catch a cool rim of light where they turn away from the viewer.
 const rimLight = { color: { value: new THREE.Color(0x7f9cff) }, strength: { value: 0.4 } };
 function withRim(mat) {
   mat.onBeforeCompile = shader => {
@@ -686,7 +686,8 @@ function withRim(mat) {
     shader.uniforms.uRimStrength = rimLight.strength;
     shader.fragmentShader = "uniform vec3 uRimColor;\nuniform float uRimStrength;\n" + shader.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
       float rim = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);
-      totalEmissiveRadiance += uRimColor * rim * uRimStrength;`);
+      float wall = 1.0 - abs(dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)));   // 0 on roofs, 1 on walls
+      totalEmissiveRadiance += uRimColor * rim * wall * uRimStrength;`);
   };
   return mat;
 }
