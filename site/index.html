@@ -571,7 +571,7 @@ scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x1a1408, 0.45));
 const moon = new THREE.DirectionalLight(0xdfe6ff, 0.75); moon.position.set(-1, 2, 1.2); scene.add(moon);
 const lamp = new THREE.DirectionalLight(0xf2a541, 0.25); lamp.position.set(1.5, 0.6, -1); scene.add(lamp);
 
-// Bloom from three.js's post-processing add-ons: only bright things glow (lit windows, fires, flashes, highlights).
+// Bloom from three.js's post-processing add-ons: only bright things glow (fires, flashes, highlights).
 // Rendering through a multisampled target keeps edges antialiased, which a plain composer would lose.
 const composerTarget = renderer.capabilities.isWebGL2
   ? new THREE.WebGLMultisampleRenderTarget(1, 1, { format: THREE.RGBAFormat })
@@ -581,28 +581,6 @@ composer.addPass(new THREE.RenderPass(scene, camera));
 const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.5, 0.66);
 composer.addPass(bloom);
 
-// Lit windows: a grid drawn in world space on every wall, so it lines up across buildings of any size.
-// A few windows switch on and off over time.
-const windowTime = { value: 0 };
-function withWindows(mat) {
-  mat.onBeforeCompile = shader => {
-    shader.uniforms.uTime = windowTime;
-    shader.vertexShader = "varying vec3 vWPos;\nvarying vec3 vWNormal;\n" + shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>
-      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-      vWNormal = normalize(mat3(modelMatrix) * objectNormal);`);
-    shader.fragmentShader = "uniform float uTime;\nvarying vec3 vWPos;\nvarying vec3 vWNormal;\n" + shader.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-      if (abs(vWNormal.y) < 0.5) {
-        float across = abs(vWNormal.x) > 0.5 ? vWPos.z : vWPos.x;
-        float depth = abs(vWNormal.x) > 0.5 ? vWPos.x : vWPos.z;
-        vec2 g = vec2(across / 0.45, vWPos.y / 0.6), f = fract(g), cell = floor(g);
-        float pane = step(0.28, f.x) * step(f.x, 0.72) * step(0.32, f.y) * step(f.y, 0.78);
-        float h = fract(sin(dot(vec3(cell, floor(depth * 4.0)), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-        float on = step(0.66, fract(h * 13.7 + floor(uTime * 0.08 + h * 7.0) * 0.618));
-        totalEmissiveRadiance += pane * on * vec3(1.0, 0.78, 0.45) * (0.8 + 0.6 * h);
-      }`);
-  };
-  return mat;
-}
 
 // stars
 {
@@ -648,16 +626,16 @@ const matCache = {};
 function langMat(lang) {
   if (!matCache[lang]) {
     const c = new THREE.Color(LANGS[lang].color);
-    matCache[lang] = withWindows(new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 }));
+    matCache[lang] = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.1, emissive: c, emissiveIntensity: 0.12 });
   }
   return matCache[lang];
 }
 const RAMP = ["#22305c", "#2f4a8f", "#4f6fc4", "#c58a3c", "#ef8a2e", "#ff5a2a", "#ffd9a8"].map(c => new THREE.Color(c));
 const HEAT_LEVELS = 16;
 const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
-  if (i === 0) return withWindows(new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 }));
+  if (i === 0) return new THREE.MeshStandardMaterial({ color: 0x1b2442, roughness: 0.9 });
   const t = (i - 1) / (HEAT_LEVELS - 1) * (RAMP.length - 1), a = Math.floor(t), c = RAMP[a].clone().lerp(RAMP[Math.min(a + 1, RAMP.length - 1)], t - a);
-  return withWindows(new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 }));
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: c, emissiveIntensity: 0.1 + 0.45 * (i / HEAT_LEVELS) ** 2 });
 });
 const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.22, roughness: 0.5 });
 const PICKED = new THREE.MeshStandardMaterial({ color: 0xf2a541, emissive: 0xf2a541, emissiveIntensity: 0.32, roughness: 0.4 });
@@ -1594,7 +1572,6 @@ function frame() {
     f.scale.y = f.userData.fh * flick;
   }
   FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
-  if (!reduceMotion) windowTime.value = t;
   updateDust(dt);
   if (walk.on) updateWalk(dt);
   else {
