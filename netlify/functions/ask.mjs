@@ -164,13 +164,17 @@ function codeBlocks(code) {
 
 // Asks MODELS[0]; if it fails with a busy or rate-limit error, or hasn't answered after HEDGE_MS, asks the
 // backup too. Resolves with the first answer; rejects only when every model asked has failed.
-function hedge(ask) {
+function hedge(ask, attempts) {   // attempts collects each model's time and outcome, for the timing notes
+  const t0 = Date.now();
   return new Promise((resolve, reject) => {
     let settled = false, backup = false, pending = 0, firstError = null;
     const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
     const run = model => {
       pending++;
-      ask(model).then(v => { if (!settled) { settled = true; clearTimeout(t); resolve(v); } }, e => {
+      const rec = { model, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
+      attempts.push(rec);
+      ask(model).then(v => { Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true }); if (!settled) { settled = true; clearTimeout(t); resolve(v); } }, e => {
+        Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
         pending--;
         if (settled) return;
         firstError = firstError || e;
@@ -277,6 +281,7 @@ async function handle(event) {
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
   let reply, pre = 0, used = {};
+  const attempts = [];
   // Trial: half the calls describe the JSON shape in the prompt instead of forcing it with a schema, since
   // schema-constrained output can be much slower. The reply is checked the same way either way.
   const strict = process.env.ASK_SCHEMA ? process.env.ASK_SCHEMA === "strict" : Math.random() < 0.5;
@@ -300,18 +305,18 @@ async function handle(event) {
     };
     pre = Date.now() - started;
     let answer;
-    try { answer = await Promise.race([hedge(tryModel), deadline]); } finally { clearTimeout(timer); }
+    try { answer = await Promise.race([hedge(tryModel, attempts), deadline]); } finally { clearTimeout(timer); }
     const { r } = answer;
     used = { model: answer.model, level: answer.level };
     console.log(`ask: ${files.length} files, answered by ${used.model} in ${Date.now() - started} ms`);
     const u = r.usageMetadata || {};
-    await note({ mode, strict, pre, ms: Date.now() - started, chars: input.length, ok: true, ...used, out: u.candidatesTokenCount, thought: u.thoughtsTokenCount });
+    await note({ mode, strict, pre, ms: Date.now() - started, chars: input.length, ok: true, ...used, out: u.candidatesTokenCount, thought: u.thoughtsTokenCount, attempts });
     try { reply = JSON.parse(r.text || ""); }
     catch (e) { return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." }); }
   } catch (e) {
     const ms = Date.now() - started;
     console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
-    await note({ mode, strict, pre, ms, chars: input.length, ok: false, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
+    await note({ mode, strict, pre, ms, chars: input.length, ok: false, attempts, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
     if (e && (e.status === 503 || /UNAVAILABLE|high demand/i.test(String(e.message)))) return json(503, { error: "Gemini is very busy right now. Try again in a minute." });
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
