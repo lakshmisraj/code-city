@@ -44,7 +44,7 @@ Building heights are estimated from file size until you click a building, which 
 
 Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, and the whole site 300 a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
 
-Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
+Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
 
 ### Guided tours
 

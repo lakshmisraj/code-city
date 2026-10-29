@@ -5,8 +5,8 @@
 // can't be spent anonymously, and each GitHub account gets a few asks an hour (plus a daily cap for the whole
 // site) so one visitor can't run up the bill. Needs GEMINI_API_KEY in the site's environment variables;
 // ASK_PER_HOUR and ASK_PER_DAY override the limits. GET tells the page whether asking is set up.
-const { GoogleGenAI } = require("@google/genai");
-const { connectLambda, getStore } = require("@netlify/blobs");
+import { GoogleGenAI } from "@google/genai";
+import { getStore } from "@netlify/blobs";
 
 const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model: answers well inside Netlify's 10 s limit
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_TOUR_STOPS = 8;
@@ -80,8 +80,7 @@ async function bump(store, key) {
   }
 }
 // Returns an error message when this ask would go over a limit, or null. Counts by GitHub account id.
-async function overLimit(event, userId) {
-  connectLambda(event);
+async function overLimit(userId) {
   const store = getStore({ name: "ask-limits", consistency: "strong" });
   const now = new Date(), hour = now.toISOString().slice(0, 13), today = hour.slice(0, 10);
   if (await bump(store, `user/${userId}/${hour}`) > PER_HOUR) return `You've asked ${PER_HOUR} questions this hour. Try again after the hour turns over.`;
@@ -93,7 +92,7 @@ function json(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) };
 }
 
-exports.handler = async event => {
+async function handle(event) {
   const started = Date.now(), left = () => BUDGET_MS - (Date.now() - started);
   const enabled = !!process.env.GEMINI_API_KEY;
   if (event.httpMethod === "GET") return json(200, { enabled });
@@ -126,7 +125,7 @@ exports.handler = async event => {
 
   // Only well-formed asks count towards the limits, and they're checked before Gemini is called.
   let over;
-  try { over = await overLimit(event, user.id); }
+  try { over = await overLimit(user.id); }
   catch (e) { console.log(`ask: limit check failed: ${e && e.message}`); return json(503, { error: "Couldn't check the question limit just now. Try again in a moment." }); }
   if (over) return json(429, { error: over });
 
@@ -168,6 +167,13 @@ exports.handler = async event => {
     answer: reply.answer,
     files: reply.files.filter(f => f && known.has(f.path)).map(f => ({ path: f.path, why: String(f.why || "") })).slice(0, MAX_ANSWER_FILES),
   });
+}
+
+// Netlify's current function format, which sets Netlify Blobs up fully (the older Lambda format can't do the
+// strongly consistent reads the limits need). The handler above still works on a plain request object.
+export default async req => {
+  const r = await handle({ httpMethod: req.method, headers: Object.fromEntries(req.headers), body: await req.text() });
+  return new Response(r.body, { status: r.statusCode, headers: r.headers });
 };
 
-exports.fileList = fileList;   // for tests
+export { fileList };   // for tests
