@@ -214,6 +214,66 @@ pre.code {
   border-radius: 6px; padding: 10px; overflow: auto; white-space: pre; color: var(--ink);
 }
 .note { color: var(--ink-dim); font-size: 13px; margin: 0; }
+button.mini { padding: 3px 8px; font-size: 11px; }
+.link-row { display: flex; align-items: flex-start; gap: 4px; }
+.link-row > button { flex: 1; min-width: 0; }
+.link-acts { display: flex; gap: 4px; padding-top: 6px; flex-shrink: 0; }
+.chain-step { display: flex; flex-direction: column; gap: 12px; }
+.chain-step + .chain-step { border-top: 2px solid color-mix(in srgb, var(--sodium) 45%, transparent); padding-top: 14px; }
+.chain-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ink-dim); }
+.chain-head b { font: 700 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
+.chain-trail { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font: 11px var(--f-mono); color: var(--ink-dim); }
+.chain-trail button { all: unset; cursor: pointer; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.chain-trail button:hover, .chain-trail button:focus-visible { color: var(--sodium); }
+.explain-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.todos.parts li em[data-line] { cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.todos.parts li em[data-line]:hover { color: var(--sodium); }
+
+/* Code viewer: several files side by side, full source */
+#viewer {
+  position: fixed; z-index: 6;
+  left: calc(max(16px, env(safe-area-inset-left, 0px)) + 328px); right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); height: var(--viewer-h);
+  background: color-mix(in srgb, var(--street) 96%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden;
+}
+body.side-open #viewer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 392px); }
+.viewer-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-dim); }
+.viewer-head b { font: 700 12px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
+.viewer-head span { flex: 1; min-width: 0; }
+.viewer-panes { flex: 1; min-height: 0; display: flex; overflow-x: auto; }
+.pane { flex: 1 0 300px; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+.pane:last-child { border-right: 0; }
+.pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.pane-head .explain-path { flex: 1; }
+.pane-body { flex: 1; min-height: 0; overflow: auto; font: 12px/1.55 var(--f-mono); color: var(--ink); background: var(--night); }
+.vl { display: flex; white-space: pre; padding-right: 12px; }
+.vl .ln { flex-shrink: 0; width: 4.5ch; padding-right: 1.2ch; text-align: right; color: var(--ink-dim); opacity: .6; user-select: none; }
+.vl.hit { background: color-mix(in srgb, var(--sodium) 22%, transparent); }
+.vl.hit .ln { color: var(--sodium); opacity: 1; }
+.pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
+/* Nothing covers the explanations: the viewer sits between the left card and the side panel, or below the
+   panels on narrower screens, and file details share the right-hand column with the side panel where the
+   two don't fit side by side. Phones are the exception: the viewer opens over the bottom half. */
+:root { --viewer-h: min(46vh, 520px); }
+body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 1099px) {
+  #viewer, body.side-open #viewer { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+  body.viewer-open #side { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + env(safe-area-inset-bottom, 0px)); }
+  body.viewer-open .card { max-height: calc(100% - 44px - var(--tl-h) - var(--viewer-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 641px) and (max-width: 1149px) {
+  body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
+  body.side-open.drawer-open #drawer { top: calc(50% + 6px); }
+  body.side-open.drawer-open.viewer-open #side { bottom: calc(50% + 6px + (var(--tl-h) + var(--viewer-h)) / 2); }
+  body.side-open.drawer-open.viewer-open #drawer { top: calc(50% + 6px - (var(--tl-h) + var(--viewer-h)) / 2); }
+}
+@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
+  :root { --viewer-h: 55vh; }
+  #viewer { z-index: 8; }
+  body.viewer-open #drawer, body.viewer-open #side { bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); }
+}
 
 #timeline {
   position: fixed; z-index: 6;
@@ -421,6 +481,10 @@ pre.code {
   </div>
   <div class="drawer-body" id="sideBody"></div>
 </aside>
+<section id="viewer" hidden aria-label="Code viewer">
+  <div class="viewer-head"><b>Code viewer</b><span id="viewerNote">Shift-click buildings to add more files.</span><button type="button" class="mini" id="viewerClose">Close all</button></div>
+  <div class="viewer-panes" id="viewerPanes"></div>
+</section>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <div id="timeline" hidden>
@@ -435,7 +499,7 @@ pre.code {
 
 
 <div id="tip" hidden></div>
-<div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building</div>
+<div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building or folder &middot; shift-click to view code</div>
 <div id="drop" hidden>Drop a folder or city.json</div>
 <div id="busy" hidden role="status" aria-live="polite"><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
 
@@ -842,6 +906,7 @@ const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
 let city = new THREE.Group(); scene.add(city);
 let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
 let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
+let panes = [];   // files open in the code viewer: [{ path, text, partial, line }]
 const FOLDER_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4330, emissive: 0xf2a541, emissiveIntensity: 0.18, roughness: 0.9 });
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -850,6 +915,7 @@ function clearCity() {
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
+  panes = []; document.getElementById("viewer").hidden = true; document.body.classList.remove("viewer-open");   // the viewer shows files of the city on screen
 }
 
 function label(text, x, y, z, size, dir) {
@@ -1141,7 +1207,8 @@ canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.c
 canvas.addEventListener("pointerup", ev => {
   if (downAt && !downAt.moved && ev.button === 0) {
     const o = pickEvent(ev);
-    if (o && o.userData.f) openDrawer(o); else if (o && o.userData.dir) openFolder(o.userData.dir); else closeDrawer();
+    if (o && o.userData.f && ev.shiftKey) viewFile(o.userData.f.path);
+    else if (o && o.userData.f) openDrawer(o); else if (o && o.userData.dir) openFolder(o.userData.dir); else closeDrawer();
   }
   downAt = null;
 });
@@ -1204,12 +1271,14 @@ function openDrawer(b) {
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   if (askEnabled && b.userData.lines > 0 && (f.text != null || codeRepo()))
-    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" class="primary" data-explain>Explain this code</button></div>`);
-  drawer.hidden = false;
+    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" class="primary" data-explain>Explain this code</button><button type="button" data-view>View code</button></div>`);
+  else if (b.userData.lines > 0 && (f.text != null || codeRepo()))
+    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" data-view>View code</button></div>`);
+  drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) flyToBuilding(b);
   syncUrl();
 }
-function closeDrawer() { const had = picked; drawer.hidden = true; picked = null; setFolder(null); if (had) syncUrl(); }
+function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) syncUrl(); }
 
 // ---------- folders ----------
 // Clicking a district (or its label) opens the folder: everything outside it dims, its platforms glow, and the
@@ -1254,7 +1323,7 @@ function openFolder(dir) {
       ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
     `<h3>Biggest files</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
     (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
-  drawer.hidden = false;
+  drawer.hidden = false; document.body.classList.add("drawer-open");
   const p = districts.find(d => d.userData.dir === dir);
   if (p) {
     const target = p.getWorldPosition(new THREE.Vector3()), size = Math.max(p.scale.x, p.scale.z);
@@ -1276,7 +1345,10 @@ drawer.addEventListener("click", e => {
   }
 });
 document.getElementById("closeBtn").onclick = closeDrawer;
-drawer.addEventListener("click", e => { if (picked && e.target.closest("[data-explain]")) explainFile(picked.userData.f.path); });
+drawer.addEventListener("click", e => {
+  if (picked && e.target.closest("[data-explain]")) explainFile(picked.userData.f.path);
+  if (picked && e.target.closest("[data-view]")) viewFile(picked.userData.f.path);
+});
 document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(true); };
 
 // search
@@ -2168,7 +2240,7 @@ async function askCity(question) {
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function renderAsk() {
-  const x = askState.explain;
+  const chain = askState.chain || [];
   $("sideTitle").textContent = askState.answer ? "Ask the city" : "Explain the code";
   $("sideSub").textContent = askState.question;
   sideBody.innerHTML = (askState.answer ? `<p class="ask-answer">${esc(askState.answer)}</p>` : "") +
@@ -2177,27 +2249,42 @@ function renderAsk() {
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    (!x ? "" : x.loading ? `<p class="side-note">Reading the code…</p>` : x.errorHtml ? `<p class="side-note">${x.errorHtml}</p>` : explainHtml(x)) +
-    `<p class="side-note">${x && x.files ? "Gemini read the code of the files above; check what it says against the source."
+    (chain.length > 1 ? `<div class="chain-trail" aria-label="Explanation chain">${chain.map((st, k) =>
+      `${k ? "<span aria-hidden=\"true\">→</span>" : ""}<button type="button" data-step="${k}">${esc(st.paths.length > 1 ? `${st.paths.length} files` : st.paths[0].split("/").pop())}</button>`).join("")}</div>` : "") +
+    chain.map((st, k) => `<section class="chain-step" data-chain="${k}">
+      ${chain.length > 1 || st.from ? `<div class="chain-head"><b>Step ${k + 1}</b>${st.from ? `<span>followed from ${pathHtml(st.from)}</span>` : ""}</div>` : ""}
+      ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : explainHtml(st)}
+    </section>`).join("") +
+    `<p class="side-note">${chain.some(st => st.files) ? "Gemini read the code above; check what it says against the source. <b>Follow</b> explains a connected file next, as the next step in the chain. <b>View</b> opens files side by side."
       : "Gemini picks these files from their names and sizes, then reads the code of the top few to explain it."}</p>`;
 }
 function explainHtml(x) {
-  const row = (path, n, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
-    return `<li><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">${n}</span><span class="path">${pathHtml(path)}</span><span class="meta">${esc(meta)}</span></button></li>`; };
+  const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
+    return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${esc(meta)}</span></button>` +
+      (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
   return `<div><h3>How the code works</h3><p class="ask-answer">${esc(x.summary)}</p></div>` + x.files.map(f => `
     <section class="explain-file">
-      <button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button>
+      <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
       <p class="explain-text">${esc(f.explanation)}</p>
-      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em>L${pt.line}</em><b>${esc(pt.name)}</b>${esc(pt.note)}</li>`).join("")}</ul></div>` : ""}
-      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(l.path, "→", l.how)).join("")}</ol></div>` : ""}
+      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code viewer">L${pt.line}</em><b>${esc(pt.name)}</b>${esc(pt.note)}</li>`).join("")}</ul></div>` : ""}
+      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how)).join("")}</ol></div>` : ""}
     </section>`).join("");
 }
+sideBody.addEventListener("click", e => {
+  const view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]"), step = e.target.closest("[data-step]");
+  if (view) viewFile(view.dataset.view);
+  else if (line) viewFile(line.dataset.file, +line.dataset.line);
+  else if (follow && askState) followLink(follow.dataset.from, follow.dataset.follow);
+  else if (step) { const el = sideBody.querySelector(`[data-chain="${step.dataset.step}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
+  else return;
+  e.stopPropagation();
+}, true);
 
 // ---------- reading and explaining code ----------
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
 // it already has) and sends it to the ask function, which explains it and names the files each one connects to.
-const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, codeCache = new Map();   // the ask function reads at most this much of each file
+const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, MAX_CHAIN = 8, codeCache = new Map();   // the ask function reads at most MAX_CODE_CHARS of each file
 function codeRepo() {   // where to read today's source from, or null
   if (ghRepo) return ghRepo;
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(currentRepo || "");
@@ -2215,15 +2302,18 @@ async function pullCode(path) {
   }
   return f.text != null ? { path, text: f.text, partial: b.userData.lines > f.text.split("\n").length } : null;
 }
-async function explainCode(state, paths, question) {
+// Each explanation is a step in a chain: Follow on a connected file explains it next, below the steps before.
+async function explainCode(state, paths, question, from) {
   const redraw = () => { if (askState === state && sideMode === "ask") renderSide(); };
-  if (!oauthToken) { state.explain = { errorHtml: needSignin("have the code explained") }; return redraw(); }
-  state.explain = { loading: true }; redraw();
+  const st = { paths, from: from || null, loading: true };
+  (state.chain = state.chain || []).push(st);
+  if (!oauthToken) { Object.assign(st, { loading: false, errorHtml: needSignin("have the code explained") }); return redraw(); }
+  redraw();
   const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
     .map(c => c.text.length > MAX_CODE_CHARS ? { path: c.path, text: c.text.slice(0, MAX_CODE_CHARS), partial: true } : c);
-  if (!code.length) { state.explain = { errorHtml: "The source of these files isn't available here, so there's no code to explain." }; return redraw(); }
+  st.loading = false;
+  if (!code.length) { st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
-  let explain;
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
@@ -2231,13 +2321,22 @@ async function explainCode(state, paths, question) {
       body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
     });
     const data = await r.json().catch(() => ({}));
-    explain = r.ok ? { ...data, partial: new Set(code.filter(c => c.partial).map(c => c.path)) }
-      : { errorHtml: esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
-          (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "") };
-  } catch (e) { explain = { errorHtml: "Couldn't reach Code City's server. Check your connection and try again." }; }
-  state.explain = explain;
-  for (const f of explain.files || []) for (const l of f.links) if (!state.files.has(l.path)) state.files.set(l.path, l.how);   // connected files light up too
+    if (r.ok) Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
+    else st.errorHtml = esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
+      (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
+  } catch (e) { st.errorHtml = "Couldn't reach Code City's server. Check your connection and try again."; }
+  for (const p of paths) if (!state.files.has(p)) state.files.set(p, "");
+  for (const f of st.files || []) for (const l of f.links) if (!state.files.has(l.path)) state.files.set(l.path, l.how);   // connected files light up too
   redraw();
+  if (from && askState === state) { const el = sideBody.querySelector(`[data-chain="${state.chain.indexOf(st)}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
+}
+function followLink(from, path) {
+  const chain = askState.chain || [], k = chain.findIndex(st => st.paths.length === 1 && st.paths[0] === path);
+  if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }   // already in the chain
+  if (chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Ask again to start a new one.`); return; }
+  const b = bmap.get(path);
+  if (b) flyToBuilding(b);
+  explainCode(askState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
 }
 function explainFile(path) {
   if (tourState) endTour();
@@ -2246,26 +2345,73 @@ function explainFile(path) {
   explainCode(askState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?");
 }
 
+// ---------- code viewer ----------
+// Several files' full source side by side. Files come from the drawer's View code, the explanations' View
+// buttons and key-part line numbers, or shift-clicking a building. The oldest pane makes room for a new one.
+const MAX_PANES = 4, MAX_VIEW_LINES = 6000;
+async function viewFile(path, line) {
+  const have = panes.find(p => p.path === path);
+  if (have) { if (line) have.line = line; renderViewer(); return; }
+  const c = await pullCode(path);
+  if (!c) { toast("The source of that file isn't available here."); return; }
+  if (panes.find(p => p.path === path)) return viewFile(path, line);   // added while this one was loading
+  panes.push({ path, text: c.text, partial: c.partial, line: line || 0 });
+  if (panes.length > MAX_PANES) panes.shift();
+  closeDrawer();
+  renderViewer();
+}
+function renderViewer() {
+  const box = $("viewer");
+  box.hidden = !panes.length;
+  document.body.classList.toggle("viewer-open", !box.hidden);
+  $("viewerNote").textContent = panes.length >= MAX_PANES ? `Showing ${MAX_PANES} files; adding another closes the oldest.` : "Shift-click buildings to add more files.";
+  $("viewerPanes").innerHTML = panes.map((p, i) => {
+    const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES);
+    return `<article class="pane" data-pane="${i}" aria-label="${esc(p.path)}">
+      <div class="pane-head"><button type="button" class="explain-path" data-path="${esc(p.path)}">${pathHtml(p.path)}</button>
+        ${askEnabled ? `<button type="button" class="mini" data-pane-explain="${i}">Explain</button>` : ""}
+        <button type="button" class="mini" data-pane-close="${i}" aria-label="Close ${esc(p.path)}">✕</button></div>
+      ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
+      <div class="pane-body" tabindex="0">${shown.map((l, k) => `<div class="vl${k + 1 === p.line ? " hit" : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span></div>`).join("")}</div>
+      ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}
+    </article>`;
+  }).join("");
+  panes.forEach((p, i) => { if (p.line) { const el = $("viewerPanes").querySelector(`[data-pane="${i}"] [data-l="${p.line}"]`); if (el) el.scrollIntoView({ block: "center" }); } });
+  const last = $("viewerPanes").lastElementChild;
+  if (last) last.scrollIntoView({ inline: "end", block: "nearest" });
+}
+$("viewerPanes").addEventListener("click", e => {
+  const close = e.target.closest("[data-pane-close]"), ex = e.target.closest("[data-pane-explain]"), go = e.target.closest("[data-path]");
+  if (close) { panes.splice(+close.dataset.paneClose, 1); renderViewer(); }
+  else if (ex) explainFile(panes[+ex.dataset.paneExplain].path);
+  else if (go) { const b = bmap.get(go.dataset.path); if (b) flyToBuilding(b); }
+});
+$("viewerClose").onclick = () => { panes = []; renderViewer(); };
+
 // Arcs over the city from each explained file (or tour stop) to the files it connects to.
 const linkMat = new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0.9, fog: false });
+const chainMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.95, fog: false });   // the steps of an explanation chain
 let linkGroup = null;
-function linkPairs() {
-  if (sideMode === "ask" && askState && askState.explain && askState.explain.files)
-    return askState.explain.files.flatMap(f => f.links.map(l => [f.path, l.path]));
-  if (sideMode === "tour" && tourState) { const st = tourState.steps[tourState.i]; return st.related.map(r => [st.path, r.path]); }
+function linkPairs() {   // [from, to, isChain]
+  if (sideMode === "ask" && askState && askState.chain) {
+    const done = askState.chain.filter(st => st.files), last = done[done.length - 1];
+    return [...askState.chain.filter(st => st.from).map(st => [st.from, st.paths[0], true]),
+            ...(last ? last.files.flatMap(f => f.links.map(l => [f.path, l.path, false])) : [])];
+  }
+  if (sideMode === "tour" && tourState) { const st = tourState.steps[tourState.i]; return st.related.map(r => [st.path, r.path, false]); }
   return [];
 }
 function drawLinks() {
   if (linkGroup) { scene.remove(linkGroup); linkGroup.children.forEach(l => l.geometry.dispose()); linkGroup = null; }
   const top = b => { const v = b.getWorldPosition(new THREE.Vector3()); v.y = b.userData.base + b.userData.target; return v; };
   const lines = [];
-  for (const [from, to] of linkPairs()) {
+  for (const [from, to, chain] of linkPairs()) {
     const a = bmap.get(from), b = bmap.get(to);
     if (!a || !b || !(a.userData.lines > 0) || !(b.userData.lines > 0)) continue;
     const p = top(a), q = top(b), mid = p.clone().lerp(q, 0.5);
     mid.y = Math.max(p.y, q.y) + 4 + p.distanceTo(q) * 0.35;
     const curve = new THREE.QuadraticBezierCurve3(p, mid, q);
-    lines.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, Math.max(0.08, citySize / 900), 6, false), linkMat));   // a tube, since WebGL lines are always one pixel thin
+    lines.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, Math.max(0.08, citySize / 900) * (chain ? 2.2 : 1), 6, false), chain ? chainMat : linkMat));   // a tube, since WebGL lines are always one pixel thin
   }
   if (!lines.length) return;
   linkGroup = new THREE.Group();

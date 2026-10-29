@@ -46,7 +46,13 @@ Building heights are estimated from file size until you click a building, which 
 
 Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Those connections light up too, joined by arcs over the city.
 
-**Explain this code** in a file's panel does the same for one file, and **Explain this folder** for a folder's three biggest files. Gemini reads at most 24,000 characters of each file and says when it only saw the start. Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour plus 20 code explanations, and the whole site 300 Gemini calls a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
+**Explain this code** in a file's panel does the same for one file, and **Explain this folder** for a folder's three biggest files. Gemini reads at most 24,000 characters of each file and says when it only saw the start.
+
+Explanations form a chain: **Follow** on any connected file explains it next, as a new step below the ones before ("followed from app.py"), so you can trace a request from file to file. The trail at the top jumps between steps, thicker arcs mark the path the chain took, and a chain holds up to 8 steps.
+
+### Code viewer
+
+**View code** (in a file's panel, next to any explained file, or Shift-click a building) opens the file's full source in the code viewer, where up to four files sit side by side. Clicking a key part's line number in an explanation opens that file at that line. The viewer sits beside the explanation panel, or below it on narrower screens, so the two never cover each other. Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour plus 20 code explanations, and the whole site 300 Gemini calls a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
 
 Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
 
