@@ -11,10 +11,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { getStore } from "@netlify/blobs";
 
-// Google's fastest model first. When it's overloaded (it answers "high demand", or slowly), the backup is asked
-// too and whichever answers first is used.
-const MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
-const HEDGE_MS = +process.env.ASK_HEDGE_MS || 8000;   // no answer by then: ask the backup as well
+// Google's fastest model. Its overloads come in short spikes ("high demand", or a reply that crawls), so a busy
+// reply is retried after a pause and a slow one gets a second copy sent alongside it; the first answer wins.
+// (gemini-3.8-flash was tried as a backup, but took over 24 s itself.)
+const MODEL = "gemini-3.5-flash-lite";
+const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
+const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
+const MAX_TRIES = 4;
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 40000;   // README, manifests, import graph and outlines, read by the page
@@ -162,29 +165,30 @@ function codeBlocks(code) {
     c.text.split("\n").map((l, i) => `${i + 1}| ${l}`).join("\n")).join("\n\n");
 }
 
-// Asks MODELS[0]; if it fails with a busy or rate-limit error, or hasn't answered after HEDGE_MS, asks the
-// backup too. Resolves with the first answer; rejects only when every model asked has failed.
-function hedge(ask, attempts) {   // attempts collects each model's time and outcome, for the timing notes
+// Sends the request; a busy reply is retried after RETRY_MS, and a request with no answer after HEDGE_MS gets
+// another copy sent alongside, up to MAX_TRIES in all. Resolves with the first answer; rejects once nothing more
+// can be tried. attempts collects each try's start, time and outcome for the timing notes.
+function hedge(ask, attempts) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
-    let settled = false, backup = false, pending = 0, firstError = null;
+    let settled = false, tries = 0, pending = 0, lastError = null, timer = 0, retry = 0;
     const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
-    const run = model => {
-      pending++;
-      const rec = { model, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
+    const finish = (ok, v) => { if (settled) return; settled = true; clearTimeout(timer); clearTimeout(retry); ok ? resolve(v) : reject(v); };
+    const launch = () => {
+      if (settled || tries >= MAX_TRIES) return;
+      tries++; pending++;
+      clearTimeout(timer); timer = setTimeout(launch, HEDGE_MS);
+      const rec = { model: MODEL, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
       attempts.push(rec);
-      ask(model).then(v => { Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true }); if (!settled) { settled = true; clearTimeout(t); resolve(v); } }, e => {
+      ask(MODEL).then(v => { Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true }); finish(true, v); }, e => {
         Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
-        pending--;
+        pending--; lastError = e;
         if (settled) return;
-        firstError = firstError || e;
-        if (!backup && busy(e)) startBackup();
-        else if (!pending) { settled = true; clearTimeout(t); reject(firstError); }
+        if (busy(e) && tries < MAX_TRIES) { clearTimeout(retry); retry = setTimeout(launch, RETRY_MS); }
+        else if (!pending) finish(false, e);
       });
     };
-    const startBackup = () => { if (backup || settled) return; backup = true; run(MODELS[1]); };
-    const t = setTimeout(startBackup, HEDGE_MS);
-    run(MODELS[0]);
+    launch();
   });
 }
 
