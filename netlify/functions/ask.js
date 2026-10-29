@@ -147,7 +147,7 @@ exports.handler = async event => {
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     reply = JSON.parse(interaction.output_text || "");
   } catch (e) {
-    console.log(`ask: failed after ${Date.now() - started} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).slice(0, 300)}`);
+    console.log(`ask: failed after ${Date.now() - started} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: "That took too long to answer. Try a narrower question." });
     // Google's own reason (e.g. "API key not valid", "model not found") helps fix setup problems; it never contains the key.

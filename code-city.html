@@ -83,6 +83,10 @@ body.has-timeline { --tl-h: 76px; }
 .dual input[type=range]::-moz-range-track { height: 22px; background: none; }
 .dual input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: var(--sodium); border: 2px solid var(--night); box-shadow: 0 0 0 1px var(--sodium); cursor: grab; }
 .dual input[type=range]::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%; background: var(--sodium); border: 2px solid var(--night); box-shadow: 0 0 0 1px var(--sodium); cursor: grab; }
+@media (pointer: coarse) {   /* bigger handles for fingers */
+  .dual input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -1px; }
+  .dual input[type=range]::-moz-range-thumb { width: 20px; height: 20px; }
+}
 .dual input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--ink); }
 .dual input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--ink); }
 .dual-ticks { position: relative; height: 14px; font: 10px var(--f-mono); color: var(--ink-dim); }
@@ -172,6 +176,7 @@ details.more[open] summary { margin-bottom: 8px; }
 .btn-link { font: 600 13px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; text-decoration: none; }
 .btn-link:hover { border-color: var(--sodium); }
 .btn-link:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+#toast:not(.show) { opacity: 0; pointer-events: none; }   /* kept in the page so screen readers hear each message */
 #toast {
   position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
   top: calc(16px + env(safe-area-inset-top, 0px));
@@ -239,13 +244,14 @@ pre.code {
 }
 #busy { position: fixed; inset: 0; z-index: 19; display: grid; place-items: center; align-content: center; gap: 14px; font-family: var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--night) 70%, transparent); padding: 0 16px; text-align: center; }
 
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
   body.has-timeline { --tl-h: 92px; }
   .card { width: auto; right: max(16px, env(safe-area-inset-right, 0px)); padding: 12px; gap: 10px; max-height: 46vh; }
   .brand h1 { font-size: 22px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats dd { font-size: 14px; }
-  #drawer, #side { top: auto; height: 50vh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #drawer, #side { top: auto; height: 50vh; height: 50dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  input[type=text], input[type=search], input[type=password], input:not([type]) { font-size: 16px; }   /* iOS zooms into anything smaller when it gets focus */
   #hint { display: none; }
   #timeline { flex-wrap: wrap; gap: 8px; }
   .tl-main { order: 3; flex-basis: 100%; }
@@ -276,7 +282,7 @@ pre.code {
       <button class="primary" type="submit">Build</button>
     </div>
     <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
-    <small id="repoStatus"></small>
+    <small id="repoStatus" aria-live="polite"></small>
     <div class="signin" id="signinRow" hidden>
       <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
       <span>Signing in with GitHub raises your limit from 60 to 5,000 GitHub requests an hour</span>
@@ -327,7 +333,7 @@ pre.code {
       <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
       <button type="submit">Show</button>
     </div>
-    <small id="prStatus"></small>
+    <small id="prStatus" aria-live="polite"></small>
   </form>
 
   <div class="actions">
@@ -352,20 +358,20 @@ pre.code {
       <button class="primary" type="submit">Ask</button>
       <button type="button" id="tourBtn" title="A guided walk through the code. Type a topic to focus it.">Tour</button>
     </div>
-    <small id="askStatus"></small>
+    <small id="askStatus" aria-live="polite"></small>
   </form>
 
   <div class="field">
     <label for="q">Find a file</label>
     <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false">
-    <small id="qInfo"></small>
+    <small id="qInfo" aria-live="polite"></small>
   </div>
 
   <details class="more" id="howTo">
     <summary>How to read the city</summary>
     <div class="legend" id="legend"></div>
     <div class="key">
-      <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live.
+      <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
     </div>
   </details>
 </section>
@@ -389,7 +395,7 @@ pre.code {
   </div>
   <div class="drawer-body" id="sideBody"></div>
 </aside>
-<div id="toast" role="status" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="timeline" hidden>
   <button id="playBtn" type="button" class="primary">Play history</button>
@@ -397,7 +403,7 @@ pre.code {
     <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
     <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
   </div>
-  <button id="speedBtn" type="button" title="Commits per second">8/s</button>
+  <button id="speedBtn" type="button" title="Commits per second" aria-label="Playback speed: 8 commits per second">8/s</button>
   <button id="recBtn" type="button" title="Replay the history and save it as a video">Record video</button>
 </div>
 
@@ -405,16 +411,16 @@ pre.code {
 <div id="tip" hidden></div>
 <div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building</div>
 <div id="drop" hidden>Drop a folder or city.json</div>
-<div id="busy" hidden><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
+<div id="busy" hidden role="status" aria-live="polite"><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" integrity="sha384-wagZhIFgY4hD+7awjQjR4e2E294y6J2HSnd8eTNc15ZubTeQeVRZwhQJ+W6hnBsf" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js" integrity="sha384-nhO9toQuMo5osCuA0l+YFpSqscZWxDu251Bnho2gD3kSPv1neEwHg0LyEmrA+mPj" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js" integrity="sha384-mY+ii969jnDCI2HjRHftH2NZVkIO5ZGUkcnGCg3oVJ3kVstWQXwerYWBg+nbUG4R" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js" integrity="sha384-GkidzTYmQg24v13sa3xhBBbvOLbVLO1QxfyKLdOWweQqNqS/iWwUst2T1fER2Xrg" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js" integrity="sha384-2EpLreWSFuZsk4hcSplXLhlHd/wzvDNF907bTGIXSXM0SlhJNzy4YK0DhBFvkFEs" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js" integrity="sha384-I3lsvPeDJYFrEAzn/TA0yhc/SCYKwpyfyq8lKzHYKohu43H9f7xc/Q9ZWgSVUDl3" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js" integrity="sha384-aVQ2QnWkoxhOefDB0YZB64OPVzujvccydpcC7UqMDJUK0ChwA382zOHmrWHGDRRa" crossorigin="anonymous"></script>
 <script>
 (() => {
 "use strict";
@@ -484,9 +490,10 @@ function notebookCode(text) {
 function analyze(path, text) {
   if (NB_RE.test(path)) text = notebookCode(text);
   const lines = text.split("\n");
+  const count = lines.length - (lines.length > 1 && text.endsWith("\n") ? 1 : 0);   // a final newline ends the last line, it doesn't start another
   const todos = [];
   lines.forEach((l, i) => { if (TODO_RE.test(l) && todos.length < 50) todos.push({ line: i + 1, text: l.trim().slice(0, 140) }); });
-  return { path, lines: lines.length, funcs: (text.match(FN_RE) || []).length, todos, text: lines.slice(0, 80).join("\n") };
+  return { path, lines: count, funcs: (text.match(FN_RE) || []).length, todos, text: lines.slice(0, 80).join("\n") };
 }
 
 // ---------- example repo with invented history ----------
@@ -867,9 +874,13 @@ function short(n) { return n >= 100000 ? Math.round(n / 1000) + "k" : fmt(n); }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 function buildCity(data) {
+  // Read the new data first, and keep the city on screen when there's nothing in it to show.
+  const before = { nodes, hist, totalChurn };
+  try { prepare(data); } catch (e) { ({ nodes, hist, totalChurn } = before); setRepoStatus("That city's data couldn't be read."); return false; }
+  if (!nodes.size) { ({ nodes, hist, totalChurn } = before); setRepoStatus("No source files found there."); return false; }
   playing = false;
-  prepare(data);
-  if (!nodes.size) { setRepoStatus("No source files found there."); return; }
+  if (data.source !== "github") closeHistoryPanel();   // its Load button would rebuild the previous repo
+  resetRecording();
   cityName = data.name; citySource = data.source;
   clearCity();
   const root = buildTree([...nodes.values()]);
@@ -890,6 +901,7 @@ function buildCity(data) {
   controls.minDistance = 4; controls.maxDistance = side * 3.2;
   resetView();
 
+  resize();   // the pixel ratio depends on the city's size
   ghRepo = data.gh || null;
   currentRepo = data.repoKey || null;
   const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo", github: "GitHub" };
@@ -900,10 +912,11 @@ function buildCity(data) {
   document.getElementById("cHeat").disabled = !hist;
   document.getElementById("cHeat").title = hist ? "" : "Needs git history: build a repo or open a city.json";
   if (!hist && colorMode === "heat") setColorMode("lang");
-  if (hist) { scrub.max = hist.commits.length; speedIdx = 0; speedBtn.textContent = speedLabel(); }
+  if (hist) { scrub.max = hist.commits.length; speedIdx = 0; showSpeed(); }
   goNow(true);
   closeDrawer(); applySearch(); renderLegend();
   onCityBuilt();
+  return true;
 }
 
 function setTargets(linesOf) {
@@ -993,10 +1006,10 @@ function matFor(b) {
   if (b === picked) return PICKED;
   if (b === hovered) return HOVER;
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
+  if (tourState) { const p = b.userData.f.path; return p === tourState.steps[tourState.i].path ? PICKED : tourState.paths.has(p) ? MATCH : DIM; }
+  if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (query) return b.userData.match ? MATCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
-  if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
-  if (tourState) { const p = b.userData.f.path; return p === tourState.steps[tourState.i].path ? PICKED : tourState.steps.some(s => s.path === p) ? MATCH : DIM; }
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
@@ -1019,7 +1032,11 @@ const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into abo
 let speedIdx = 0, playAcc = 0;
 function speed() { return SPEEDS[speedIdx] || Math.max(3, Math.min(120, hist.commits.length / 40)); }
 function speedLabel() { return SPEEDS[speedIdx] ? `${SPEEDS[speedIdx]}/s` : `Auto`; }
-speedBtn.onclick = () => { speedIdx = (speedIdx + 1) % SPEEDS.length; speedBtn.textContent = speedLabel(); };
+function showSpeed() {
+  speedBtn.textContent = speedLabel();
+  speedBtn.setAttribute("aria-label", SPEEDS[speedIdx] ? `Playback speed: ${SPEEDS[speedIdx]} commits per second` : "Playback speed: automatic");
+}
+speedBtn.onclick = () => { speedIdx = (speedIdx + 1) % SPEEDS.length; showSpeed(); };
 
 function fx(path, kind) {
   const b = bmap.get(path); if (!b) return;
@@ -1068,6 +1085,7 @@ function updateHud() {
     const c = hist.commits[cursor];
     d.textContent = dateFmt.format(new Date(c.t * 1000)); h.textContent = c.h; a.textContent = c.a; m.textContent = c.m;
   }
+  scrub.setAttribute("aria-valuetext", viewNow ? "Now, current files" : cursor < 0 ? "Before the first commit" : `${d.textContent}: ${m.textContent}`);
 }
 
 // ---------- interaction (orbit) ----------
@@ -1164,8 +1182,10 @@ function applySearch() {
 qInput.addEventListener("input", applySearch);
 
 document.addEventListener("keydown", e => {
-  if (e.target.matches && e.target.matches("input, textarea")) return;
-  if (e.key === "Escape") closeDrawer();
+  if (e.key !== "Escape") return;
+  if (e.target.matches && e.target.matches("input, textarea")) { e.target.blur(); return; }
+  if (!drawer.hidden) closeDrawer();
+  else if (!sidePanel.hidden) closeSide();
 });
 
 // ---------- loading repos, folders and city.json ----------
@@ -1236,7 +1256,9 @@ async function callsLeft() {   // asking doesn't use up a call
   return fetch(API + "/rate_limit", { headers: ghHeaders(), signal: loadCtl.signal }).then(r => r.ok ? r.json() : null).then(d => d && d.resources.core).catch(e => { if (isAbort(e)) throw e; return null; });
 }
 function keepPath(p) { return !p.split("/").slice(0, -1).some(s => SKIP_DIRS.has(s)) && !!langOf(p); }
-function when(c) { return Math.round(Date.parse(c.commit.author.date) / 1000); }
+// When a commit landed on its branch (the committer date). Rebased commits keep their old author date, and
+// GitHub lists commits in committer-date order, so this is the date that ranges and paging can trust.
+function when(c) { return Math.round(Date.parse((c.commit.committer || c.commit.author).date) / 1000); }
 function day(t) { return dateFmt.format(new Date(t * 1000)); }
 
 // Run fn over items, n at a time, keeping order.
@@ -1259,7 +1281,7 @@ function forwardRows(files, lines) {
       lines.delete(prev); lines.set(p, L);
       if (keepPath(prev)) rows.push([prev, 0, before, "D"]);
       if (keepPath(p)) rows.push([p, L, 0, "A"]);
-    } else if (f.status === "added") { lines.set(p, Math.max(1, add)); if (keepPath(p)) rows.push([p, Math.max(1, add), 0, "A"]); }
+    } else if (f.status === "added" || f.status === "copied") { lines.set(p, Math.max(1, add)); if (keepPath(p)) rows.push([p, Math.max(1, add), 0, "A"]); }
     else if (f.status === "removed") { const before = lines.get(p) ?? Math.max(1, del); lines.delete(p); if (keepPath(p)) rows.push([p, 0, before, "D"]); }
     else { lines.set(p, Math.max(1, (lines.get(p) || 0) + add - del)); if (keepPath(p)) rows.push([p, add, del, "M"]); }
   }
@@ -1276,7 +1298,7 @@ function backwardRows(files, lines) {
       const before = Math.max(1, L - add + del);
       lines.set(f.previous_filename, before);
       if (keepPath(f.previous_filename)) rows.push([f.previous_filename, 0, before, "D"]);
-    } else if (f.status === "added") { lines.delete(p); if (keepPath(p)) rows.push([p, L, 0, "A"]); }
+    } else if (f.status === "added" || f.status === "copied") { lines.delete(p); if (keepPath(p)) rows.push([p, L, 0, "A"]); }
     else if (f.status === "removed") { lines.set(p, Math.max(1, del)); if (keepPath(p)) rows.push([p, 0, Math.max(1, del), "D"]); }
     else { lines.set(p, Math.max(1, L - add + del)); if (keepPath(p)) rows.push([p, add, del, "M"]); }
   }
@@ -1288,6 +1310,7 @@ function commitMeta(c) {
 
 // ---- step 1: today's files and the shape of the history ----
 async function loadFromGitHub(key, signal) {
+  closeHistoryPanel();
   const m = key.match(/^([\w.-]+)\/([\w.-]+)$/);
   if (!m) throw new Error("Paste a repo like github.com/owner/name.");
   const [, owner, repo] = m, base = `/repos/${owner}/${repo}`;
@@ -1297,8 +1320,12 @@ async function loadFromGitHub(key, signal) {
 
   const branch = (await gh(base)).default_branch;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-  const files = tree.tree.filter(e => e.type === "blob" && keepPath(e.path) && e.size <= maxBytes(e.path)).slice(0, MAX_FILES)
-    .map(e => ({ path: e.path, lines: Math.max(1, Math.round(e.size / (NB_RE.test(e.path) ? BYTES_PER_LINE * 8 : BYTES_PER_LINE))), funcs: null, todos: [], text: null, estimated: true }));
+  const kept = tree.tree.filter(e => e.type === "blob" && keepPath(e.path));
+  const files = kept.filter(e => e.size <= maxBytes(e.path)).slice(0, MAX_FILES)
+    .map(e => ({ path: e.path, bytes: e.size, lines: Math.max(1, Math.round(e.size / (NB_RE.test(e.path) ? BYTES_PER_LINE * 8 : BYTES_PER_LINE))), funcs: null, todos: [], text: null, estimated: true }));
+  // Files that exist today but are left out of the city (too big, or past the file limit): their history is left out too,
+  // or their buildings would rise during the replay and vanish at today.
+  const shown = new Set(files.map(f => f.path)), leftOut = new Set(kept.filter(e => !shown.has(e.path)).map(e => e.path));
   if (!files.length) throw new Error("No source files found in that repo.");
 
   // Newest page of commits; its Link header gives the page count, and the last page gives the first commit.
@@ -1311,7 +1338,7 @@ async function loadFromGitHub(key, signal) {
   if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
   stillCurrent(signal);
-  ghProbe = page1.length ? { key, owner, repo, base, branch, files, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
+  ghProbe = page1.length ? { key, owner, repo, base, branch, files, leftOut, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
   buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch }, history: null });
   if (!ghProbe) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
   setRepoStatus("");
@@ -1411,6 +1438,8 @@ function renderPlan() {
   const toTxt = pl.until === Infinity ? "today" : day(pl.until);
   hp("hpFromLabel").textContent = day(pl.since);
   hp("hpToLabel").textContent = toTxt;
+  hpFrom.setAttribute("aria-valuetext", "From " + day(pl.since));
+  hpTo.setAttribute("aria-valuetext", "To " + toTxt);
   hp("hpFill").style.left = (+hpFrom.value / 10) + "%";
   hp("hpFill").style.right = (100 - +hpTo.value / 10) + "%";
   const calls = pl.mode === "steps" ? pl.calls : pl.everyCalls, secs = Math.round(calls * 0.06);
@@ -1438,14 +1467,18 @@ function renderPlan() {
 hpFrom.addEventListener("input", () => { hpPinned = null; if (+hpFrom.value > +hpTo.value - MIN_GAP) hpFrom.value = +hpTo.value - MIN_GAP; renderPlan(); });
 hpTo.addEventListener("input", () => { hpPinned = null; if (+hpTo.value < +hpFrom.value + MIN_GAP) hpTo.value = +hpFrom.value + MIN_GAP; renderPlan(); });
 // The handles share one track, so when they sit close together, put the one nearer the pointer on top.
-hp("hpDual").addEventListener("pointermove", e => {
+// pointerdown too, so a finger (which never hovers) also grabs the nearer handle.
+const raiseNearer = e => {
   const r = hp("hpDual").getBoundingClientRect(), pos = (e.clientX - r.left) / r.width * 1000;
   const fromNearer = Math.abs(pos - hpFrom.value) < Math.abs(pos - hpTo.value) || pos < +hpFrom.value;
   hpFrom.style.zIndex = fromNearer ? 3 : 2;
   hpTo.style.zIndex = fromNearer ? 2 : 3;
-});
+};
+hp("hpDual").addEventListener("pointermove", raiseNearer);
+hp("hpDual").addEventListener("pointerdown", raiseNearer, true);
 hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
 hp("hpLoad").onclick = async () => {
+  if (!ghProbe) return;
   currentRange = rangeCode(plan());
   const signal = newLoad();
   busy.hidden = false;
@@ -1457,6 +1490,7 @@ hp("hpLoad").onclick = async () => {
 // ---- step 2: load the chosen range ----
 async function loadHistory(pl, signal) {
   const p = ghProbe, say = t => { busyText.textContent = t; };
+  say("Listing commits…");
   // Newest first: take pages until we reach the start of the range.
   let list = p.page1.slice(), page = 1;
   const guess = Math.min(p.pages, Math.ceil(countSince(pl.since).n / 100));
@@ -1466,6 +1500,7 @@ async function loadHistory(pl, signal) {
     list = list.concat(...more); page = guess;
   }
   while (when(list[list.length - 1]) >= pl.since && page < p.pages) { page++; say(`Listing commits… page ${page}`); list = list.concat(await gh(p.listPath(page))); }
+  list = [...new Map(list.map(c => [c.sha, c])).values()];   // commits pushed since page 1 was read shift later pages: list each once
   // Replay only the main line: follow first parents from the branch tip, and let each merge stand for the
   // branch it brought in. Replaying side-branch commits by date would bring back files deleted meanwhile.
   const bySha = new Map(list.map(c => [c.sha, c])), chain = [];   // newest first
@@ -1486,12 +1521,20 @@ async function loadHistory(pl, signal) {
   const lim = await callsLeft();
   const left = (lim ? lim.remaining : Infinity) - (later.length ? 1 : 0);
   const changes = [];   // oldest first: { meta, files }
-  let steps = 0;
+  let steps = 0, failed = 0, capped = 0;
+  // GitHub lists at most 300 files per commit page and per compare. A commit's further files are on later pages;
+  // a compare has no more pages, so count those steps and say so.
+  const noteCapped = files => { if ((files || []).length >= 300) capped++; return files || []; };
+  async function commitFiles(sha) {
+    let files = (await gh(`${p.base}/commits/${sha}`)).files || [];
+    for (let pg = 2; files.length === 300 * (pg - 1) && pg <= 10; pg++) files = files.concat((await gh(`${p.base}/commits/${sha}?page=${pg}`)).files || []);
+    return files;
+  }
   if (list.length <= left - 1 && list.length <= MAX_STEPS) {
     // A merge's change is what it brought onto the main line: the compare from its first parent.
-    const details = await pool(list, 8, c => (c.parents || []).length > 1 ? gh(`${p.base}/compare/${c.parents[0].sha}...${c.sha}`) : gh(`${p.base}/commits/${c.sha}`),
+    const details = await pool(list, 8, c => (c.parents || []).length > 1 ? gh(`${p.base}/compare/${c.parents[0].sha}...${c.sha}`).then(d => noteCapped(d.files)) : commitFiles(c.sha),
       (d, n) => say(`Reading commits… ${fmt(d)} / ${fmt(n)}`));
-    details.forEach((d, i) => changes.push({ meta: commitMeta(list[i]), files: d.files }));
+    details.forEach((files, i) => changes.push({ meta: commitMeta(list[i]), files }));
   } else {
     steps = Math.min(MAX_STEPS, left - 2, list.length);
     if (steps < MIN_STEPS) throw rateLimited(lim && lim.reset);
@@ -1499,15 +1542,15 @@ async function loadHistory(pl, signal) {
     const idx = [...new Set(Array.from({ length: steps }, (_, j) => Math.round((j + 1) * (list.length - 1) / steps)))];
     let start, startIdx;
     if (!(list[0].parents || []).length) {   // the range starts at the repo's first commit, which has nothing to compare against
-      const root = await gh(`${p.base}/commits/${list[0].sha}`);
-      changes.push({ meta: commitMeta(root), files: root.files });
+      changes.push({ meta: commitMeta(list[0]), files: await commitFiles(list[0].sha) });
       start = list[0].sha; startIdx = 0;
     } else { start = list[0].parents[0].sha; startIdx = -1; }
     const pairs = idx.filter(b => b > startIdx).map((b, j, arr) => [j ? list[arr[j - 1]].sha : start, b, j ? arr[j - 1] : startIdx]);
-    const diffs = await pool(pairs, 6, ([a, b]) => gh(`${p.base}/compare/${a}...${list[b].sha}`).catch(e => { if (e.status) return null; throw e; }),
+    const diffs = await pool(pairs, 6, ([a, b]) => gh(`${p.base}/compare/${a}...${list[b].sha}`).catch(e => { if (e.status) { failed++; return null; } throw e; }),
       (d, n) => say(`Reading history… step ${fmt(d)} / ${fmt(n)}`));
     diffs.forEach((d, j) => {
       if (!d) return;
+      noteCapped(d.files);
       const [, b, a] = pairs[j], meta = commitMeta(list[b]);
       if (b - a > 1) meta.m += `  (+${fmt(b - a - 1)} more commits)`;
       changes.push({ meta, files: d.files });
@@ -1517,6 +1560,7 @@ async function loadHistory(pl, signal) {
   if (later.length) {
     say("Bringing the city up to today…");
     const bridge = await gh(`${p.base}/compare/${list[list.length - 1].sha}...${later[0].sha}`);
+    noteCapped(bridge.files);
     changes.push({ meta: { ...commitMeta(later[0]), m: `${fmt(later.length)} later commit${later.length === 1 ? "" : "s"}, up to today` }, files: bridge.files });
   }
 
@@ -1529,19 +1573,33 @@ async function loadHistory(pl, signal) {
     for (const f of files) if (lines.has(f.path) && !NB_RE.test(f.path)) { f.lines = lines.get(f.path); f.estimated = false; }   // replayed counts are real (notebooks replay JSON lines)
     lines = new Map();
   } else {
-    lines = new Map(files.map(f => [f.path, f.lines]));
+    // Undo from today's sizes. Git's deltas for a notebook count its JSON lines, so start notebooks from those.
+    lines = new Map(files.map(f => [f.path, NB_RE.test(f.path) && f.bytes ? Math.max(1, Math.round(f.bytes / BYTES_PER_LINE)) : f.lines]));
+    // Today's sizes are estimates from bytes; if undoing the range's growth would take a file below one line, the
+    // estimate was too low, so raise it to the smallest size the history allows.
+    const net = new Map(), low = new Map();
+    for (const ch of changes.slice().reverse()) for (const f of ch.files) {
+      if (f.status !== "modified" && f.status !== "changed") { net.delete(f.filename); continue; }
+      const n = (net.get(f.filename) || 0) + (f.additions || 0) - (f.deletions || 0);
+      net.set(f.filename, n); low.set(f.filename, Math.max(low.get(f.filename) || 0, n));
+    }
+    for (const f of files) if (f.estimated && !NB_RE.test(f.path) && (low.get(f.path) || 0) >= f.lines) { f.lines = low.get(f.path) + 1; lines.set(f.path, f.lines); }
     for (const ch of changes.slice().reverse()) { const rows = backwardRows(ch.files, lines); if (rows.length) commits.push({ ...ch.meta, c: rows }); }
     commits.reverse();
   }
+  for (const c of commits) c.c = c.c.filter(r => !p.leftOut.has(r[0]));
+  for (let i = commits.length - 1; i >= 0; i--) if (!commits[i].c.length) commits.splice(i, 1);
   const key = p.key;
   stillCurrent(signal);
   closeHistoryPanel();
   buildCity({
     name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
-    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: list.length } : null,
+    history: commits.length ? { base: Object.fromEntries([...lines].filter(([path]) => !p.leftOut.has(path))), baseChurn: {}, commits, total: list.length } : null,
   });
   setRepoStatus(`Loaded ${fmt(list.length)} commit${list.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
-    `${steps ? `, as ${fmt(steps)} steps` : ""}${later.length ? `, then the ${fmt(later.length)} later commit${later.length === 1 ? "" : "s"} as one step to reach today` : ""}. Press Play history.`);
+    `${steps ? `, as ${fmt(steps)} steps` : ""}${later.length ? `, then the ${fmt(later.length)} later commit${later.length === 1 ? "" : "s"} as one step to reach today` : ""}. Press Play history.` +
+    (failed ? ` GitHub couldn't compare ${fmt(failed)} step${failed === 1 ? "" : "s"}, so the replay skips ${failed === 1 ? "it" : "them"} and may not match today exactly.` : "") +
+    (capped ? ` ${fmt(capped)} step${capped === 1 ? "" : "s"} changed more files than GitHub lists (300), so some sizes may be off.` : ""));
 }
 
 // The token stays in this browser; it is saved only when the visitor asks.
@@ -1589,7 +1647,7 @@ async function loadRepo(src) {
   try {
     if (LOCAL) {
       busyText.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
-      const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()), { signal });
+      const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()), { signal, headers: { "X-Code-City": "1" } });   // the local server refuses requests without it
       const data = await r.json();
       if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
       stillCurrent(signal);
@@ -1610,7 +1668,7 @@ async function loadRepo(src) {
       }
     }
   } catch (e) {
-    if (!isAbort(e)) setRepoStatus(e.message);
+    if (!isAbort(e)) { setRepoStatus(e.message); if (pendingView && pendingView.repo === key) pendingView = null; }
   } finally { doneLoading(signal); }
 }
 document.getElementById("repoForm").addEventListener("submit", e => { e.preventDefault(); loadRepo(document.getElementById("repoInput").value); });
@@ -1619,8 +1677,7 @@ function loadJsonText(text, fallbackName) {
   try {
     const data = JSON.parse(text);
     if (!data || !Array.isArray(data.files)) throw new Error();
-    buildCity({ name: data.name || fallbackName, source: "json", files: data.files, history: data.history || null });
-    setRepoStatus("");
+    if (buildCity({ name: data.name || fallbackName, source: "json", files: data.files, history: data.history || null })) setRepoStatus("");
   } catch (e) { setRepoStatus("That file isn't a Code City export. Make one with <code>python3 codecity.py export owner/repo</code>"); }
 }
 
@@ -1638,8 +1695,7 @@ async function ingest(entries, repoName) {
       busyText.textContent = `Surveying files… ${files.length} / ${kept.length}`;
     }
     stillCurrent(signal);
-    buildCity({ name: repoName + "/", source: "folder", files, history: null });
-    setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
+    if (buildCity({ name: repoName + "/", source: "folder", files, history: null })) setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
   } catch (e) { if (!isAbort(e)) throw e; }
   finally { doneLoading(signal); }
 }
@@ -1769,8 +1825,8 @@ function onCityBuilt() {
 const toastEl = document.getElementById("toast");
 let toastTimer = 0;
 function toast(msg) {
-  toastEl.textContent = msg; toastEl.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2200);
+  toastEl.textContent = msg; toastEl.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.classList.remove("show"); toastEl.textContent = ""; }, 2200);
 }
 document.getElementById("shareBtn").onclick = async () => {
   if (!currentRepo) return toast("Links work for GitHub repos. Build one first.");
@@ -1784,6 +1840,11 @@ let sideMode = null;   // "hot" | "pr" | null
 const sidePanel = document.getElementById("side"), sideBody = document.getElementById("sideBody");
 const $ = id => document.getElementById(id);
 function openSide(mode) {
+  if (sideMode && sideMode !== mode) {   // one list at a time, so its highlights aren't hidden by another's
+    if (sideMode === "pr") clearPR();
+    if (sideMode === "ask") askState = null;
+    if (sideMode === "tour") endTour();
+  }
   sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   renderSide(); syncUrl();
@@ -1798,10 +1859,10 @@ function closeSide(quiet) {
 }
 function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); }
 let sideQueued = false;
-function refreshSideSoon() {   // the timeline can move many times a frame; redraw the list once
+function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
   sideQueued = true;
-  requestAnimationFrame(() => { sideQueued = false; renderSide(); });
+  setTimeout(() => { sideQueued = false; renderSide(); }, 250);
 }
 $("sideClose").onclick = () => closeSide();
 $("hotBtn").onclick = () => {
@@ -1896,7 +1957,7 @@ function clearPR() { prState = null; prInput.value = ""; }
 // A file counts as a hotspot when its change count is in the top tenth of the repo's files.
 function hotThreshold() {
   const counts = buildings.filter(b => b.userData.lines > 0).map(b => churnSrc.get(b.userData.f.path) || 0).filter(Boolean).sort((a, z) => z - a);
-  return counts.length ? Math.max(2, counts[Math.floor(counts.length * 0.1)] || counts[0]) : Infinity;
+  return counts.length ? Math.max(2, counts[Math.max(0, Math.ceil(counts.length * 0.1) - 1)]) : Infinity;   // same rule as the PR summary action
 }
 function renderPR() {
   const p = prState;
@@ -2032,7 +2093,8 @@ async function startTour(topic) {
     }
     status.textContent = "";
     if (askState) askState = null;
-    tourState = { title: data.title, steps: data.steps, i: 0, playing: false, timer: 0 };
+    endTour();   // an old tour's auto-play timer must not drive the new one
+    tourState = { title: data.title, steps: data.steps, paths: new Set(data.steps.map(st => st.path)), i: 0, playing: false, timer: 0 };
     openSide("tour");
     goToStop(0);
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
@@ -2053,6 +2115,8 @@ function goToStop(i) {
 function endTour() { if (tourState) clearTimeout(tourState.timer); tourState = null; }
 function renderTour() {
   const t = tourState, st = t.steps[t.i];
+  const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
+    ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
   $("sideSub").textContent = `Stop ${t.i + 1} of ${t.steps.length}`;
   sideBody.innerHTML = `
@@ -2069,6 +2133,7 @@ function renderTour() {
     <ol class="rank">${t.steps.map((s, k) => `<li><button type="button" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}>
       <span class="n">${k + 1}</span><span class="path">${esc(s.title)}</span><span class="meta">${pathHtml(s.path)}</span></button></li>`).join("")}</ol>
     <p class="side-note">Gemini plans tours from file names and sizes, not the code, so treat them as a starting point.</p>`;
+  if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the list was redrawn; keep keyboard focus
 }
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
@@ -2102,6 +2167,7 @@ recBtn.onclick = () => {
   rec = { canvas, ctx: canvas.getContext("2d"), recorder, chunks: [], ending: 0, mime };
   recorder.ondataavailable = e => { if (e.data.size) rec.chunks.push(e.data); };
   recorder.onstop = () => {
+    playBtn.disabled = scrub.disabled = false;
     rec.url = URL.createObjectURL(new Blob(rec.chunks, { type: mime.split(";")[0] }));
     recBtn.textContent = "Download video";
     recBtn.classList.add("primary");
@@ -2109,11 +2175,19 @@ recBtn.onclick = () => {
   };
   closeDrawer(); closeSide(true);
   viewAt(-1);
+  playBtn.disabled = scrub.disabled = true;   // pausing or scrubbing would end the video early
   playing = true; playAcc = 0; playBtn.textContent = "Pause";
   controls.autoRotate = !reduceMotion;
   recorder.start(1000);
   recBtn.textContent = "Stop recording";
 };
+function resetRecording() {   // a new city: the old video (or one being made) belongs to the old repo
+  if (!rec) return;
+  if (rec.url) URL.revokeObjectURL(rec.url);
+  else if (rec.recorder.state === "recording") { rec.recorder.onstop = null; rec.recorder.stop(); }
+  rec = null; recBtn.textContent = "Record video"; recBtn.classList.remove("primary");
+  playBtn.disabled = scrub.disabled = false;
+}
 function stopRecording() {
   if (rec && rec.recorder.state === "recording") rec.recorder.stop();
 }
@@ -2153,8 +2227,11 @@ function recordFrame() {
 }
 
 // ---------- loop ----------
+// Fewer pixels on phones and for very big cities, where thousands of buildings plus bloom at 2x get slow.
+function pixelRatio() { return Math.min(devicePixelRatio || 1, matchMedia("(pointer: coarse)").matches || buildings.length > 2500 ? 1.25 : 2); }
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
+  if (renderer.getPixelRatio() !== pixelRatio()) renderer.setPixelRatio(pixelRatio());
   renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
 }

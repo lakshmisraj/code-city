@@ -48,19 +48,24 @@ def is_code(path):
 
 def git(repo, *args, timeout=600):
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-    r = subprocess.run(["git", "-C", repo, "-c", "core.quotepath=off", *args],
+    # A folder's own .git/config can name programs for git to run (fsmonitor, hooks); never run them.
+    r = subprocess.run(["git", "-C", repo, "-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", *args],
                        capture_output=True, timeout=timeout, env=env)
     if r.returncode:
         raise RuntimeError(r.stderr.decode("utf-8", "replace").strip() or "git failed")
     return r.stdout.decode("utf-8", "replace")
 
 
-def resolve(src):
+def resolve(src, from_page=False):
     """Return (local path, display name) for a local folder, a repo URL or owner/name."""
     src = src.strip()
     local = os.path.expanduser(src)
     if os.path.isdir(local):
-        path = os.path.realpath(local)
+        path, home = os.path.realpath(local), os.path.realpath(os.path.expanduser("~"))
+        # From the page, only folders inside your home folder, and not hidden ones like ~/.ssh.
+        rel = os.path.relpath(path, home)
+        if from_page and (rel == os.curdir or rel.startswith(os.pardir) or any(part.startswith(".") for part in rel.split(os.sep))):
+            raise ValueError("Open a project folder inside your home folder (not a hidden one).")
         return path, os.path.basename(path)
     m = REPO_RE.match(src)
     if m:
@@ -124,8 +129,9 @@ def analyze(repo, paths, with_source):
         if is_nb:
             text = notebook_code(text)
         lines = text.split("\n")
+        count = len(lines) - (1 if len(lines) > 1 and text.endswith("\n") else 0)   # a final newline ends the last line
         todos = [{"line": i + 1, "text": l.strip()[:140]} for i, l in enumerate(lines) if TODO_RE.search(l)][:50]
-        f = {"path": p, "lines": len(lines), "funcs": len(FN_RE.findall(text)), "todos": todos}
+        f = {"path": p, "lines": count, "funcs": len(FN_RE.findall(text)), "todos": todos}
         if with_source:
             f["text"] = "\n".join(lines[:PREVIEW_LINES])
         files.append(f)
@@ -150,7 +156,8 @@ def history(repo):
     Only first parents are followed, and a merge counts as one change against the line it joined, so files
     deleted on the main line can't come back from an older side-branch commit replayed after the delete."""
     common = ["log", "--reverse", "--first-parent", "-m", "--no-renames"]
-    nums = git(repo, *common, "--numstat", "--format=%x01%H%x02%at%x02%an%x02%s")
+    # %ct: when the commit landed (rebased commits keep their old author date).
+    nums = git(repo, *common, "--numstat", "--format=%x01%H%x02%ct%x02%an%x02%s")
     stats = git(repo, *common, "--name-status", "--format=%x01%H")
     status = {}
     for chunk in stats.split("\x01")[1:]:
@@ -191,7 +198,8 @@ def squash(commits, k):
         changes = []
         for path, n in touched.items():
             was, now = before.get(path), lines.get(path)
-            if was is None and now is None:
+            if was is None and now is None:   # added and deleted within the step: still counts towards its churn
+                changes.append([path, 0, 0, "D", n])
                 continue
             if now is None:
                 changes.append([path, 0, was, "D", n])
@@ -206,9 +214,9 @@ def squash(commits, k):
     return steps
 
 
-def build_city(src, with_source=True):
+def build_city(src, with_source=True, from_page=False):
     with build_lock:
-        repo, name = resolve(src)
+        repo, name = resolve(src, from_page)
         is_git = os.path.isdir(os.path.join(repo, ".git"))
         if is_git:
             paths = [p for p in git(repo, "ls-files", "-z").split("\0") if p]
@@ -217,12 +225,17 @@ def build_city(src, with_source=True):
             for root, dirs, names in os.walk(repo):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
                 paths += [os.path.relpath(os.path.join(root, n), repo).replace(os.sep, "/") for n in names]
-        return {
-            "name": name,
-            "source": "git" if is_git else "folder",
-            "files": analyze(repo, sorted(paths), with_source),
-            "history": history(repo) if is_git else None,
-        }
+        files = analyze(repo, sorted(paths), with_source)
+        hist = history(repo) if is_git else None
+        if hist:
+            # Files that exist today but are left out of the city (too big, binary, past the file limit) are left out
+            # of the history too, or their buildings would rise during the replay and vanish at today.
+            shown = {f["path"] for f in files}
+            left_out = {p for p in paths if is_code(p) and p not in shown}
+            for c in hist["commits"]:
+                c["c"] = [row for row in c["c"] if row[0] not in left_out]
+            hist["commits"] = [c for c in hist["commits"] if c["c"]]
+        return {"name": name, "source": "git" if is_git else "folder", "files": files, "history": hist}
 
 
 FAVICON = ("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E"
@@ -253,9 +266,13 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             return self.reply(200, "text/html; charset=utf-8", page())
         if url.path == "/api/repo":
+            # Only the app's own page may ask: other websites can make a browser send GET requests here, but they
+            # can't add this header without a CORS preflight, which this server never approves.
+            if self.headers.get("X-Code-City") != "1" or self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+                return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
             src = parse_qs(url.query).get("src", [""])[0]
             try:
-                body = json.dumps(build_city(src), separators=(",", ":")).encode("utf-8")
+                body = json.dumps(build_city(src, from_page=True), separators=(",", ":")).encode("utf-8")
                 return self.reply(200, "application/json", body)
             except (ValueError, RuntimeError, subprocess.TimeoutExpired) as e:
                 msg = "That took too long. Try a smaller repo." if isinstance(e, subprocess.TimeoutExpired) else str(e)
