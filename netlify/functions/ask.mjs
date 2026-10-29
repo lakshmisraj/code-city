@@ -11,7 +11,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { getStore } from "@netlify/blobs";
 
-const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model
+// Google's fastest model first. When it's overloaded (it answers "high demand", or slowly), the backup is asked
+// too and whichever answers first is used.
+const MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
+const HEDGE_MS = +process.env.ASK_HEDGE_MS || 8000;   // no answer by then: ask the backup as well
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 40000;   // README, manifests, import graph and outlines, read by the page
@@ -159,6 +162,28 @@ function codeBlocks(code) {
     c.text.split("\n").map((l, i) => `${i + 1}| ${l}`).join("\n")).join("\n\n");
 }
 
+// Asks MODELS[0]; if it fails with a busy or rate-limit error, or hasn't answered after HEDGE_MS, asks the
+// backup too. Resolves with the first answer; rejects only when every model asked has failed.
+function hedge(ask) {
+  return new Promise((resolve, reject) => {
+    let settled = false, backup = false, pending = 0, firstError = null;
+    const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
+    const run = model => {
+      pending++;
+      ask(model).then(v => { if (!settled) { settled = true; clearTimeout(t); resolve(v); } }, e => {
+        pending--;
+        if (settled) return;
+        firstError = firstError || e;
+        if (!backup && busy(e)) startBackup();
+        else if (!pending) { settled = true; clearTimeout(t); reject(firstError); }
+      });
+    };
+    const startBackup = () => { if (backup || settled) return; backup = true; run(MODELS[1]); };
+    const t = setTimeout(startBackup, HEDGE_MS);
+    run(MODELS[0]);
+  });
+}
+
 // The last few Gemini calls' timing, size and outcome (never the question or the code), kept in Netlify Blobs
 // so slow or failing answers can be looked into. Best effort: it never holds up or breaks an answer.
 async function note(entry) {
@@ -251,47 +276,43 @@ async function handle(event) {
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
-  let reply, levels = [...THINKING, null], level = levels.shift(), pre = 0;
-  const api = process.env.ASK_API || (Math.random() < 0.5 ? "generate" : "interactions");   // ASK_API pins one
+  let reply, pre = 0, used = {};
+  // Trial: half the calls describe the JSON shape in the prompt instead of forcing it with a schema, since
+  // schema-constrained output can be much slower. The reply is checked the same way either way.
+  const strict = process.env.ASK_SCHEMA ? process.env.ASK_SCHEMA === "strict" : Math.random() < 0.5;
   try {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
     const system = tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : SYSTEM;
     const schema = tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : ANSWER_SCHEMA;
-    // Trial: half the calls use the classic generateContent API instead of Interactions, and the timing notes
-    // record which, to see which one answers sooner. The file list goes first and the question last, so repeat
-    // questions about one repo share a prefix.
-    const create = () => Promise.race([api === "generate"
-      ? client.models.generateContent({ model: MODEL, contents: input, config: {
-          systemInstruction: system, maxOutputTokens: OUTPUT_TOKENS[mode], responseMimeType: "application/json", responseJsonSchema: schema,
-          ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.timeout(Math.max(1000, left())) } })
-          .then(r => ({ output_text: r.text, usage: { total_output_tokens: r.usageMetadata && r.usageMetadata.candidatesTokenCount, total_thought_tokens: r.usageMetadata && r.usageMetadata.thoughtsTokenCount } }))
-      : client.interactions.create({
-          model: MODEL, system_instruction: system, input,
-          generation_config: { max_output_tokens: OUTPUT_TOKENS[mode], ...(level ? { thinking_level: level } : {}) },
-          response_format: { type: "text", mime_type: "application/json", schema },
-        }, { timeout_ms: Math.max(1000, left()) }), deadline]);
-    pre = Date.now() - started;
-    let interaction;
-    try {
-      for (;;) {
-        try { interaction = await create(); break; }
-        catch (e) {   // a model that doesn't take this thinking level: try the next one, then its default
-          if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e;
-          level = levels.shift();
-        }
+    // The file list goes first and the question last, so repeat questions about one repo share a prefix.
+    const create = (model, level) => client.models.generateContent({ model, contents: input, config: {
+      systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
+      maxOutputTokens: OUTPUT_TOKENS[mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
+      ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.timeout(Math.max(1000, left())) } });
+    const tryModel = async model => {   // a model that doesn't take a thinking level gets the next one, then its default
+      const levels = [...THINKING, null];
+      for (let level = levels.shift(); ; level = levels.shift()) {
+        try { return { r: await create(model, level), model, level }; }
+        catch (e) { if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e; }
       }
-    } finally { clearTimeout(timer); }
-    console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
-    const u = interaction.usage || {};
-    await note({ mode, api, pre, ms: Date.now() - started, chars: input.length, ok: true, level, out: u.total_output_tokens, thought: u.total_thought_tokens });
-    try { reply = JSON.parse(interaction.output_text || ""); }
+    };
+    pre = Date.now() - started;
+    let answer;
+    try { answer = await Promise.race([hedge(tryModel), deadline]); } finally { clearTimeout(timer); }
+    const { r } = answer;
+    used = { model: answer.model, level: answer.level };
+    console.log(`ask: ${files.length} files, answered by ${used.model} in ${Date.now() - started} ms`);
+    const u = r.usageMetadata || {};
+    await note({ mode, strict, pre, ms: Date.now() - started, chars: input.length, ok: true, ...used, out: u.candidatesTokenCount, thought: u.thoughtsTokenCount });
+    try { reply = JSON.parse(r.text || ""); }
     catch (e) { return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." }); }
   } catch (e) {
     const ms = Date.now() - started;
     console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
-    await note({ mode, api, pre, ms, chars: input.length, ok: false, level, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
+    await note({ mode, strict, pre, ms, chars: input.length, ok: false, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
+    if (e && (e.status === 503 || /UNAVAILABLE|high demand/i.test(String(e.message)))) return json(503, { error: "Gemini is very busy right now. Try again in a minute." });
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
     // Google's own reason (e.g. "API key not valid", "model not found") helps fix setup problems; it never contains the key.
