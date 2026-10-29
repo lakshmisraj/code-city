@@ -44,6 +44,9 @@ body.has-timeline { --tl-h: 76px; }
   border: 1px solid var(--line); border-radius: 10px;
   padding: 16px; display: flex; flex-direction: column; gap: 14px;
 }
+.group { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.group[hidden] { display: none; }
+.group-title { margin: 0; font: 700 12px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sodium); }
 .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .brand h1 {
   margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 26px;
@@ -275,14 +278,86 @@ pre.code {
     <div><dt>Fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
 
-  <form class="field" id="repoForm" autocomplete="off">
-    <label for="repoInput">Build a public repo</label>
-    <div class="inline">
-      <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
-      <button class="primary" type="submit">Build</button>
+  <section class="group" aria-labelledby="gLoad">
+    <h2 class="group-title" id="gLoad">Load a codebase</h2>
+    <form class="field" id="repoForm" autocomplete="off">
+      <label for="repoInput">Public repo</label>
+      <div class="inline">
+        <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
+        <button class="primary" type="submit">Build</button>
+      </div>
+      <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
+      <small id="repoStatus" aria-live="polite"></small>
+    </form>
+    <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
+      <div class="label" id="hpTitle">How much history?</div>
+      <p class="hp-info" id="hpInfo"></p>
+      <div class="hp-slider">
+        <span class="label" id="hpSliderLabel">Drag both ends to pick a stretch of history</span>
+        <div class="dual" id="hpDual">
+          <div class="dual-track"><div class="dual-fill" id="hpFill"></div></div>
+          <input id="hpFrom" type="range" min="0" max="1000" step="1" aria-label="Oldest commit to include">
+          <input id="hpTo" type="range" min="0" max="1000" step="1" aria-label="Newest commit to include">
+        </div>
+        <div class="dual-ticks" id="hpTicks" aria-hidden="true"></div>
+        <div class="hp-ends"><span id="hpFromLabel"></span><span id="hpToLabel"></span></div>
+      </div>
+      <p class="hp-estimate" id="hpEstimate"></p>
+      <p class="hp-warn" id="hpWarn" role="status"></p>
+      <details class="more hp-limits">
+        <summary>How GitHub's request limit works</summary>
+        <p id="hpLimits"></p>
+      </details>
+      <div class="actions">
+        <button class="primary" id="hpLoad" type="button">Load history</button>
+        <button id="hpSkip" type="button">Keep this view</button>
+      </div>
+    </section>
+    <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
+  </section>
+
+  <section class="group" aria-labelledby="gExplore">
+    <h2 class="group-title" id="gExplore">Explore</h2>
+    <div class="field">
+      <label for="q">Find a file</label>
+      <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false">
+      <small id="qInfo" aria-live="polite"></small>
     </div>
-    <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
-    <small id="repoStatus" aria-live="polite"></small>
+    <div class="row">
+      <span class="label">Color by</span>
+      <div class="seg" role="group" aria-label="Color buildings by">
+        <button type="button" id="cLang" aria-pressed="true">Language</button>
+        <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
+    </div>
+    <form class="field" id="prForm" autocomplete="off" hidden>
+      <label for="prInput">Show a pull request</label>
+      <div class="inline">
+        <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
+        <button type="submit">Show</button>
+      </div>
+      <small id="prStatus" aria-live="polite"></small>
+    </form>
+  </section>
+
+  <form class="group" id="askForm" autocomplete="off" hidden aria-labelledby="gAsk">
+    <h2 class="group-title" id="gAsk">Ask</h2>
+    <div class="field">
+      <label for="askInput">Ask the city, or take a tour</label>
+      <div class="inline">
+        <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
+        <button class="primary" type="submit">Ask</button>
+        <button type="button" id="tourBtn" title="A guided walk through the code. Type a topic to focus it.">Tour</button>
+      </div>
+      <small id="askStatus" aria-live="polite"></small>
+    </div>
+  </form>
+
+  <section class="group" aria-labelledby="gAccount">
+    <h2 class="group-title" id="gAccount">GitHub access</h2>
     <div class="signin" id="signinRow" hidden>
       <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
       <span>Signing in with GitHub raises your limit from 60 to 5,000 GitHub requests an hour</span>
@@ -300,80 +375,22 @@ pre.code {
         <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, the same as signing in. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with public repository access only. It is only ever sent to api.github.com.</small>
       </div>
     </details>
-  </form>
-
-  <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
-    <div class="label" id="hpTitle">How much history?</div>
-    <p class="hp-info" id="hpInfo"></p>
-    <div class="hp-slider">
-      <span class="label" id="hpSliderLabel">Drag both ends to pick a stretch of history</span>
-      <div class="dual" id="hpDual">
-        <div class="dual-track"><div class="dual-fill" id="hpFill"></div></div>
-        <input id="hpFrom" type="range" min="0" max="1000" step="1" aria-label="Oldest commit to include">
-        <input id="hpTo" type="range" min="0" max="1000" step="1" aria-label="Newest commit to include">
-      </div>
-      <div class="dual-ticks" id="hpTicks" aria-hidden="true"></div>
-      <div class="hp-ends"><span id="hpFromLabel"></span><span id="hpToLabel"></span></div>
-    </div>
-    <p class="hp-estimate" id="hpEstimate"></p>
-    <p class="hp-warn" id="hpWarn" role="status"></p>
-    <details class="more hp-limits">
-      <summary>How GitHub's request limit works</summary>
-      <p id="hpLimits"></p>
-    </details>
-    <div class="actions">
-      <button class="primary" id="hpLoad" type="button">Load history</button>
-      <button id="hpSkip" type="button">Keep this view</button>
-    </div>
   </section>
 
-  <form class="field" id="prForm" autocomplete="off" hidden>
-    <label for="prInput">Show a pull request</label>
-    <div class="inline">
-      <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
-      <button type="submit">Show</button>
+  <section class="group" aria-labelledby="gView">
+    <h2 class="group-title" id="gView">View</h2>
+    <div class="actions">
+      <button id="shareBtn" type="button">Copy link</button>
+      <button id="resetBtn" type="button">Reset view</button>
     </div>
-    <small id="prStatus" aria-live="polite"></small>
-  </form>
-
-  <div class="actions">
-    <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
-    <button id="shareBtn" type="button">Copy link</button>
-    <button id="resetBtn" type="button">Reset view</button>
-  </div>
-  <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
-
-  <div class="row">
-    <span class="label">Color by</span>
-    <div class="seg" role="group" aria-label="Color buildings by">
-      <button type="button" id="cLang" aria-pressed="true">Language</button>
-      <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
-    </div>
-  </div>
-
-  <form class="field" id="askForm" autocomplete="off" hidden>
-    <label for="askInput">Ask the city, or take a tour</label>
-    <div class="inline">
-      <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
-      <button class="primary" type="submit">Ask</button>
-      <button type="button" id="tourBtn" title="A guided walk through the code. Type a topic to focus it.">Tour</button>
-    </div>
-    <small id="askStatus" aria-live="polite"></small>
-  </form>
-
-  <div class="field">
-    <label for="q">Find a file</label>
-    <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false">
-    <small id="qInfo" aria-live="polite"></small>
-  </div>
-
-  <details class="more" id="howTo">
-    <summary>How to read the city</summary>
-    <div class="legend" id="legend"></div>
-    <div class="key">
-      <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
-    </div>
-  </details>
+    <details class="more" id="howTo">
+      <summary>How to read the city</summary>
+      <div class="legend" id="legend"></div>
+      <div class="key">
+        <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
+      </div>
+    </details>
+  </section>
 </section>
 
 <aside id="drawer" hidden aria-label="File details">
