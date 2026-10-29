@@ -175,6 +175,13 @@ details.more[open] summary { margin-bottom: 8px; }
 .rank button[aria-current="step"] { background: var(--street-2); box-shadow: inset 2px 0 0 var(--sodium); }
 .ask-answer { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); }
 .side-note a { color: var(--sodium); }
+.explain-file { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.explain-path { align-self: flex-start; max-width: 100%; font: 600 12px var(--f-mono); text-align: left; word-break: break-all; }
+.explain-path i { font-style: normal; color: var(--ink-dim); }
+.explain-text { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink); }
+.todos.parts li { color: var(--ink-dim); }
+.parts li b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+.links .n { color: var(--sodium); }
 .side-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .btn-link { font: 600 13px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; text-decoration: none; }
 .btn-link:hover { border-color: var(--sodium); }
@@ -195,6 +202,8 @@ details.more[open] summary { margin-bottom: 8px; }
 .drawer-head > div { min-width: 0; flex: 1; }
 .drawer-head h2 { margin: 0; font-family: var(--f-mono); font-size: 14px; font-weight: 600; word-break: break-all; }
 .drawer-head p { margin: 2px 0 0; color: var(--ink-dim); font-size: 12px; word-break: break-all; }
+.crumb { background: none; border: 0; padding: 0; font: inherit; color: var(--ink-dim); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
+.crumb:hover { color: var(--sodium); text-decoration-color: var(--sodium); }
 .drawer-body { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .drawer-body h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; }
 .todos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-family: var(--f-mono); font-size: 12px; }
@@ -350,7 +359,7 @@ pre.code {
       <div class="inline">
         <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
         <button class="primary" type="submit">Ask</button>
-        <button type="button" id="tourBtn" title="A guided walk through the code. Type a topic to focus it.">Tour</button>
+        <button type="button" id="tourBtn" title="A walk through what the software does, one feature at a time. Type a topic to focus it.">Tour</button>
       </div>
       <small id="askStatus" aria-live="polite"></small>
     </div>
@@ -832,16 +841,18 @@ const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
 
 let city = new THREE.Group(); scene.add(city);
 let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
+let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
+const FOLDER_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4330, emissive: 0xf2a541, emissiveIntensity: 0.18, roughness: 0.9 });
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function clearCity() {
   scene.remove(city);
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
-  buildings = []; bmap = new Map(); fires = []; labels = []; hovered = null; picked = null;
+  buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
 }
 
-function label(text, x, y, z, size) {
+function label(text, x, y, z, size, dir) {
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
   const fs = 64, font = `700 ${fs}px "Chakra Petch", "Arial Narrow", sans-serif`;
@@ -853,7 +864,7 @@ function label(text, x, y, z, size) {
   ctx.fillStyle = "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
   sp.scale.set(size * c.width / c.height, size, 1); sp.position.set(x, y, z); sp.renderOrder = 10;
-  sp.userData.base = sp.scale.clone();
+  sp.userData.base = sp.scale.clone(); sp.userData.dir = dir;
   city.add(sp); labels.push(sp);
 }
 
@@ -879,8 +890,9 @@ function place(node, rect, depth) {
     const p = new THREE.Mesh(BOX, platMats[Math.min(depth, 6)]);
     p.position.set(rect.x + rect.w / 2, (depth - 1) * STEP, rect.y + rect.h / 2);
     p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
-    city.add(p);
-    if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, Math.max(1.6, Math.min(4, Math.sqrt(rect.w * rect.h) / 9)));
+    p.userData = { dir: node.path, depth };
+    city.add(p); districts.push(p);
+    if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, Math.max(1.6, Math.min(4, Math.sqrt(rect.w * rect.h) / 9)), node.path);
   }
   const inner = { x: rect.x + PAD, y: rect.y + PAD, w: Math.max(0.1, rect.w - PAD * 2), h: Math.max(0.1, rect.h - PAD * 2) };
   for (const { it, x, y, w, h } of squarify([...node.children.values()], inner)) place(it.n, { x, y, w, h }, depth + 1);
@@ -1023,7 +1035,8 @@ function matFor(b) {
   if (b === picked) return PICKED;
   if (b === hovered) return HOVER;
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
-  if (tourState) { const p = b.userData.f.path; return p === tourState.steps[tourState.i].path ? PICKED : tourState.paths.has(p) ? MATCH : DIM; }
+  if (folderSel != null && !askState && !tourState && !inFolder(b.userData.f.path, folderSel)) return DIM;
+  if (tourState) { const p = b.userData.f.path, st = tourState.steps[tourState.i]; return p === st.path ? PICKED : tourState.paths.has(p) || st.related.some(r => r.path === p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (query) return b.userData.match ? MATCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
@@ -1113,8 +1126,8 @@ const tip = document.getElementById("tip");
 function pickAt(ndcX, ndcY) {
   mouse.set(ndcX, ndcY);
   ray.setFromCamera(mouse, camera);
-  const hit = ray.intersectObjects(buildings.filter(b => b.visible), false)[0];
-  return hit ? hit.object : null;
+  const hit = ray.intersectObjects([...buildings.filter(b => b.visible), ...districts, ...labels], false)[0];
+  return hit ? hit.object : null;   // a building (userData.f) or a folder (userData.dir)
 }
 function pickEvent(ev) {
   const r = canvas.getBoundingClientRect();
@@ -1127,8 +1140,8 @@ canvas.addEventListener("pointermove", ev => {
 canvas.addEventListener("pointerdown", ev => { downAt = { x: ev.clientX, y: ev.clientY, moved: false }; flight = null; });
 canvas.addEventListener("pointerup", ev => {
   if (downAt && !downAt.moved && ev.button === 0) {
-    const b = pickEvent(ev);
-    if (b) openDrawer(b); else closeDrawer();
+    const o = pickEvent(ev);
+    if (o && o.userData.f) openDrawer(o); else if (o && o.userData.dir) openFolder(o.userData.dir); else closeDrawer();
   }
   downAt = null;
 });
@@ -1143,23 +1156,33 @@ function showTip(b, x, y) {
   tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
   tip.style.top = y + "px";
 }
+function showFolderTip(dir, x, y) {
+  const st = folderStats(dir);
+  tip.innerHTML = `${esc(dir)}/ · <b>${fmt(st.files.length)}</b> file${st.files.length === 1 ? "" : "s"} · <b>${fmt(st.lines)}</b> lines · click to open`;
+  tip.hidden = false;
+  tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
+  tip.style.top = y + "px";
+}
 function updateHover() {
   if (!pointerMoved) return; pointerMoved = false;
   if (!lastPointer || lastPointer.pointerType === "touch") return;
-  const b = pickEvent(lastPointer);
+  const o = pickEvent(lastPointer), b = o && o.userData.f ? o : null;
   hovered = b;
-  canvas.style.cursor = b ? "pointer" : "";
-  if (b) showTip(b, lastPointer.clientX, lastPointer.clientY); else tip.hidden = true;
+  canvas.style.cursor = o ? "pointer" : "";
+  if (b) showTip(b, lastPointer.clientX, lastPointer.clientY);
+  else if (o) showFolderTip(o.userData.dir, lastPointer.clientX, lastPointer.clientY);
+  else tip.hidden = true;
 }
 
 const drawer = document.getElementById("drawer");
 function openDrawer(b) {
+  setFolder(null);
   const prevPicked = picked;   // reopened after a file loads: don't fly again
   picked = b;
   const f = b.userData.f;
   const parts = f.path.split("/");
   document.getElementById("dName").textContent = parts.pop();
-  document.getElementById("dPath").textContent = (parts.join("/") || ".") + "/ · " + LANGS[f.lang].name;
+  document.getElementById("dPath").innerHTML = crumbs(parts) + " · " + esc(LANGS[f.lang].name);
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   document.getElementById("dStats").innerHTML =
     `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${ghRepo && f.text == null ? "–" : fmt(f.funcs)}</dd></div>` +
@@ -1180,12 +1203,80 @@ function openDrawer(b) {
         : fromGitHub ? "GitHub didn't return this file's source."
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
+  if (askEnabled && b.userData.lines > 0 && (f.text != null || codeRepo()))
+    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" class="primary" data-explain>Explain this code</button></div>`);
   drawer.hidden = false;
   if (picked !== prevPicked) flyToBuilding(b);
   syncUrl();
 }
-function closeDrawer() { const had = picked; drawer.hidden = true; picked = null; if (had) syncUrl(); }
+function closeDrawer() { const had = picked; drawer.hidden = true; picked = null; setFolder(null); if (had) syncUrl(); }
+
+// ---------- folders ----------
+// Clicking a district (or its label) opens the folder: everything outside it dims, its platforms glow, and the
+// drawer lists its subfolders and biggest files. The path at the top of the drawer links to each parent folder.
+function inFolder(path, dir) { return dir === "" || path.startsWith(dir + "/"); }
+function crumbs(parts) {   // "src / api /" with each folder clickable
+  if (!parts.length) return "./";
+  return parts.map((p, i) => `<button type="button" class="crumb" data-dir="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`).join(" / ") + " /";
+}
+function folderStats(dir) {
+  const files = buildings.filter(b => b.userData.lines > 0 && inFolder(b.userData.f.path, dir));
+  const subs = new Map();
+  for (const b of files) {
+    const rest = b.userData.f.path.slice(dir ? dir.length + 1 : 0), i = rest.indexOf("/");
+    if (i < 0) continue;
+    const sub = (dir ? dir + "/" : "") + rest.slice(0, i), s = subs.get(sub) || { files: 0, lines: 0 };
+    s.files++; s.lines += b.userData.lines; subs.set(sub, s);
+  }
+  return { files, subs, lines: files.reduce((n, b) => n + b.userData.lines, 0), fires: viewNow ? files.reduce((n, b) => n + b.userData.f.todos.length, 0) : null };
+}
+function setFolder(dir) {
+  folderSel = dir;
+  for (const p of districts) p.material = dir != null && inFolder(p.userData.dir + "/", dir) ? FOLDER_MAT : platMats[Math.min(p.userData.depth, 6)];
+}
+function openFolder(dir) {
+  const st = folderStats(dir);
+  if (!st.files.length) return;
+  picked = null; setFolder(dir);
+  const parts = dir.split("/"), name = parts.pop();
+  document.getElementById("dName").textContent = name + "/";
+  document.getElementById("dPath").innerHTML = `${crumbs(parts)} · folder`;
+  document.getElementById("dStats").innerHTML =
+    `<div><dt>Files</dt><dd>${fmt(st.files.length)}</dd></div><div><dt>Lines</dt><dd>${fmt(st.lines)}</dd></div>` +
+    `<div><dt>Folders</dt><dd>${fmt(st.subs.size)}</dd></div><div><dt>Fires</dt><dd class="fire">${st.fires == null ? "–" : fmt(st.fires)}</dd></div>`;
+  const row = (attr, value, n, title, meta) => `<li><button type="button" ${attr}="${esc(value)}"><span class="n">${n}</span><span class="path">${title}</span><span class="meta">${meta}</span></button></li>`;
+  document.getElementById("dTodos").innerHTML = st.subs.size
+    ? `<h3>Folders inside</h3><ol class="rank">${[...st.subs].sort((a, b) => b[1].lines - a[1].lines)
+        .map(([sub, s]) => row("data-dir", sub, "▸", esc(sub.split("/").pop()) + "/", `${fmt(s.files)} files · ${fmt(s.lines)} lines`)).join("")}</ol>` : "";
+  const biggest = [...st.files].sort((a, b) => b.userData.lines - a.userData.lines);
+  document.getElementById("dCode").innerHTML =
+    (askEnabled && codeRepo() || askEnabled && biggest.some(b => b.userData.f.text != null)
+      ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
+    `<h3>Biggest files</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
+    (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
+  drawer.hidden = false;
+  const p = districts.find(d => d.userData.dir === dir);
+  if (p) {
+    const target = p.getWorldPosition(new THREE.Vector3()), size = Math.max(p.scale.x, p.scale.z);
+    const away = camera.position.clone().sub(controls.target).normalize();
+    flyTo(target, target.clone().add(away.multiplyScalar(Math.max(16, size * 1.4))));
+  }
+  syncUrl();
+}
+drawer.addEventListener("click", e => {
+  const dir = e.target.closest("[data-dir]"), file = e.target.closest("[data-file]");
+  if (dir) return openFolder(dir.dataset.dir);
+  if (file) { const b = bmap.get(file.dataset.file); if (b) openDrawer(b); return; }
+  if (folderSel != null && e.target.closest("[data-explain-dir]")) {
+    const dir = folderSel, top = folderStats(dir).files.sort((a, b) => b.userData.lines - a.userData.lines).slice(0, MAX_EXPLAIN).map(b => b.userData.f.path);
+    if (tourState) endTour();
+    askState = { question: dir + "/", answer: "", order: [], files: new Map(top.map(p => [p, ""])) };
+    openSide("ask");
+    explainCode(askState, top, `What does the ${dir}/ folder do, how do its main files work, and how does it connect to the rest of the code?`);
+  }
+});
 document.getElementById("closeBtn").onclick = closeDrawer;
+drawer.addEventListener("click", e => { if (picked && e.target.closest("[data-explain]")) explainFile(picked.userData.f.path); });
 document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(true); };
 
 // search
@@ -1681,7 +1772,7 @@ async function loadRepo(src) {
       catch (e) {
         // A TypeError means the request never left the page: the claude.ai copy blocks GitHub, or the visitor is offline.
         if (!(e instanceof TypeError) || !/fetch|network|load failed/i.test(e.message)) throw e;
-        setRepoStatus(`This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
+        setRepoStatus(`This page can't reach GitHub. Open <code>code-city-view.netlify.app</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
       }
     }
   } catch (e) {
@@ -1758,7 +1849,7 @@ addEventListener("drop", async e => {
 
 // ---------- shareable links ----------
 // ?repo=owner/name&range=1m&mode=heat&panel=hotspots&file=src/app.ts&pr=123 reopens the same view.
-const SITE_URL = "https://code-city-lakshmi.netlify.app/";
+const SITE_URL = "https://code-city-view.netlify.app/";
 const LINK_AUTOLOAD_MAX = 60;   // a link loads its history by itself only when that costs this few GitHub requests
 let currentRepo = null;    // owner/name of the city on screen, when it came from a repo
 let currentRange = null;   // history range loaded from GitHub, as a link code
@@ -1871,10 +1962,11 @@ function closeSide(quiet) {
   if (sideMode === "ask") askState = null;
   if (sideMode === "tour") endTour();
   sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
+  drawLinks();
   $("hotBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); }
+function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -1966,7 +2058,7 @@ async function loadPR(input) {
     openSide("pr");
   } catch (e) {
     if (isAbort(e)) { prStatus.textContent = ""; return; }   // a new repo is loading instead
-    prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code> to view pull requests." : e.message;
+    prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>code-city-view.netlify.app</code> to view pull requests." : e.message;
   }
 }
 function clearPR() { prState = null; prInput.value = ""; }
@@ -2072,22 +2164,118 @@ async function askCity(question) {
     askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])) };
     status.textContent = "";
     openSide("ask");
+    if (data.files.length) explainCode(askState, data.files.map(f => f.path), q);
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function renderAsk() {
-  $("sideTitle").textContent = "Ask the city";
+  const x = askState.explain;
+  $("sideTitle").textContent = askState.answer ? "Ask the city" : "Explain the code";
   $("sideSub").textContent = askState.question;
-  sideBody.innerHTML = `<p class="ask-answer">${esc(askState.answer)}</p>` +
+  sideBody.innerHTML = (askState.answer ? `<p class="ask-answer">${esc(askState.answer)}</p>` : "") +
     (askState.order.length ? `<ol class="rank">${askState.order.map((f, i) => {
       const b = bmap.get(f.path), live = b && b.userData.lines > 0;
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    `<p class="side-note">Gemini only sees file names and sizes, not the code, so treat these as a starting point.</p>`;
+    (!x ? "" : x.loading ? `<p class="side-note">Reading the code…</p>` : x.errorHtml ? `<p class="side-note">${x.errorHtml}</p>` : explainHtml(x)) +
+    `<p class="side-note">${x && x.files ? "Gemini read the code of the files above; check what it says against the source."
+      : "Gemini picks these files from their names and sizes, then reads the code of the top few to explain it."}</p>`;
+}
+function explainHtml(x) {
+  const row = (path, n, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
+    return `<li><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">${n}</span><span class="path">${pathHtml(path)}</span><span class="meta">${esc(meta)}</span></button></li>`; };
+  return `<div><h3>How the code works</h3><p class="ask-answer">${esc(x.summary)}</p></div>` + x.files.map(f => `
+    <section class="explain-file">
+      <button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button>
+      ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
+      <p class="explain-text">${esc(f.explanation)}</p>
+      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em>L${pt.line}</em><b>${esc(pt.name)}</b>${esc(pt.note)}</li>`).join("")}</ul></div>` : ""}
+      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(l.path, "→", l.how)).join("")}</ol></div>` : ""}
+    </section>`).join("");
+}
+
+// ---------- reading and explaining code ----------
+// The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
+// it already has) and sends it to the ask function, which explains it and names the files each one connects to.
+const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, codeCache = new Map();   // the ask function reads at most this much of each file
+function codeRepo() {   // where to read today's source from, or null
+  if (ghRepo) return ghRepo;
+  const m = /^([\w.-]+)\/([\w.-]+)$/.exec(currentRepo || "");
+  return m && citySource !== "folder" ? { owner: m[1], repo: m[2], branch: "HEAD" } : null;
+}
+async function pullCode(path) {
+  const b = bmap.get(path), f = b && b.userData.f;
+  if (!f || !(b.userData.lines > 0)) return null;
+  const gh = codeRepo();
+  if (gh) {
+    const url = `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${encodeURIComponent(gh.branch)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+    if (!codeCache.has(url)) codeCache.set(url, fetch(url).then(r => r.ok ? r.text() : null).catch(() => null));
+    const text = await codeCache.get(url);
+    if (text != null) return { path, text: NB_RE.test(path) ? notebookCode(text) : text, partial: false };
+  }
+  return f.text != null ? { path, text: f.text, partial: b.userData.lines > f.text.split("\n").length } : null;
+}
+async function explainCode(state, paths, question) {
+  const redraw = () => { if (askState === state && sideMode === "ask") renderSide(); };
+  if (!oauthToken) { state.explain = { errorHtml: needSignin("have the code explained") }; return redraw(); }
+  state.explain = { loading: true }; redraw();
+  const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
+    .map(c => c.text.length > MAX_CODE_CHARS ? { path: c.path, text: c.text.slice(0, MAX_CODE_CHARS), partial: true } : c);
+  if (!code.length) { state.explain = { errorHtml: "The source of these files isn't available here, so there's no code to explain." }; return redraw(); }
+  const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
+  let explain;
+  try {
+    const r = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
+    });
+    const data = await r.json().catch(() => ({}));
+    explain = r.ok ? { ...data, partial: new Set(code.filter(c => c.partial).map(c => c.path)) }
+      : { errorHtml: esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
+          (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "") };
+  } catch (e) { explain = { errorHtml: "Couldn't reach Code City's server. Check your connection and try again." }; }
+  state.explain = explain;
+  for (const f of explain.files || []) for (const l of f.links) if (!state.files.has(l.path)) state.files.set(l.path, l.how);   // connected files light up too
+  redraw();
+}
+function explainFile(path) {
+  if (tourState) endTour();
+  askState = { question: path, answer: "", order: [], files: new Map([[path, ""]]) };
+  openSide("ask");
+  explainCode(askState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?");
+}
+
+// Arcs over the city from each explained file (or tour stop) to the files it connects to.
+const linkMat = new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0.9, fog: false });
+let linkGroup = null;
+function linkPairs() {
+  if (sideMode === "ask" && askState && askState.explain && askState.explain.files)
+    return askState.explain.files.flatMap(f => f.links.map(l => [f.path, l.path]));
+  if (sideMode === "tour" && tourState) { const st = tourState.steps[tourState.i]; return st.related.map(r => [st.path, r.path]); }
+  return [];
+}
+function drawLinks() {
+  if (linkGroup) { scene.remove(linkGroup); linkGroup.children.forEach(l => l.geometry.dispose()); linkGroup = null; }
+  const top = b => { const v = b.getWorldPosition(new THREE.Vector3()); v.y = b.userData.base + b.userData.target; return v; };
+  const lines = [];
+  for (const [from, to] of linkPairs()) {
+    const a = bmap.get(from), b = bmap.get(to);
+    if (!a || !b || !(a.userData.lines > 0) || !(b.userData.lines > 0)) continue;
+    const p = top(a), q = top(b), mid = p.clone().lerp(q, 0.5);
+    mid.y = Math.max(p.y, q.y) + 4 + p.distanceTo(q) * 0.35;
+    const curve = new THREE.QuadraticBezierCurve3(p, mid, q);
+    lines.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, Math.max(0.08, citySize / 900), 6, false), linkMat));   // a tube, since WebGL lines are always one pixel thin
+  }
+  if (!lines.length) return;
+  linkGroup = new THREE.Group();
+  lines.forEach(l => linkGroup.add(l));
+  scene.add(linkGroup);
 }
 
 // ---------- guided tours ----------
-// Gemini plans an ordered walk through the files; the camera flies stop to stop while the panel narrates.
+// Gemini plans a walk through what the software does, one feature per stop, each with the file that does it
+// and the files it works with; the camera flies stop to stop while the panel narrates and arcs show the links.
 const TOUR_STEP_MS = 7000;   // auto-play pace
 let tourState = null;        // { title, steps: [{ path, title, narration }], i, playing, timer }
 $("tourBtn").onclick = () => startTour($("askInput").value);
@@ -2111,7 +2299,7 @@ async function startTour(topic) {
     status.textContent = "";
     if (askState) askState = null;
     endTour();   // an old tour's auto-play timer must not drive the new one
-    tourState = { title: data.title, steps: data.steps, paths: new Set(data.steps.map(st => st.path)), i: 0, playing: false, timer: 0 };
+    tourState = { title: data.title, steps: data.steps.map(st => ({ ...st, related: st.related || [] })), paths: new Set(data.steps.map(st => st.path)), i: 0, playing: false, timer: 0 };
     openSide("tour");
     goToStop(0);
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
@@ -2123,6 +2311,7 @@ function goToStop(i) {
   const b = bmap.get(t.steps[t.i].path);
   if (b) flyToBuilding(b);
   renderTour();
+  drawLinks();
   clearTimeout(t.timer);
   if (t.playing) {
     if (t.i < t.steps.length - 1) t.timer = setTimeout(() => goToStop(t.i + 1), reduceMotion ? TOUR_STEP_MS * 1.5 : TOUR_STEP_MS);
@@ -2142,14 +2331,16 @@ function renderTour() {
       <p class="tour-path">${pathHtml(st.path)}</p>
       <p class="ask-answer">${esc(st.narration)}</p>
     </div>
+    ${st.related.length ? `<div><h3>Works with</h3><ol class="rank links">${st.related.map(r => `<li><button type="button" data-path="${esc(r.path)}"><span class="n">→</span><span class="path">${pathHtml(r.path)}</span><span class="meta">${esc(r.how)}</span></button></li>`).join("")}</ol></div>` : ""}
     <div class="side-actions">
       <button type="button" data-tour="back" ${t.i === 0 ? "disabled" : ""}>Back</button>
       <button type="button" class="primary" data-tour="next">${t.i === t.steps.length - 1 ? "Finish tour" : "Next stop"}</button>
       <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
     </div>
+    <h3>All stops</h3>
     <ol class="rank">${t.steps.map((s, k) => `<li><button type="button" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}>
       <span class="n">${k + 1}</span><span class="path">${esc(s.title)}</span><span class="meta">${pathHtml(s.path)}</span></button></li>`).join("")}</ol>
-    <p class="side-note">Gemini plans tours from file names and sizes, not the code, so treat them as a starting point.</p>`;
+    <p class="side-note">Gemini plans tours from file names and sizes, not the code, so treat them as a starting point. Click a file and press Explain this code to read it.</p>`;
   if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the list was redrawn; keep keyboard focus
 }
 sideBody.addEventListener("click", e => {
@@ -2235,7 +2426,7 @@ function recordFrame() {
     ctx.fillText(msg === c.m ? msg : msg + "…", 48, REC_H - 24);
   }
   ctx.fillStyle = "rgba(230,233,242,0.75)"; ctx.font = `600 18px "JetBrains Mono", Menlo, monospace`;
-  ctx.textAlign = "right"; ctx.fillText("code-city-lakshmi.netlify.app", REC_W - 32, 40); ctx.textAlign = "left";
+  ctx.textAlign = "right"; ctx.fillText("code-city-view.netlify.app", REC_W - 32, 40); ctx.textAlign = "left";
   // The replay ends by returning to today; hold that view briefly, then finish.
   if (!playing) {
     if (!rec.ending) rec.ending = performance.now();

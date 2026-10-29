@@ -1,6 +1,6 @@
 # Code City
 
-**Live:** https://code-city-lakshmi.netlify.app
+**Live:** https://code-city-view.netlify.app
 
 See a codebase as a 3D city at night. Each file is a building: height is lines of code, width is number of functions, and folders are raised districts. TODO / FIXME comments burn on the rooftops.
 
@@ -31,24 +31,28 @@ The timeline follows the default branch's main line: each merge is one step for 
 
 Building heights are estimated from file size until you click a building, which loads its real source. Loading all time from the first commit replays real line counts.
 
-### Hotspots, pull requests and links
+### Folders, hotspots, pull requests and links
+
+- **Folders**: click a district (or its name) to open the folder. Everything outside it dims, and the panel shows its size, the folders inside and its biggest files. The path at the top of a file's or folder's panel links to each parent folder.
 
 - **Hotspots** ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
 - **Show a pull request**: enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
 - **Copy link** copies a link that reopens the same view, for example
-  `https://code-city-lakshmi.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
+  `https://code-city-view.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
   `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.
   A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, and the whole site 300 a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
+Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Those connections light up too, joined by arcs over the city.
+
+**Explain this code** in a file's panel does the same for one file, and **Explain this folder** for a folder's three biggest files. Gemini reads at most 24,000 characters of each file and says when it only saw the start. Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour plus 20 code explanations, and the whole site 300 Gemini calls a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
 
 Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
 
 ### Guided tours
 
-Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Tour** next to the Ask box for a newcomer's overview, or type a topic first ("how checkout works"). Gemini plans four to eight stops; the camera flies from building to building while the panel narrates each one. Step through with Back / Next, jump to any stop, or press Auto-play.
+Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Tour** next to the Ask box for a functionality tour: what the software does, one feature per stop ("Signing in", "Routing a request"), in the order a user or a request meets them. Type a topic first ("how checkout works") to focus it. Gemini plans four to eight stops, each with the file that does most of the work and up to four files it works with; the camera flies from building to building while the panel narrates each one, and arcs link each stop to its files. Step through with Back / Next, jump to any stop, or press Auto-play.
 
 ### Timelapse video
 
@@ -70,8 +74,8 @@ The bot that comments on pull requests with hotspots, missing tests, who to ask,
 Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitHub for no scopes: the token only identifies the visitor, which raises their limit to 5,000 requests an hour. The token reaches the page through the site's own storage, never through a URL. Until it's set up, the button stays hidden and the paste-a-token box still works.
 
 1. On GitHub: Settings → Developer settings → OAuth Apps → New OAuth App.
-   - Homepage URL: `https://code-city-lakshmi.netlify.app`
-   - Authorization callback URL: `https://code-city-lakshmi.netlify.app/.netlify/functions/github-callback`
+   - Homepage URL: `https://code-city-view.netlify.app`
+   - Authorization callback URL: `https://code-city-view.netlify.app/.netlify/functions/github-callback`
 2. In Netlify: Site configuration → Environment variables, add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (mark the secret as secret), then redeploy.
 
 ## Run it locally
