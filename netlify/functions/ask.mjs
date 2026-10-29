@@ -192,6 +192,18 @@ function hedge(ask, attempts) {
   });
 }
 
+// The Gemini models this key can use for text (their names are public), so other models can be tried when
+// one is overloaded. GET ?models. Cached for the life of the function instance.
+let modelList = null;
+async function textModels() {
+  if (!modelList) modelList = (async () => {
+    const out = [], pager = await new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }).models.list({ config: { pageSize: 200 } });
+    for await (const m of pager) if ((m.supportedActions || []).includes("generateContent")) out.push(String(m.name).replace(/^models\//, ""));
+    return out;
+  })().catch(e => { modelList = null; return [`error: ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 120)}`]; });
+  return modelList;
+}
+
 // The last few Gemini calls' timing, size and outcome (never the question or the code), kept in Netlify Blobs
 // so slow or failing answers can be looked into. Best effort: it never holds up or breaks an answer.
 async function note(entry) {
@@ -233,6 +245,7 @@ function json(statusCode, body) {
 async function handle(event) {
   const started = Date.now(), left = () => BUDGET_MS - (Date.now() - started);
   const enabled = !!process.env.GEMINI_API_KEY;
+  if (event.httpMethod === "GET" && enabled && event.query && event.query.has("models")) return json(200, { models: await textModels() });
   if (event.httpMethod === "GET") return json(200, { enabled });
   if (event.httpMethod !== "POST") return json(405, { error: "Use POST." });
   if (!enabled) return json(503, { error: "Ask the city isn't set up on this site yet." });
@@ -375,7 +388,7 @@ async function handle(event) {
 // Netlify's current function format, which sets Netlify Blobs up fully (the older Lambda format can't do the
 // strongly consistent reads the limits need). The handler above still works on a plain request object.
 export default async req => {
-  const r = await handle({ httpMethod: req.method, headers: Object.fromEntries(req.headers), body: await req.text() });
+  const r = await handle({ httpMethod: req.method, headers: Object.fromEntries(req.headers), body: await req.text(), query: new URL(req.url).searchParams });
   return new Response(r.body, { status: r.statusCode, headers: r.headers });
 };
 
