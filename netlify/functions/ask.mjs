@@ -15,7 +15,9 @@ const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 40000;   // README, manifests, import graph and outlines, read by the page
-const THINKING = "low";   // these are short, structured answers; less thinking answers much sooner
+const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
+// Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
+const OUTPUT_TOKENS = { ask: 1200, tour: 2500, explain: 1800, lines: 800 };
 const BUDGET_MS = 26000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const PER_HOUR = +process.env.ASK_PER_HOUR || 20, PER_DAY = +process.env.ASK_PER_DAY || 300;
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
@@ -249,7 +251,7 @@ async function handle(event) {
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
-  let reply, level = THINKING;
+  let reply, levels = [...THINKING, null], level = levels.shift();
   try {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
@@ -259,18 +261,24 @@ async function handle(event) {
       system_instruction: tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
       input,
-      generation_config: { max_output_tokens: 4000, ...(level ? { thinking_level: level } : {}) },
+      generation_config: { max_output_tokens: OUTPUT_TOKENS[mode], ...(level ? { thinking_level: level } : {}) },
       response_format: { type: "text", mime_type: "application/json", schema: tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : ANSWER_SCHEMA },
     }, { timeout_ms: Math.max(1000, left()) }), deadline]);
     let interaction;
-    try { interaction = await create(); }
-    catch (e) {   // a model that doesn't take this thinking level: ask again with its default
-      if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e;
-      level = null; interaction = await create();
+    try {
+      for (;;) {
+        try { interaction = await create(); break; }
+        catch (e) {   // a model that doesn't take this thinking level: try the next one, then its default
+          if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e;
+          level = levels.shift();
+        }
+      }
     } finally { clearTimeout(timer); }
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
-    reply = JSON.parse(interaction.output_text || "");
-    await note({ mode, ms: Date.now() - started, chars: input.length, ok: true, level });
+    const u = interaction.usage || {};
+    await note({ mode, ms: Date.now() - started, chars: input.length, ok: true, level, out: u.total_output_tokens, thought: u.total_thought_tokens });
+    try { reply = JSON.parse(interaction.output_text || ""); }
+    catch (e) { return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." }); }
   } catch (e) {
     const ms = Date.now() - started;
     console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
