@@ -3,6 +3,7 @@
   "private": true,
   "description": "Netlify Functions for Code City (sign-in and Ask the city)",
   "dependencies": {
-    "@google/genai": "^2.31.0"
+    "@google/genai": "^2.31.0",
+    "@netlify/blobs": "11.1.4"
   }
 }

@@ -144,6 +144,8 @@ details.more[open] summary { margin-bottom: 8px; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 #drawer { z-index: 7; }
+/* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
+@media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 392px); } }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rank button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
 .rank button:hover, .rank button:focus-visible { background: var(--street-2); }
@@ -235,7 +237,7 @@ pre.code {
   background: color-mix(in srgb, var(--night) 80%, transparent); border: 3px dashed var(--sodium);
   font-family: var(--f-display); font-size: 28px; text-transform: uppercase; letter-spacing: .06em; color: var(--sodium);
 }
-#busy { position: fixed; inset: 0; z-index: 19; display: grid; place-items: center; font-family: var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--night) 70%, transparent); padding: 0 16px; text-align: center; }
+#busy { position: fixed; inset: 0; z-index: 19; display: grid; place-items: center; align-content: center; gap: 14px; font-family: var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--night) 70%, transparent); padding: 0 16px; text-align: center; }
 
 @media (max-width: 640px) {
   body.has-timeline { --tl-h: 92px; }
@@ -403,7 +405,7 @@ pre.code {
 <div id="tip" hidden></div>
 <div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building</div>
 <div id="drop" hidden>Drop a folder or city.json</div>
-<div id="busy" hidden>Surveying files&hellip;</div>
+<div id="busy" hidden><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -1167,7 +1169,15 @@ document.addEventListener("keydown", e => {
 });
 
 // ---------- loading repos, folders and city.json ----------
-const busy = document.getElementById("busy"), repoStatus = document.getElementById("repoStatus");
+const busy = document.getElementById("busy"), busyText = document.getElementById("busyText"), repoStatus = document.getElementById("repoStatus");
+// One load at a time: starting a new one (or pressing Cancel) aborts the one before, so a slow load that
+// finishes late can't replace the city the visitor asked for since.
+let loadCtl = new AbortController();
+function newLoad() { loadCtl.abort(); loadCtl = new AbortController(); return loadCtl.signal; }
+function stillCurrent(signal) { if (signal.aborted) throw new DOMException("Replaced by a newer load", "AbortError"); }
+function isAbort(e) { return e && e.name === "AbortError"; }
+function doneLoading(signal) { if (signal === loadCtl.signal) busy.hidden = true; }
+document.getElementById("cancelLoad").onclick = () => { loadCtl.abort(); busy.hidden = true; setRepoStatus("Stopped loading."); };
 function setRepoStatus(html) { repoStatus.innerHTML = html; }
 function normRepo(s) {
   return s.trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
@@ -1213,17 +1223,17 @@ document.addEventListener("click", e => {
   const box = document.getElementById("tokenBox");
   box.open = true; box.scrollIntoView({ block: "nearest" }); tokenInput.focus();
 });
-async function ghRes(path) {
-  const r = await fetch(API + path, { headers: ghHeaders() });
+async function ghRes(path, signal = loadCtl.signal) {
+  const r = await fetch(API + path, { headers: ghHeaders(), signal });
   if (r.status === 401) throw new Error("GitHub rejected that token. Check that it is pasted in full and hasn't expired.");
   if (r.status === 403 || r.status === 429) throw rateLimited(+r.headers.get("x-ratelimit-reset"));
   if (r.status === 404 || r.status === 451) throw Object.assign(new Error("GitHub says that repo doesn't exist or isn't public."), { status: r.status });
   if (!r.ok) throw Object.assign(new Error(`GitHub returned an error (${r.status}). Try again in a moment.`), { status: r.status });
   return r;
 }
-async function gh(path) { return (await ghRes(path)).json(); }
+async function gh(path, signal) { return (await ghRes(path, signal)).json(); }
 async function callsLeft() {   // asking doesn't use up a call
-  return fetch(API + "/rate_limit", { headers: ghHeaders() }).then(r => r.ok ? r.json() : null).then(d => d && d.resources.core).catch(() => null);
+  return fetch(API + "/rate_limit", { headers: ghHeaders(), signal: loadCtl.signal }).then(r => r.ok ? r.json() : null).then(d => d && d.resources.core).catch(e => { if (isAbort(e)) throw e; return null; });
 }
 function keepPath(p) { return !p.split("/").slice(0, -1).some(s => SKIP_DIRS.has(s)) && !!langOf(p); }
 function when(c) { return Math.round(Date.parse(c.commit.author.date) / 1000); }
@@ -1277,11 +1287,11 @@ function commitMeta(c) {
 }
 
 // ---- step 1: today's files and the shape of the history ----
-async function loadFromGitHub(key) {
+async function loadFromGitHub(key, signal) {
   const m = key.match(/^([\w.-]+)\/([\w.-]+)$/);
   if (!m) throw new Error("Paste a repo like github.com/owner/name.");
   const [, owner, repo] = m, base = `/repos/${owner}/${repo}`;
-  busy.textContent = `Reading ${key} from GitHub…`;
+  busyText.textContent = `Reading ${key} from GitHub…`;
   const limit = await callsLeft();
   if (limit && limit.remaining < 4) throw rateLimited(limit.reset);
 
@@ -1300,6 +1310,7 @@ async function loadFromGitHub(key) {
   let total = page1.length, oldest = page1[page1.length - 1];
   if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
+  stillCurrent(signal);
   ghProbe = page1.length ? { key, owner, repo, base, branch, files, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
   buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch }, history: null });
   if (!ghProbe) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
@@ -1436,15 +1447,16 @@ hp("hpDual").addEventListener("pointermove", e => {
 hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
 hp("hpLoad").onclick = async () => {
   currentRange = rangeCode(plan());
+  const signal = newLoad();
   busy.hidden = false;
-  try { await loadHistory(plan()); }
-  catch (e) { setRepoStatus(e.message); }
-  finally { busy.hidden = true; }
+  try { await loadHistory(plan(), signal); }
+  catch (e) { if (!isAbort(e)) setRepoStatus(e.message); }
+  finally { doneLoading(signal); }
 };
 
 // ---- step 2: load the chosen range ----
-async function loadHistory(pl) {
-  const p = ghProbe, say = t => { busy.textContent = t; };
+async function loadHistory(pl, signal) {
+  const p = ghProbe, say = t => { busyText.textContent = t; };
   // Newest first: take pages until we reach the start of the range.
   let list = p.page1.slice(), page = 1;
   const guess = Math.min(p.pages, Math.ceil(countSince(pl.since).n / 100));
@@ -1454,27 +1466,39 @@ async function loadHistory(pl) {
     list = list.concat(...more); page = guess;
   }
   while (when(list[list.length - 1]) >= pl.since && page < p.pages) { page++; say(`Listing commits… page ${page}`); list = list.concat(await gh(p.listPath(page))); }
-  const later = pl.until === Infinity ? [] : list.filter(c => when(c) > pl.until);   // after the range, newest first
-  list = list.filter(c => when(c) >= pl.since && (pl.until === Infinity || when(c) <= pl.until)).reverse();   // the range, oldest first
+  // Replay only the main line: follow first parents from the branch tip, and let each merge stand for the
+  // branch it brought in. Replaying side-branch commits by date would bring back files deleted meanwhile.
+  const bySha = new Map(list.map(c => [c.sha, c])), chain = [];   // newest first
+  for (let c = list[0]; c; c = (c.parents || []).length ? bySha.get(c.parents[0].sha) : null) {
+    chain.push(c);
+    if (when(c) < pl.since) break;
+  }
+  // Dates along the main line aren't always in order, so cut it into one unbroken stretch.
+  let top = pl.until === Infinity ? 0 : chain.findIndex(c => when(c) <= pl.until);
+  if (top < 0) top = chain.length;
+  let bottom = chain.findIndex((c, i) => i >= top && when(c) < pl.since);
+  if (bottom < 0) bottom = chain.length;
+  const later = chain.slice(0, top);   // after the range, newest first
+  list = chain.slice(top, bottom).reverse();   // the range, oldest first
   if (!list.length) throw new Error("No commits in that range.");
   const allTime = !later.length && !(list[0].parents || []).length;
-  const singles = list.filter(c => (c.parents || []).length <= 1);   // merges repeat their branch's changes
 
   const lim = await callsLeft();
   const left = (lim ? lim.remaining : Infinity) - (later.length ? 1 : 0);
   const changes = [];   // oldest first: { meta, files }
   let steps = 0;
-  if (singles.length <= left - 1 && singles.length <= MAX_STEPS) {
-    const details = await pool(singles, 8, c => gh(`${p.base}/commits/${c.sha}`),
+  if (list.length <= left - 1 && list.length <= MAX_STEPS) {
+    // A merge's change is what it brought onto the main line: the compare from its first parent.
+    const details = await pool(list, 8, c => (c.parents || []).length > 1 ? gh(`${p.base}/compare/${c.parents[0].sha}...${c.sha}`) : gh(`${p.base}/commits/${c.sha}`),
       (d, n) => say(`Reading commits… ${fmt(d)} / ${fmt(n)}`));
-    for (const d of details) changes.push({ meta: commitMeta(d), files: d.files });
+    details.forEach((d, i) => changes.push({ meta: commitMeta(list[i]), files: d.files }));
   } else {
     steps = Math.min(MAX_STEPS, left - 2, list.length);
     if (steps < MIN_STEPS) throw rateLimited(lim && lim.reset);
     // Boundaries spread evenly across the range; each step is GitHub's compare between two of them.
     const idx = [...new Set(Array.from({ length: steps }, (_, j) => Math.round((j + 1) * (list.length - 1) / steps)))];
     let start, startIdx;
-    if (allTime) {
+    if (!(list[0].parents || []).length) {   // the range starts at the repo's first commit, which has nothing to compare against
       const root = await gh(`${p.base}/commits/${list[0].sha}`);
       changes.push({ meta: commitMeta(root), files: root.files });
       start = list[0].sha; startIdx = 0;
@@ -1510,12 +1534,13 @@ async function loadHistory(pl) {
     commits.reverse();
   }
   const key = p.key;
+  stillCurrent(signal);
   closeHistoryPanel();
   buildCity({
     name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch },
-    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: singles.length } : null,
+    history: commits.length ? { base: Object.fromEntries(lines), baseChurn: {}, commits, total: list.length } : null,
   });
-  setRepoStatus(`Loaded ${fmt(singles.length)} commit${singles.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
+  setRepoStatus(`Loaded ${fmt(list.length)} commit${list.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
     `${steps ? `, as ${fmt(steps)} steps` : ""}${later.length ? `, then the ${fmt(later.length)} later commit${later.length === 1 ? "" : "s"} as one step to reach today` : ""}. Press Play history.`);
 }
 
@@ -1559,21 +1584,25 @@ async function loadRepo(src) {
   setRepoStatus("");
   currentRange = null;
   closeSide(true);
+  const signal = newLoad();
   busy.hidden = false;
   try {
     if (LOCAL) {
-      busy.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
-      const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()));
+      busyText.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
+      const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()), { signal });
       const data = await r.json();
       if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
+      stillCurrent(signal);
       buildCity({ ...data, repoKey: /^[\w.-]+\/[\w.-]+$/.test(key) ? key : null, source: data.source || "git" });   // local folders can't be shared as links
     } else if (PRESETS[key]) {
-      busy.textContent = `Loading ${key}…`;
-      const r = await fetch(PRESETS[key]);
+      busyText.textContent = `Loading ${key}…`;
+      const r = await fetch(PRESETS[key], { signal });
       if (!r.ok) throw new Error("Could not load the built-in copy of " + key + ".");
-      buildCity({ ...(await r.json()), repoKey: key, source: "json" });
+      const data = await r.json();
+      stillCurrent(signal);
+      buildCity({ ...data, repoKey: key, source: "json" });
     } else {
-      try { await loadFromGitHub(key); }
+      try { await loadFromGitHub(key, signal); }
       catch (e) {
         // A TypeError means the request never left the page: the claude.ai copy blocks GitHub, or the visitor is offline.
         if (!(e instanceof TypeError) || !/fetch|network|load failed/i.test(e.message)) throw e;
@@ -1581,8 +1610,8 @@ async function loadRepo(src) {
       }
     }
   } catch (e) {
-    setRepoStatus(e.message);
-  } finally { busy.hidden = true; }
+    if (!isAbort(e)) setRepoStatus(e.message);
+  } finally { doneLoading(signal); }
 }
 document.getElementById("repoForm").addEventListener("submit", e => { e.preventDefault(); loadRepo(document.getElementById("repoInput").value); });
 
@@ -1598,17 +1627,21 @@ function loadJsonText(text, fallbackName) {
 async function ingest(entries, repoName) {
   const kept = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= maxBytes(e.path)).slice(0, MAX_FILES);
   if (!kept.length) { setRepoStatus("No source files found in that folder."); return; }
+  const signal = newLoad();
   busy.hidden = false;
   try {
     const files = [];
     for (let i = 0; i < kept.length; i += 64) {
+      stillCurrent(signal);
       const chunk = await Promise.all(kept.slice(i, i + 64).map(async e => analyze(e.path, await e.file.text())));
       files.push(...chunk);
-      busy.textContent = `Surveying files… ${files.length} / ${kept.length}`;
+      busyText.textContent = `Surveying files… ${files.length} / ${kept.length}`;
     }
+    stillCurrent(signal);
     buildCity({ name: repoName + "/", source: "folder", files, history: null });
     setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
-  } finally { busy.hidden = true; }
+  } catch (e) { if (!isAbort(e)) throw e; }
+  finally { doneLoading(signal); }
 }
 
 const folderInput = document.getElementById("folderInput");
@@ -1751,7 +1784,7 @@ let sideMode = null;   // "hot" | "pr" | null
 const sidePanel = document.getElementById("side"), sideBody = document.getElementById("sideBody");
 const $ = id => document.getElementById(id);
 function openSide(mode) {
-  sideMode = mode; sidePanel.hidden = false;
+  sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   renderSide(); syncUrl();
 }
@@ -1759,7 +1792,7 @@ function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
   if (sideMode === "ask") askState = null;
   if (sideMode === "tour") endTour();
-  sideMode = null; sidePanel.hidden = true;
+  sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
   $("hotBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
@@ -1854,6 +1887,7 @@ async function loadPR(input) {
     prStatus.textContent = "";
     openSide("pr");
   } catch (e) {
+    if (isAbort(e)) { prStatus.textContent = ""; return; }   // a new repo is loading instead
     prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>code-city-lakshmi.netlify.app</code> to view pull requests." : e.message;
   }
 }
@@ -1915,7 +1949,7 @@ async function initSignin() {
   } catch (e) { signinEnabled = false; }   // the claude.ai copy and the local app have no sign-in
   if (oauthToken) {
     $("signedinRow").hidden = false;
-    try { $("ghLogin").textContent = "@" + (await gh("/user")).login; }
+    try { $("ghLogin").textContent = "@" + (await gh("/user", null)).login; }
     catch (e) { if (/rejected/.test(e.message)) { signOut(); setRepoStatus("Your GitHub sign-in expired. Please sign in again."); } }
   } else $("signinRow").hidden = !signinEnabled;
   syncTokenUi();
@@ -1925,6 +1959,13 @@ async function initSignin() {
 // A question goes to the site's "ask" function with the city's file list; the answer names the files to light up.
 // It needs a GitHub sign-in, which keeps the site's Gemini budget from being spent anonymously.
 const ASK_URL = "/.netlify/functions/ask";
+// Asking uses only the "Sign in with GitHub" token. A pasted token is promised to go only to api.github.com.
+function needSignin(what) {
+  const pasted = tokenInput.value.trim() ? " Your pasted token is only ever sent to GitHub, so it can't be used for this." : "";
+  return signinEnabled
+    ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to ${what}. Signing in keeps it free for everyone.${pasted}`
+    : `Sign-in isn't available here, so you can't ${what}.`;
+}
 let askEnabled = false, askState = null;   // askState: { question, answer, order: [{ path, why }], files: Map(path -> why) }
 async function initAsk() {
   try { const r = await fetch(ASK_URL, { cache: "no-store" }); askEnabled = r.ok && !!(await r.json()).enabled; }
@@ -1935,18 +1976,13 @@ $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("as
 async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
-  if (!ghToken()) {
-    status.innerHTML = signinEnabled
-      ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to ask questions. Signing in keeps asking free for everyone.`
-      : "Asking needs a GitHub sign-in or a GitHub token.";
-    return;
-  }
+  if (!oauthToken) { status.innerHTML = needSignin("ask questions"); return; }
   status.textContent = "Asking Gemini…";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + ghToken() },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
       body: JSON.stringify({ question: q, repo: currentRepo || cityName, files }),
     });
     const data = await r.json().catch(() => ({}));
@@ -1979,18 +2015,13 @@ let tourState = null;        // { title, steps: [{ path, title, narration }], i,
 $("tourBtn").onclick = () => startTour($("askInput").value);
 async function startTour(topic) {
   const status = $("askStatus");
-  if (!ghToken()) {
-    status.innerHTML = signinEnabled
-      ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to take a tour. Signing in keeps tours free for everyone.`
-      : "Tours need a GitHub sign-in or a GitHub token.";
-    return;
-  }
+  if (!oauthToken) { status.innerHTML = needSignin("take a tour"); return; }
   status.textContent = "Planning a tour…";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + ghToken() },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
       body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files }),
     });
     const data = await r.json().catch(() => ({}));

@@ -146,8 +146,10 @@ def apply_commit(lines, churn, commit):
 
 
 def history(repo):
-    """Every non-merge commit oldest first, with per-file line deltas. Renames count as delete + add."""
-    common = ["log", "--reverse", "--no-merges", "--no-renames"]
+    """The main line of history oldest first, with per-file line deltas. Renames count as delete + add.
+    Only first parents are followed, and a merge counts as one change against the line it joined, so files
+    deleted on the main line can't come back from an older side-branch commit replayed after the delete."""
+    common = ["log", "--reverse", "--first-parent", "-m", "--no-renames"]
     nums = git(repo, *common, "--numstat", "--format=%x01%H%x02%at%x02%an%x02%s")
     stats = git(repo, *common, "--name-status", "--format=%x01%H")
     status = {}

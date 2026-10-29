@@ -30,7 +30,7 @@ Building heights are estimated from file size until you click a building, which 
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs a GitHub sign-in, so the site's Gemini budget can't be spent anonymously.
+Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. Asking needs a GitHub sign-in, so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, and the whole site 300 a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
 
 Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.js` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
 
@@ -77,7 +77,7 @@ To show a repo's full history on the hosted site, export it and drag the JSON on
     python3 codecity.py export owner/repo              # writes repo.json
     python3 codecity.py export owner/repo --no-source  # smaller, without file previews
 
-Histories longer than 1,500 commits are merged into 1,500 steps, so the timelapse still starts from the first commit. The hosted site bundles Flask and Express in `site/presets/`; type `pallets/flask` or `expressjs/express` to load them.
+The timelapse follows the main line of history (first parents), with each merge shown as one step for the branch it brought in, so files deleted on the main line never reappear. Histories longer than 1,500 commits are merged into 1,500 steps, so the timelapse still starts from the first commit. The hosted site bundles Flask and Express in `site/presets/`; type `pallets/flask` or `expressjs/express` to load them.
 
 ## Project layout
 

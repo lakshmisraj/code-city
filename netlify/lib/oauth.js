@@ -14,9 +14,15 @@ function readCookies(header) {
   return out;
 }
 
-// Only return to a page on this site, never to another host.
+// Only return to a page on this site, never to another host. Browsers drop tabs and newlines from URLs,
+// so "/\t/evil.com" would become "//evil.com": refuse any whitespace or control character, then check
+// that the path still resolves to this site.
 function safeReturn(path) {
-  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\") ? path : "/";
+  if (typeof path !== "string" || !path.startsWith("/") || /[\s\x00-\x1f\x7f\\]/.test(path)) return "/";
+  try {
+    const u = new URL(path, "https://code-city.invalid");
+    return u.origin === "https://code-city.invalid" && !u.pathname.startsWith("//") ? u.pathname + u.search + u.hash : "/";
+  } catch (e) { return "/"; }
 }
 
 function page(statusCode, message, extra = "") {
