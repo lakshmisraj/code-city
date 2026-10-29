@@ -215,6 +215,12 @@ pre.code {
 }
 .note { color: var(--ink-dim); font-size: 13px; margin: 0; }
 button.mini { padding: 3px 8px; font-size: 11px; }
+.drawer-body h3 .count { color: var(--ink); margin-left: 4px; }
+.links.in .n { color: var(--changed); }
+.links-key { font-size: 11px; }
+.links-key .k { font-family: var(--f-mono); margin-right: 8px; }
+.links-key .k.out { color: var(--sodium); } .links-key .k.in { color: var(--changed); }
+.chip.real { color: var(--added); } .chip.guess { color: var(--ink-dim); }
 .link-row { display: flex; align-items: flex-start; gap: 4px; }
 .link-row > button { flex: 1; min-width: 0; }
 .link-acts { display: flex; gap: 4px; padding-top: 6px; flex-shrink: 0; }
@@ -399,6 +405,7 @@ body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + e
         <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
       </div>
     </div>
+    <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
     <div class="actions">
       <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
     </div>
@@ -469,6 +476,7 @@ body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + e
   </div>
   <div class="drawer-body">
     <dl class="stats" id="dStats"></dl>
+    <div id="dLinks"></div>
     <div id="dTodos"></div>
     <div id="dCode"></div>
   </div>
@@ -563,6 +571,167 @@ function langOf(path) {
   const m = base.match(/\.([a-z0-9]+)$/);
   return m && EXT[m[1]] ? EXT[m[1]] : null;
 }
+
+// ---------- imports ----------
+// Real connections between files, read from their import lines (no AI involved), so the arcs over the city can
+// be trusted. Each language's imports are matched to files in the city; anything that isn't one (a package, the
+// standard library) is left out.
+const IMPORT_RES = {
+  js: [/\bimport\s+(?:type\s+)?(?:[\w*{}\s,$]+\s+from\s+)?["']([^"'\n]+)["']/g, /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+\w+)?\s+from\s+["']([^"'\n]+)["']/g,
+       /\brequire\s*\(\s*["']([^"'\n]+)["']\s*\)/g, /\bimport\s*\(\s*["']([^"'\n]+)["']\s*\)/g],
+  py: [/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]+\(?([^\n#]+)/gm, /^[ \t]*import[ \t]+([^\n#]+)/gm],
+  go: [/^\s*import\s+(?:\w+\s+)?"([^"]+)"/gm, /^\s*import\s*\(([^)]*)\)/gm],
+  rb: [/\brequire_relative\s*\(?\s*["']([^"']+)["']/g, /\brequire\s*\(?\s*["']([^"']+)["']/g],
+  java: [/^\s*import\s+(?:static\s+)?([\w.]+)(?:\.\*)?\s*;/gm],
+  c: [/^\s*#\s*include\s*"([^"]+)"/gm],
+  css: [/@(?:import|use|forward)\s+(?:url\()?["']([^"']+)["']/g],
+  rs: [/^\s*(?:pub\s+)?mod\s+(\w+)\s*;/gm, /^\s*(?:pub\s+)?use\s+(crate|self|super)((?:::\w+)+)/gm],
+  php: [/\b(?:require|include)(?:_once)?\s*\(?\s*(?:__DIR__\s*\.\s*)?["']([^"']+)["']/g, /^\s*use\s+([\w\\]+)\s*;/gm],
+};
+const IMPORT_LANG = { ts: "js", js: "js", py: "py", nb: "py", go: "go", rb: "rb", java: "java", kt: "java", c: "c", css: "css", rs: "rs", php: "php" };
+const JS_EXTS = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte", ".d.ts"];
+
+// The import specifiers in one file's source, as written.
+function parseImports(path, text) {
+  const kind = IMPORT_LANG[langOf(path)];
+  if (!kind || !text) return [];
+  const out = [];
+  if (kind === "py") {
+    for (const m of text.matchAll(IMPORT_RES.py[0])) {
+      const names = m[2].replace(/[()\\]/g, "").split(",").map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => /^\w+$/.test(n));
+      out.push({ spec: m[1], names });
+    }
+    for (const m of text.matchAll(IMPORT_RES.py[1]))
+      for (const n of m[1].split(",")) { const spec = n.trim().split(/\s+as\s+/)[0]; if (/^[\w.]+$/.test(spec)) out.push({ spec, names: [] }); }
+    return out;
+  }
+  if (kind === "go") {
+    for (const m of text.matchAll(IMPORT_RES.go[0])) out.push({ spec: m[1] });
+    for (const m of text.matchAll(IMPORT_RES.go[1])) for (const q of m[1].matchAll(/"([^"]+)"/g)) out.push({ spec: q[1] });
+    return out;
+  }
+  if (kind === "rb") {
+    for (const m of text.matchAll(IMPORT_RES.rb[0])) out.push({ spec: m[1], relative: true });
+    for (const m of text.matchAll(IMPORT_RES.rb[1])) out.push({ spec: m[1] });
+    return out;
+  }
+  if (kind === "rs") {
+    for (const m of text.matchAll(IMPORT_RES.rs[0])) out.push({ spec: m[1], mod: true });
+    for (const m of text.matchAll(IMPORT_RES.rs[1])) out.push({ spec: m[1] + m[2] });
+    return out;
+  }
+  for (const re of IMPORT_RES[kind]) for (const m of text.matchAll(re)) out.push({ spec: m[1] });
+  return out;
+}
+
+// Turns specifiers into paths of files in the city. Built once per city from its file list.
+function makeResolver(paths) {
+  const all = new Set(paths), bySuffix = new Map();
+  for (const p of paths) {   // every file under each of its trailing paths: "a/b/c.py" as "c.py", "b/c.py", "a/b/c.py"
+    const parts = p.split("/");
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const k = parts.slice(i).join("/");
+      if (!bySuffix.has(k)) bySuffix.set(k, []);
+      bySuffix.get(k).push(p);
+    }
+  }
+  const dirOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+  const norm = p => { const out = []; for (const s of p.split("/")) { if (s === "..") out.pop(); else if (s && s !== ".") out.push(s); } return out.join("/"); };
+  const join = (dir, rel) => norm(dir ? dir + "/" + rel : rel);
+  const first = (cands) => { for (const c of cands) if (all.has(c)) return c; return null; };
+  // A path written relative to an unknown root ("pkg/util.py"): the file whose path ends with it, if exactly
+  // one does, or the one closest to the importing file.
+  const bySuffixNear = (from, suffix) => {
+    const hits = bySuffix.get(suffix);
+    if (!hits) return null;
+    if (hits.length === 1) return hits[0];
+    const d = dirOf(from);
+    return hits.slice().sort((a, b) => shared(b, d) - shared(a, d) || a.length - b.length)[0];
+  };
+  const shared = (a, d) => { const x = a.split("/"), y = d.split("/"); let n = 0; while (n < x.length && n < y.length && x[n] === y[n]) n++; return n; };
+  const jsFile = base => {
+    const stem = base.replace(/\.(m|c)?jsx?$/, "");   // TypeScript ESM writes "./util.js" for util.ts
+    return first(JS_EXTS.map(e => base + e)) || (stem !== base ? first(JS_EXTS.map(e => stem + e)) : null) ||
+      first(JS_EXTS.slice(1).map(e => (base ? base + "/" : "") + "index" + e));
+  };
+  let goModule = null;   // set from go.mod when the city has one
+
+  function resolve(from, imp) {
+    const kind = IMPORT_LANG[langOf(from)], spec = imp.spec, dir = dirOf(from);
+    if (kind === "js") {
+      if (spec.startsWith(".")) return [jsFile(join(dir, spec))];
+      if (spec.startsWith("/")) return [jsFile(norm(spec))];
+      const m = /^(?:@|~|#)\/(.*)$/.exec(spec);   // common path aliases for the source folder
+      if (m) return [jsFile("src/" + m[1]) || jsFile(m[1])];
+      return [];   // a package
+    }
+    if (kind === "py") {
+      let base, mod = spec;
+      if (spec.startsWith(".")) {
+        const dots = spec.match(/^\.+/)[0].length;
+        base = dir.split("/").filter(Boolean).slice(0, Math.max(0, dir.split("/").filter(Boolean).length - (dots - 1))).join("/");
+        mod = spec.slice(dots);
+      }
+      const rel = mod.replace(/\./g, "/");
+      // Like Python's own search: the importing file's folder and its parents, then src/, then the repo root
+      const roots = base != null ? [base] : [...dir.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/")), "src", "lib", ""];
+      const pick = p => first(roots.map(r => join(r, p)));
+      const mainFile = rel ? pick(rel + ".py") || pick(rel + "/__init__.py") : (base != null ? first([join(base, "__init__.py")]) : null);
+      // "from pkg import mod" names submodules as often as functions
+      const subs = (imp.names || []).map(n => pick((rel ? rel + "/" : "") + n + ".py") || pick((rel ? rel + "/" : "") + n + "/__init__.py"));
+      return !rel && subs.some(Boolean) ? subs : [mainFile, ...subs];   // "from . import views" points at views.py, not the package
+    }
+    if (kind === "go") {
+      let rel = spec;
+      if (goModule && (spec === goModule || spec.startsWith(goModule + "/"))) rel = spec.slice(goModule.length + 1);
+      else if (goModule || !spec.includes(".")) return [];   // another module or the standard library
+      return paths.filter(p => dirOf(p) === rel && p.endsWith(".go") && !p.endsWith("_test.go"));   // a Go import is a whole folder
+    }
+    if (kind === "rb") {
+      const s = spec.endsWith(".rb") ? spec : spec + ".rb";
+      return [imp.relative ? first([join(dir, s)]) : first(["lib/" + s]) || bySuffixNear(from, s)];
+    }
+    if (kind === "java") {
+      const rel = spec.replace(/\./g, "/");
+      return [bySuffixNear(from, rel + ".java") || bySuffixNear(from, rel + ".kt")];
+    }
+    if (kind === "c") return [first([join(dir, spec)]) || bySuffixNear(from, spec)];
+    if (kind === "css") {
+      const d = dirOf(join(dir, spec)), b = join(dir, spec).split("/").pop();
+      return [first([join(dir, spec), ...[".css", ".scss", ".sass", ".less"].flatMap(e => [`${d ? d + "/" : ""}${b}${e}`, `${d ? d + "/" : ""}_${b}${e}`])])];
+    }
+    if (kind === "rs") {
+      if (imp.mod) {   // "mod x;" in foo.rs or mod.rs/lib.rs/main.rs
+        const name = from.split("/").pop(), here = /^(mod|lib|main)\.rs$/.test(name) ? dir : join(dir, name.replace(/\.rs$/, ""));
+        return [first([join(here, spec + ".rs"), join(here, spec + "/mod.rs")])];
+      }
+      const segs = spec.split("::").filter(Boolean), root = segs.shift();
+      let baseDir = root === "crate" ? (paths.find(p => /(^|\/)src\/(lib|main)\.rs$/.test(p)) || "src/lib.rs").replace(/\/?(lib|main)\.rs$/, "") : root === "super" ? dirOf(dir) : dir;
+      for (let i = segs.length; i > 0; i--) {   // the longest module path that is a file; the rest are items in it
+        const rel = segs.slice(0, i).join("/"), hit = first([join(baseDir, rel + ".rs"), join(baseDir, rel + "/mod.rs")]);
+        if (hit) return [hit];
+      }
+      return [];
+    }
+    if (kind === "php") {
+      if (!spec.includes("\\")) return [first([join(dir, spec)]) || bySuffixNear(from, spec)];
+      const segs = spec.split("\\");   // a namespace: its root rarely matches the folder name ("App\\" in app/), so try shorter tails
+      for (let i = 0; i < segs.length - 1; i++) { const hit = bySuffixNear(from, segs.slice(i).join("/") + ".php"); if (hit) return [hit]; }
+      return [];
+    }
+    return [];
+  }
+  return {
+    setGoModule(m) { goModule = m; },
+    // The files this one imports, without duplicates or itself.
+    deps(from, text) {
+      const out = new Set();
+      for (const imp of parseImports(from, text)) for (const p of resolve(from, imp)) if (p && p !== from) out.add(p);
+      return [...out];
+    },
+  };
+}
+// ---------- end imports ----------
 
 // ---------- analysis (folders opened in the browser) ----------
 const FN_RE = /\b(function|def|func|fn|fun)\b|=>|\bclass\b|\b(public|private|protected|static)\s+[\w<>\[\],\s]+\s+\w+\s*\(/g;
@@ -915,7 +1084,8 @@ function clearCity() {
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
-  panes = []; document.getElementById("viewer").hidden = true; document.body.classList.remove("viewer-open");   // the viewer shows files of the city on screen
+  panes = []; document.getElementById("viewer").hidden = true; document.body.classList.remove("viewer-open");
+  graph = null; hoverFocus = null; if (linkGroup) { scene.remove(linkGroup); linkGroup = null; } sparks = [];   // the viewer shows files of the city on screen
 }
 
 function label(text, x, y, z, size, dir) {
@@ -1269,16 +1439,16 @@ function openDrawer(b) {
     : `<p class="note">${!f.nowLines ? "This file was deleted before today."
         : fromGitHub ? "GitHub didn't return this file's source."
         : citySource === "sample" ? "This is the example city, so there is no source to show."
-        : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
+        : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   if (askEnabled && b.userData.lines > 0 && (f.text != null || codeRepo()))
     document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" class="primary" data-explain>Explain this code</button><button type="button" data-view>View code</button></div>`);
   else if (b.userData.lines > 0 && (f.text != null || codeRepo()))
     document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" data-view>View code</button></div>`);
   drawer.hidden = false; document.body.classList.add("drawer-open");
-  if (picked !== prevPicked) flyToBuilding(b);
+  if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
-function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) syncUrl(); }
+function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
 
 // ---------- folders ----------
 // Clicking a district (or its label) opens the folder: everything outside it dims, its platforms glow, and the
@@ -1306,7 +1476,7 @@ function setFolder(dir) {
 function openFolder(dir) {
   const st = folderStats(dir);
   if (!st.files.length) return;
-  picked = null; setFolder(dir);
+  picked = null; setFolder(dir); $("dLinks").innerHTML = ""; drawLinks();
   const parts = dir.split("/"), name = parts.pop();
   document.getElementById("dName").textContent = name + "/";
   document.getElementById("dPath").innerHTML = `${crumbs(parts)} · folder`;
@@ -1321,7 +1491,7 @@ function openFolder(dir) {
   document.getElementById("dCode").innerHTML =
     (askEnabled && codeRepo() || askEnabled && biggest.some(b => b.userData.f.text != null)
       ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
-    `<h3>Biggest files</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
+    `<h3>Biggest files${biggest.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify(biggest.slice(0, MAX_PANES).map(b => b.userData.f.path)))}">View ${Math.min(biggest.length, MAX_PANES)} side by side</button>` : ""}</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
     (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
   drawer.hidden = false; document.body.classList.add("drawer-open");
   const p = districts.find(d => d.userData.dir === dir);
@@ -1333,6 +1503,8 @@ function openFolder(dir) {
   syncUrl();
 }
 drawer.addEventListener("click", e => {
+  const all = e.target.closest("[data-view-all]");
+  if (all) return viewFiles(JSON.parse(all.dataset.viewAll));
   const dir = e.target.closest("[data-dir]"), file = e.target.closest("[data-file]");
   if (dir) return openFolder(dir.dataset.dir);
   if (file) { const b = bmap.get(file.dataset.file); if (b) openDrawer(b); return; }
@@ -2063,8 +2235,10 @@ sideBody.addEventListener("click", e => {
 sideBody.addEventListener("mouseover", e => {
   const row = e.target.closest("[data-path]");
   hovered = row ? bmap.get(row.dataset.path) || null : null;
+  const focus = hovered ? row.dataset.path : null;
+  if (focus !== hoverFocus) { hoverFocus = focus; drawLinks(); }   // pointing at a row shows that file's connections
 });
-sideBody.addEventListener("mouseleave", () => { hovered = null; });
+sideBody.addEventListener("mouseleave", () => { hovered = null; if (hoverFocus) { hoverFocus = null; drawLinks(); } });
 
 // Hotspots: files that change often *and* are big. Change frequency times size is a well-known
 // predictor of where defects cluster, and it's where refactoring pays off first.
@@ -2255,14 +2429,20 @@ function renderAsk() {
       ${chain.length > 1 || st.from ? `<div class="chain-head"><b>Step ${k + 1}</b>${st.from ? `<span>followed from ${pathHtml(st.from)}</span>` : ""}</div>` : ""}
       ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : explainHtml(st)}
     </section>`).join("") +
-    `<p class="side-note">${chain.some(st => st.files) ? "Gemini read the code above; check what it says against the source. <b>Follow</b> explains a connected file next, as the next step in the chain. <b>View</b> opens files side by side."
+    `<p class="side-note">${chain.some(st => st.files) ? "Gemini read the code above; check what it says against the source. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next, as the next step in the chain. <b>View</b> opens files side by side."
       : "Gemini picks these files from their names and sizes, then reads the code of the top few to explain it."}</p>`;
 }
 function explainHtml(x) {
   const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
-    return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${esc(meta)}</span></button>` +
+    const g = graph, real = x.real && x.real.get(from) && x.real.get(from).has(path), user = g && g.usedBy && (g.usedBy.get(from) || new Set()).has(path);
+    const chip = real ? `<span class="chip real" title="Found in this file's import lines">imports</span>` : user ? `<span class="chip real" title="Found in that file's import lines">used by</span>`
+      : `<span class="chip guess" title="Gemini's reading of the code, not an import line">inferred</span>`;
+    return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
       (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
-  return `<div><h3>How the code works</h3><p class="ask-answer">${esc(x.summary)}</p></div>` + x.files.map(f => `
+  const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
+  return `<div><h3>How the code works</h3><p class="ask-answer">${esc(x.summary)}</p>` +
+    (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, MAX_PANES)))}">View ${Math.min(every.length, MAX_PANES)} files side by side</button></div>` : "") +
+    `</div>` + x.files.map(f => `
     <section class="explain-file">
       <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
@@ -2272,6 +2452,8 @@ function explainHtml(x) {
     </section>`).join("");
 }
 sideBody.addEventListener("click", e => {
+  const all = e.target.closest("[data-view-all]");
+  if (all) { e.stopPropagation(); return viewFiles(JSON.parse(all.dataset.viewAll)); }
   const view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]"), step = e.target.closest("[data-step]");
   if (view) viewFile(view.dataset.view);
   else if (line) viewFile(line.dataset.file, +line.dataset.line);
@@ -2311,6 +2493,9 @@ async function explainCode(state, paths, question, from) {
   redraw();
   const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
     .map(c => c.text.length > MAX_CODE_CHARS ? { path: c.path, text: c.text.slice(0, MAX_CODE_CHARS), partial: true } : c);
+  const real = await Promise.all(code.map(c => loadDeps(c.path)));   // the files each one really imports
+  code.forEach((c, i) => { c.imports = real[i]; });
+  st.real = new Map(code.map((c, i) => [c.path, new Set(real[i])]));
   st.loading = false;
   if (!code.length) { st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
@@ -2326,19 +2511,28 @@ async function explainCode(state, paths, question, from) {
       (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
   } catch (e) { st.errorHtml = "Couldn't reach Code City's server. Check your connection and try again."; }
   for (const p of paths) if (!state.files.has(p)) state.files.set(p, "");
-  for (const f of st.files || []) for (const l of f.links) if (!state.files.has(l.path)) state.files.set(l.path, l.how);   // connected files light up too
+  for (const [, deps] of st.real) for (const d of deps) if (!state.files.has(d)) state.files.set(d, "");   // the files they import light up too
   redraw();
-  if (from && askState === state) { const el = sideBody.querySelector(`[data-chain="${state.chain.indexOf(st)}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
+  if (state.chain.length > 1 && askState === state) { const el = sideBody.querySelector(`[data-chain="${state.chain.indexOf(st)}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
 }
 function followLink(from, path) {
-  const chain = askState.chain || [], k = chain.findIndex(st => st.paths.length === 1 && st.paths[0] === path);
+  const chain = askState.chain || [], k = chain.findIndex(st => st.paths.includes(path));
   if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }   // already in the chain
   if (chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Ask again to start a new one.`); return; }
   const b = bmap.get(path);
   if (b) flyToBuilding(b);
   explainCode(askState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
+  viewFile(from).then(() => viewFile(path));   // the two files side by side in the code viewer
 }
 function explainFile(path) {
+  // With explanations already open, this one is added below them rather than replacing them.
+  if (sideMode === "ask" && askState && askState.chain && askState.chain.length) {
+    const k = askState.chain.findIndex(st => st.paths.includes(path));
+    if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }
+    if (askState.chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Close the panel to start a new one.`); return; }
+    explainCode(askState, [path], "What does this file do, how does it work, and how does it connect to the files explained above?");
+    return;
+  }
   if (tourState) endTour();
   askState = { question: path, answer: "", order: [], files: new Map([[path, ""]]) };
   openSide("ask");
@@ -2348,7 +2542,7 @@ function explainFile(path) {
 // ---------- code viewer ----------
 // Several files' full source side by side. Files come from the drawer's View code, the explanations' View
 // buttons and key-part line numbers, or shift-clicking a building. The oldest pane makes room for a new one.
-const MAX_PANES = 4, MAX_VIEW_LINES = 6000;
+const MAX_PANES = 6, MAX_VIEW_LINES = 6000;
 async function viewFile(path, line) {
   const have = panes.find(p => p.path === path);
   if (have) { if (line) have.line = line; renderViewer(); return; }
@@ -2359,6 +2553,9 @@ async function viewFile(path, line) {
   if (panes.length > MAX_PANES) panes.shift();
   closeDrawer();
   renderViewer();
+}
+async function viewFiles(paths) {   // several at once, in order, up to what the viewer holds
+  for (const p of paths.slice(0, MAX_PANES)) await viewFile(p);
 }
 function renderViewer() {
   const box = $("viewer");
@@ -2388,36 +2585,141 @@ $("viewerPanes").addEventListener("click", e => {
 });
 $("viewerClose").onclick = () => { panes = []; renderViewer(); };
 
-// Arcs over the city from each explained file (or tour stop) to the files it connects to.
-const linkMat = new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0.9, fog: false });
-const chainMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.95, fog: false });   // the steps of an explanation chain
-let linkGroup = null;
-function linkPairs() {   // [from, to, isChain]
+// ---------- connections ----------
+// Which files import which, read from the source by the import parser above. Arcs over the city show the
+// connections of one file at a time: the file you're on, the row you're pointing at, the explained files or the
+// tour stop. Sparks travel along each arc in the direction of the import: orange from this file to what it
+// imports, blue from the files that use it. An explanation chain's own path is drawn thicker.
+const MAX_ARCS = 40, MAX_SCAN = 2000;
+let graph = null;   // { resolver, out: Map(path -> Promise<[paths]>), usedBy: Map(path -> Set) | null, scanning }
+let showLinks = true, hoverFocus = null;
+try { showLinks = localStorage.getItem("codecity.links") !== "off"; } catch (e) { /* storage blocked */ }
+function resetGraph() { graph = null; }
+function getGraph() {
+  if (graph) return graph;
+  const resolver = makeResolver(buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path));
+  graph = { resolver, out: new Map(), usedBy: null, scanning: null, ready: null };
+  graph.ready = bmap.has("go.mod") ? pullCode("go.mod").then(c => { const m = c && /^module\s+(\S+)/m.exec(c.text); if (m) resolver.setGoModule(m[1]); }) : Promise.resolve();
+  return graph;
+}
+function canImport(path) { return !!IMPORT_LANG[langOf(path)]; }
+function depsOf(path) {   // the files this file imports (a promise; cached)
+  const g = getGraph();
+  if (!g.out.has(path)) g.out.set(path, !canImport(path) ? Promise.resolve([]) :
+    g.ready.then(() => pullCode(path)).then(c => c ? g.resolver.deps(path, c.text) : []));
+  return g.out.get(path);
+}
+function knownDeps(path) { const p = graph && graph.out.get(path); return p ? p.done : undefined; }   // already loaded, or undefined
+async function loadDeps(path) { const p = depsOf(path), d = await p; p.done = d; return d; }
+// "Used by" needs every file's imports, so it's built once per city on request (one fetch per source file).
+function scanUsedBy(progress) {
+  const g = getGraph();
+  if (g.usedBy) return Promise.resolve(g.usedBy);
+  if (g.scanning) return g.scanning;
+  const files = buildings.filter(b => b.userData.lines > 0 && canImport(b.userData.f.path)).map(b => b.userData.f.path).slice(0, MAX_SCAN);
+  let done = 0;
+  g.scanning = (async () => {
+    const queue = files.slice(), usedBy = new Map();
+    await Promise.all(Array.from({ length: 8 }, async () => {
+      while (queue.length) {
+        const f = queue.shift();
+        for (const d of await loadDeps(f)) { if (!usedBy.has(d)) usedBy.set(d, new Set()); usedBy.get(d).add(f); }
+        done++; if (progress && done % 10 === 0) progress(done, files.length);
+      }
+    }));
+    if (graph === g) g.usedBy = usedBy;
+    return usedBy;
+  })();
+  return g.scanning;
+}
+function focusPaths() {   // whose connections the arcs show
+  if (hoverFocus) return [hoverFocus];
+  if (picked) return [picked.userData.f.path];
   if (sideMode === "ask" && askState && askState.chain) {
     const done = askState.chain.filter(st => st.files), last = done[done.length - 1];
-    return [...askState.chain.filter(st => st.from).map(st => [st.from, st.paths[0], true]),
-            ...(last ? last.files.flatMap(f => f.links.map(l => [f.path, l.path, false])) : [])];
+    return last ? last.paths : [];
   }
-  if (sideMode === "tour" && tourState) { const st = tourState.steps[tourState.i]; return st.related.map(r => [st.path, r.path, false]); }
+  if (sideMode === "tour" && tourState) return [tourState.steps[tourState.i].path];
   return [];
 }
+function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in" (from uses to) or "chain"
+  const pairs = [];
+  if (sideMode === "ask" && askState && askState.chain) for (const st of askState.chain) if (st.from) pairs.push([st.from, st.paths[0], "chain"]);
+  if (!showLinks) return pairs;
+  const g = graph;
+  for (const f of focusPaths()) {
+    const out = knownDeps(f);
+    if (out === undefined) { loadDeps(f).then(() => { if (focusPaths().includes(f)) drawLinks(); }); continue; }
+    for (const d of out) pairs.push([f, d, "out"]);
+    if (g && g.usedBy) for (const u of g.usedBy.get(f) || []) pairs.push([u, f, "in"]);
+  }
+  return pairs.slice(0, MAX_ARCS);
+}
+const ARC = {
+  out: { tube: new THREE.MeshBasicMaterial({ color: 0xf2a541, transparent: true, opacity: 0.55, fog: false }), spark: 0xffd08a, w: 1 },
+  in: { tube: new THREE.MeshBasicMaterial({ color: 0x8fb0ff, transparent: true, opacity: 0.55, fog: false }), spark: 0xd6e2ff, w: 1 },
+  chain: { tube: new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.95, fog: false }), spark: 0xffe0b0, w: 2.2 },
+};
+const SPARK_GEO = new THREE.SphereGeometry(1, 8, 6);
+let linkGroup = null, sparks = [];   // sparks: [{ mesh, curve, phase }]
 function drawLinks() {
-  if (linkGroup) { scene.remove(linkGroup); linkGroup.children.forEach(l => l.geometry.dispose()); linkGroup = null; }
+  if (linkGroup) { scene.remove(linkGroup); linkGroup.children.forEach(m => { if (m.geometry !== SPARK_GEO) m.geometry.dispose(); }); linkGroup = null; }
+  sparks = [];
   const top = b => { const v = b.getWorldPosition(new THREE.Vector3()); v.y = b.userData.base + b.userData.target; return v; };
-  const lines = [];
-  for (const [from, to, chain] of linkPairs()) {
-    const a = bmap.get(from), b = bmap.get(to);
-    if (!a || !b || !(a.userData.lines > 0) || !(b.userData.lines > 0)) continue;
+  const group = new THREE.Group(), r = Math.max(0.08, citySize / 900), seen = new Set();
+  for (const [from, to, kind] of linkPairs()) {
+    const a = bmap.get(from), b = bmap.get(to), key = from + ">" + to + kind;
+    if (!a || !b || seen.has(key) || !(a.userData.lines > 0) || !(b.userData.lines > 0)) continue;
+    seen.add(key);
     const p = top(a), q = top(b), mid = p.clone().lerp(q, 0.5);
     mid.y = Math.max(p.y, q.y) + 4 + p.distanceTo(q) * 0.35;
-    const curve = new THREE.QuadraticBezierCurve3(p, mid, q);
-    lines.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, Math.max(0.08, citySize / 900) * (chain ? 2.2 : 1), 6, false), chain ? chainMat : linkMat));   // a tube, since WebGL lines are always one pixel thin
+    const curve = new THREE.QuadraticBezierCurve3(p, mid, q), st = ARC[kind];
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, r * st.w, 6, false), st.tube));   // a tube, since WebGL lines are always one pixel thin
+    const sparkMat = new THREE.MeshBasicMaterial({ color: st.spark, fog: false });
+    for (let k = 0; k < (reduceMotion ? 1 : 3); k++) {
+      const m = new THREE.Mesh(SPARK_GEO, sparkMat);
+      m.scale.setScalar(r * st.w * 1.8);
+      group.add(m); sparks.push({ mesh: m, curve, phase: k / 3 });
+    }
   }
-  if (!lines.length) return;
-  linkGroup = new THREE.Group();
-  lines.forEach(l => linkGroup.add(l));
-  scene.add(linkGroup);
+  if (!group.children.length) return;
+  linkGroup = group; scene.add(group);
+  stepLinks(performance.now() / 1000);
 }
+function stepLinks(t) {   // sparks run from the importing file to the imported one; still (at the midpoint) with reduced motion
+  for (const s of sparks) s.curve.getPoint(reduceMotion ? 0.5 : (t * 0.35 + s.phase) % 1, s.mesh.position);
+}
+function setShowLinks(on) {
+  showLinks = on;
+  try { localStorage.setItem("codecity.links", on ? "on" : "off"); } catch (e) { /* storage blocked */ }
+  $("linksToggle").checked = on;
+  drawLinks();
+}
+$("linksToggle").checked = showLinks;
+$("linksToggle").onchange = e => setShowLinks(e.target.checked);
+
+// The drawer's Imports and Used by lists for one file.
+async function renderFileLinks(path) {
+  const box = $("dLinks");
+  if (!canImport(path)) { box.innerHTML = ""; return; }
+  const list = (title, paths, cls) => `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, MAX_PANES)))}">View with this file</button>` : ""}</h3>${paths.length
+    ? `<ol class="rank links ${cls}">${paths.map(p => `<li><button type="button" data-file="${esc(p)}"><span class="n">${cls === "in" ? "←" : "→"}</span><span class="path">${pathHtml(p)}</span></button></li>`).join("")}</ol>`
+    : `<p class="note">${cls === "in" ? "No other file imports this one." : "It doesn't import other files in this repo."}</p>`}</div>`;
+  box.innerHTML = `<p class="note">Reading its imports…</p>`;
+  const out = await loadDeps(path);
+  if (!picked || picked.userData.f.path !== path) return;
+  const g = graph;
+  box.innerHTML = list("Imports", out, "out") + (g && g.usedBy ? list("Used by", [...(g.usedBy.get(path) || [])].sort(), "in")
+    : `<div><h3>Used by</h3><button type="button" class="mini" data-scan>Find the files that use this</button></div>`) +
+    `<p class="note links-key"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>`;
+}
+document.getElementById("dLinks").addEventListener("click", async e => {
+  if (!e.target.closest("[data-scan]") || !picked) return;
+  const path = picked.userData.f.path, btn = e.target.closest("[data-scan]");
+  btn.disabled = true;
+  await scanUsedBy((n, total) => { btn.textContent = `Reading imports… ${fmt(n)} of ${fmt(total)} files`; });
+  if (picked && picked.userData.f.path === path) { renderFileLinks(path); drawLinks(); }
+});
 
 // ---------- guided tours ----------
 // Gemini plans a walk through what the software does, one feature per stop, each with the file that does it
@@ -2621,6 +2923,7 @@ function frame() {
   FIRE.color.setHSL(0.055 + (reduceMotion ? 0 : 0.012 * Math.sin(t * 7)), 1, 0.56);
   updateDust(dt);
   stepFlight();
+  stepLinks(t);
   placeBackLight();
   keepCityClear();
   controls.update();
