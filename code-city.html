@@ -132,6 +132,16 @@ button:focus-visible, input:focus-visible, .linkish:focus-visible { outline: 2px
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .ramp { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--ink-dim); }
+.ramp .bar.imp { background: linear-gradient(90deg, #1e2740, #1f6f74, #4fb88a, #d6ef9a, #fffbd0); }
+.q-wrap { position: relative; }
+#qList { position: absolute; z-index: 9; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; max-height: 300px; overflow: auto;
+  background: var(--street); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
+#qList li { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+#qList li[aria-selected="true"], #qList li:hover { background: var(--street-2); box-shadow: inset 2px 0 0 #3fe0b0; }
+#qList .path { font: 12px var(--f-mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#qList .path i { font-style: normal; color: var(--ink-dim); }
+#qList .meta { font-size: 11px; color: var(--ink-dim); }
+#qList li.more { cursor: default; font-size: 11px; color: var(--ink-dim); }
 .ramp .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #22305c, #2f4a8f, #4f6fc4, #c58a3c, #e8822c, #f05a2a, #ff9a6a); }
 .ramp .ends { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; }
 .key { font-size: 12px; color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
@@ -249,22 +259,25 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .todos.parts li em[data-line] { cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .todos.parts li em[data-line]:hover { color: var(--sodium); }
 
-/* Code viewer: several files side by side, full source */
-#viewer {
-  position: fixed; z-index: 6;
-  left: calc(max(16px, env(safe-area-inset-left, 0px)) + 328px); right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); height: var(--viewer-h);
-  background: color-mix(in srgb, var(--street) 96%, transparent);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden;
+/* Code windows: each file in its own window, moved by its title bar and resized from its corner */
+#viewer { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+.viewer-head {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
+  pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; font-size: 12px; color: var(--ink-dim);
+  background: color-mix(in srgb, var(--street) 94%, transparent); border: 1px solid var(--line); border-radius: 999px; white-space: nowrap;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,.35);
 }
-body.side-open #viewer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 392px); }
-.viewer-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-dim); }
-.viewer-head b { font: 700 12px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
-.viewer-head span { flex: 1; min-width: 0; }
-.viewer-panes { flex: 1; min-height: 0; display: flex; overflow-x: auto; }
-.pane { flex: 1 0 300px; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
-.pane:last-child { border-right: 0; }
+.viewer-head b { font: 700 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
+.viewer-panes { position: absolute; inset: 0; }
+.pane {
+  position: absolute; pointer-events: auto; display: flex; flex-direction: column; min-width: 200px; min-height: 140px;
+  resize: both; overflow: hidden; box-sizing: border-box;
+  background: color-mix(in srgb, var(--street) 97%, transparent); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.5);
+}
+.pane.front { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); }
+.pane-head { cursor: move; touch-action: none; user-select: none; }
+.pane-head button { cursor: pointer; }
 .pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .pane-head .explain-path { flex: 1; }
 .pane-body { flex: 1; min-height: 0; overflow: auto; font: 12px/1.55 var(--f-mono); color: var(--ink); background: var(--night); }
@@ -280,27 +293,12 @@ body.side-open #viewer { right: calc(max(16px, env(safe-area-inset-right, 0px)) 
 .pane-link b { color: var(--ink); font-family: var(--f-mono); }
 .pane-link .linkish { font-size: 11px; }
 .pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
-/* Nothing covers the explanations: the viewer sits between the left card and the side panel, or below the
-   panels on narrower screens, and file details share the right-hand column with the side panel where the
-   two don't fit side by side. Phones are the exception: the viewer opens over the bottom half. */
-:root { --viewer-h: min(46vh, 520px); }
-body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + env(safe-area-inset-bottom, 0px)); }
-@media (max-width: 1099px) {
-  #viewer, body.side-open #viewer { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
-  body.viewer-open #side { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + env(safe-area-inset-bottom, 0px)); }
-  body.viewer-open .card { max-height: calc(100% - 44px - var(--tl-h) - var(--viewer-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
-}
+/* File details share the right-hand column with the side panel where the two don't fit side by side. */
 @media (min-width: 641px) and (max-width: 1149px) {
   body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
   body.side-open.drawer-open #drawer { top: calc(50% + 6px); }
-  body.side-open.drawer-open.viewer-open #side { bottom: calc(50% + 6px + (var(--tl-h) + var(--viewer-h)) / 2); }
-  body.side-open.drawer-open.viewer-open #drawer { top: calc(50% + 6px - (var(--tl-h) + var(--viewer-h)) / 2); }
 }
-@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
-  :root { --viewer-h: 55vh; }
-  #viewer { z-index: 8; }
-  body.viewer-open #drawer, body.viewer-open #side { bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); }
-}
+@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) { #viewer { z-index: 8; } }
 
 #timeline {
   position: fixed; z-index: 6;
@@ -416,7 +414,10 @@ body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + e
     <h2 class="group-title" id="gExplore">Explore</h2>
     <div class="field">
       <label for="q">Find a file</label>
-      <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false">
+      <div class="q-wrap">
+        <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qList">
+        <ul id="qList" role="listbox" aria-label="Matching files" hidden></ul>
+      </div>
       <small id="qInfo" aria-live="polite"></small>
     </div>
     <div class="row">
@@ -424,6 +425,7 @@ body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + e
       <div class="seg" role="group" aria-label="Color buildings by">
         <button type="button" id="cLang" aria-pressed="true">Language</button>
         <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
+        <button type="button" id="cImp" aria-pressed="false">Imports</button>
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
@@ -511,8 +513,8 @@ body.viewer-open #drawer { bottom: calc(28px + var(--tl-h) + var(--viewer-h) + e
   <div class="drawer-body" id="sideBody"></div>
 </aside>
 <section id="viewer" hidden aria-label="Code viewer">
-  <div class="viewer-head"><b>Code viewer</b><span id="viewerNote">Shift-click buildings to add more files.</span><button type="button" class="mini" id="viewerClose">Close all</button></div>
   <div class="viewer-panes" id="viewerPanes"></div>
+  <div class="viewer-head"><b>Code windows</b><span id="viewerNote">Drag a title bar to move, a corner to resize.</span><button type="button" class="mini" id="viewerTile">Tile</button><button type="button" class="mini" id="viewerClose">Close all</button></div>
 </section>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -1076,6 +1078,7 @@ const heatMats = Array.from({ length: HEAT_LEVELS + 1 }, (_, i) => {
 const HOVER = new THREE.MeshStandardMaterial({ color: 0xffd08a, emissive: 0xf2a541, emissiveIntensity: 0.22, roughness: 0.5 });
 const PICKED = new THREE.MeshStandardMaterial({ color: 0xf2a541, emissive: 0xf2a541, emissiveIntensity: 0.32, roughness: 0.4 });
 const MATCH = new THREE.MeshStandardMaterial({ color: 0xffc46b, emissive: 0xf2a541, emissiveIntensity: 0.2, roughness: 0.5 });
+const SEARCH = new THREE.MeshStandardMaterial({ color: 0x8ff5d2, emissive: 0x3fe0b0, emissiveIntensity: 0.3, roughness: 0.5 });   // search matches: mint, unlike the orange of imports and answers
 const DIM = new THREE.MeshStandardMaterial({ color: 0x2b3247, roughness: 0.9, transparent: true, opacity: 0.35 });
 const FLASH = {
   add: new THREE.MeshStandardMaterial({ color: 0xffe2b0, emissive: 0xf2a541, emissiveIntensity: 0.6, roughness: 0.4 }),
@@ -1105,7 +1108,8 @@ function clearCity() {
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
-  panes = []; document.getElementById("viewer").hidden = true; document.body.classList.remove("viewer-open");
+  for (const p of panes) if (p.el) p.el.remove();
+  panes = []; document.getElementById("viewer").hidden = true;
   graph = null; hoverFocus = null; if (linkGroup) { scene.remove(linkGroup); linkGroup = null; } sparks = [];   // the viewer shows files of the city on screen
 }
 
@@ -1200,7 +1204,9 @@ function buildCity(data) {
   if (!hist && colorMode === "heat") setColorMode("lang");
   if (hist) { scrub.max = hist.commits.length; speedIdx = 0; showSpeed(); }
   goNow(true);
-  closeDrawer(); applySearch(); renderLegend();
+  closeDrawer(); applySearch();
+  if (colorMode === "imports") { impMax = 0; colorByImports(); }   // the new city's imports
+  renderLegend();
   onCityBuilt();
   return true;
 }
@@ -1248,6 +1254,12 @@ function cursorCommitCount() {
 
 function renderLegend() {
   const el = document.getElementById("legend");
+  if (colorMode === "imports") {
+    el.innerHTML = graph && graph.usedBy
+      ? `<div class="ramp"><div class="bar imp"></div><div class="ends"><span>imported by none</span><span>by ${fmt(maxImporters())} files</span></div></div>`
+      : `<p class="note">Reading imports…</p>`;
+    return;
+  }
   if (colorMode === "heat") {
     el.innerHTML = `<div class="ramp"><div class="bar"></div><div class="ends"><span>changed rarely</span><span>${fmt(maxChurn)} commits</span></div></div>`;
     return;
@@ -1299,23 +1311,43 @@ function matFor(b) {
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
-  if (query) return b.userData.match ? MATCH : DIM;
+  if (query) return b.userData.match ? SEARCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
+  if (colorMode === "imports") {   // how many files import this one: the core modules glow
+    const u = graph && graph.usedBy, n = u ? (u.get(b.userData.f.path) || new Set()).size : 0;
+    return !u ? DIM : impMats[n ? 1 + Math.min(IMP_LEVELS - 2, Math.floor(Math.log1p(n) / Math.log1p(maxImporters()) * (IMP_LEVELS - 2))) : 0];
+  }
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
   }
   return langMat(b.userData.f.lang);
 }
+const IMP_LEVELS = 8, IMP_RAMP = ["#1e2740", "#1f4a5c", "#1f6f74", "#27947f", "#4fb88a", "#8fd68f", "#d6ef9a", "#fffbd0"];
+const impMats = IMP_RAMP.map((c, i) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: i > 4 ? c : 0x000000, emissiveIntensity: i > 4 ? 0.25 : 0 }));
+let impMax = 0, impScan = null;
+function maxImporters() { return impMax || 1; }
 function setColorMode(m) {
   colorMode = m;
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
   document.getElementById("cHeat").setAttribute("aria-pressed", m === "heat");
+  document.getElementById("cImp").setAttribute("aria-pressed", m === "imports");
+  if (m === "imports") colorByImports();
   renderLegend();
   syncUrl();
 }
+// Colouring by imports needs every file's imports, so the first time it reads the repo (once per city).
+function colorByImports() {
+  const g = getGraph();
+  if (g.usedBy) { impMax = Math.max(1, ...[...g.usedBy.values()].map(s => s.size)); return; }
+  if (impScan === g) return;
+  impScan = g;
+  scanUsedBy((n, total) => { if (colorMode === "imports") document.getElementById("legend").innerHTML = `<p class="note">Reading imports… ${fmt(n)} of ${fmt(total)} files</p>`; })
+    .then(() => { if (graph !== g) return; impMax = Math.max(1, ...[...g.usedBy.values()].map(s => s.size)); if (colorMode === "imports") renderLegend(); });
+}
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
+document.getElementById("cImp").onclick = () => { setColorMode("imports"); document.getElementById("howTo").open = true; };
 
 // ---------- timeline ----------
 const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
@@ -1550,13 +1582,44 @@ document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(t
 
 // search
 const qInput = document.getElementById("q"), qInfo = document.getElementById("qInfo");
+// Matches light up in their own colour (mint, unlike the orange of imports and answers), and a dropdown lists
+// them, best first: file names that start with the search, then names that contain it, then paths.
+const qList = document.getElementById("qList");
+let qHits = [], qActive = -1;
 function applySearch() {
   query = qInput.value.trim().toLowerCase();
   let n = 0;
-  for (const b of buildings) { b.userData.match = !!query && b.userData.f.path.toLowerCase().includes(query); if (b.userData.match && b.userData.lines > 0) n++; }
+  qHits = [];
+  for (const b of buildings) {
+    b.userData.match = !!query && b.userData.f.path.toLowerCase().includes(query);
+    if (b.userData.match && b.userData.lines > 0) { n++; qHits.push(b); }
+  }
+  const score = b => { const p = b.userData.f.path.toLowerCase(), name = p.split("/").pop(); return name.startsWith(query) ? 0 : name.includes(query) ? 1 : 2; };
+  qHits.sort((a, b) => score(a) - score(b) || a.userData.f.path.length - b.userData.f.path.length);
   qInfo.textContent = query ? (n ? `${n} building${n === 1 ? "" : "s"} lit up` : "No files match") : "";
+  qActive = -1;
+  renderQList();
 }
+function renderQList() {
+  const show = !!query && qHits.length > 0 && document.activeElement === qInput;
+  qList.hidden = !show; qInput.setAttribute("aria-expanded", show);
+  if (!show) return;
+  qList.innerHTML = qHits.slice(0, 12).map((b, i) => `<li role="option" id="qOpt${i}" aria-selected="${i === qActive}" data-file="${esc(b.userData.f.path)}">
+    <span class="path">${pathHtml(b.userData.f.path)}</span><span class="meta">${fmt(b.userData.lines)} lines</span></li>`).join("") +
+    (qHits.length > 12 ? `<li class="more" aria-disabled="true">and ${fmt(qHits.length - 12)} more lit up in the city</li>` : "");
+  if (qActive >= 0) qInput.setAttribute("aria-activedescendant", "qOpt" + qActive); else qInput.removeAttribute("aria-activedescendant");
+}
+function pickHit(i) { const b = qHits[i]; if (!b) return; qList.hidden = true; qInput.setAttribute("aria-expanded", "false"); openDrawer(b); }
 qInput.addEventListener("input", applySearch);
+qInput.addEventListener("focus", renderQList);
+qInput.addEventListener("blur", () => setTimeout(renderQList, 150));   // let a click on the list land first
+qInput.addEventListener("keydown", e => {
+  const max = Math.min(qHits.length, 12);
+  if (e.key === "ArrowDown" && max) { e.preventDefault(); qActive = (qActive + 1) % max; renderQList(); }
+  else if (e.key === "ArrowUp" && max) { e.preventDefault(); qActive = (qActive - 1 + max) % max; renderQList(); }
+  else if (e.key === "Enter" && max) { e.preventDefault(); pickHit(qActive < 0 ? 0 : qActive); }
+});
+qList.addEventListener("mousedown", e => { const li = e.target.closest("[data-file]"); if (li) { e.preventDefault(); pickHit(qHits.findIndex(b => b.userData.f.path === li.dataset.file)); } });
 
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
@@ -2136,6 +2199,7 @@ function linkQuery() {
   const q = new URLSearchParams({ repo: currentRepo });
   if (currentRange) q.set("range", currentRange);
   if (colorMode === "heat") q.set("mode", "heat");
+  else if (colorMode === "imports") q.set("mode", "imports");
   if (sideMode === "hot") q.set("panel", "hotspots");
   if (prState) q.set("pr", prState.n);
   if (picked) q.set("file", picked.userData.f.path);
@@ -2186,6 +2250,7 @@ function applyPendingView() {
   if (ghProbe && p.range) return;
   pendingView = p.mode === "heat" && !hist ? { repo: p.repo, mode: "heat" } : null;
   if (p.mode === "heat" && hist) setColorMode("heat");
+  if (p.mode === "imports") setColorMode("imports");
   if (p.panel === "hotspots") openSide("hot");
   if (p.file && bmap.has(p.file)) openDrawer(bmap.get(p.file));
   if (p.pr) loadPR(p.pr); else syncUrl();
@@ -2420,7 +2485,7 @@ async function askCity(question) {
   if (!oauthToken) { status.innerHTML = needSignin("ask questions"); return; }
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
-  status.textContent = "Asking Gemini…";
+  status.textContent = "Asking Gemini… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
@@ -2572,17 +2637,18 @@ function explainFile(path) {
 const MAX_PANES = 6, MAX_VIEW_LINES = 6000;
 async function viewFile(path, line, link) {
   const have = panes.find(p => p.path === path);
-  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; renderViewer(); return; }
+  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; toFront(have); renderViewer(); return; }
   const c = await pullCode(path);
   if (!c) { toast("The source of that file isn't available here."); return; }
   if (panes.find(p => p.path === path)) return viewFile(path, line, link);   // added while this one was loading
-  panes.push({ path, text: c.text, partial: c.partial, line: line || 0, link: link || null });
+  panes.push({ path, text: c.text, partial: c.partial, line: line || 0, link: link || null, dirty: true });
   if (panes.length > MAX_PANES) panes.shift();
   closeDrawer();
   renderViewer();
 }
-async function viewFiles(paths) {   // several at once, in order, up to what the viewer holds
+async function viewFiles(paths) {   // several at once, in order, up to what the viewer holds, then tiled
   for (const p of paths.slice(0, MAX_PANES)) await viewFile(p);
+  tileWindows(paths.slice(0, MAX_PANES));
 }
 // ---------- connections in the code viewer ----------
 // Following a connection opens both files and marks where they connect: the import line that brings in the
@@ -2644,38 +2710,92 @@ async function viewConnection(from, to) {
   const first = l => l && (l.imports[0] || l.uses[0]) || 0;
   await viewFile(from, first(la), la);
   await viewFile(to, first(lb), lb);
+  tileWindows([from, to]);   // the two side by side
 }
+// Each file is a window. New ones cascade in the free space between the left card and the side panel; Tile
+// lines them up there again. Windows are only rebuilt when their file or marks change, so their scroll stays.
+let paneZ = 10;
+function freeArea() {
+  const wide = innerWidth > 1099, tl = document.body.classList.contains("has-timeline") ? 76 : 0;
+  const left = wide ? 344 : 16, right = innerWidth - (wide && document.body.classList.contains("side-open") ? 408 : 16);
+  const top = wide ? 16 : Math.min(innerHeight * 0.35, 220), bottom = innerHeight - 16 - tl - 48;
+  return { x: left, y: top, w: Math.max(260, right - left), h: Math.max(200, bottom - top) };
+}
+function toFront(p) { p.z = ++paneZ; if (p.el) { p.el.style.zIndex = p.z; panes.forEach(q => q.el && q.el.classList.toggle("front", q === p)); } }
+function placeNew(p) {
+  const a = freeArea(), k = panes.indexOf(p);
+  p.w = Math.min(620, a.w); p.h = Math.min(520, a.h);
+  p.x = a.x + (k * 32) % Math.max(1, a.w - p.w + 1); p.y = a.y + (k * 32) % Math.max(1, a.h - p.h + 1);
+}
+function tileWindows(paths) {
+  const list = paths ? panes.filter(p => paths.includes(p.path)) : panes;
+  if (!list.length) return;
+  const a = freeArea(), n = list.length, cols = n <= 3 ? n : Math.ceil(n / 2), rows = Math.ceil(n / cols), gap = 8;
+  const w = (a.w - gap * (cols - 1)) / cols, h = (a.h - gap * (rows - 1)) / rows;
+  list.forEach((p, i) => { Object.assign(p, { x: a.x + (i % cols) * (w + gap), y: a.y + Math.floor(i / cols) * (h + gap), w, h }); });
+  renderViewer();
+}
+function paneHtml(p) {
+  const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
+  return `<div class="pane-head"><button type="button" class="explain-path" data-path="${key}">${pathHtml(p.path)}</button>
+      ${askEnabled ? `<button type="button" class="mini" data-pane-explain="${key}">Explain</button>` : ""}
+      <button type="button" class="mini" data-pane-close="${key}" aria-label="Close ${key}">✕</button></div>
+    ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
+    ${p.link ? linkBanner(p.link) : ""}
+    <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
+      return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
+    ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}`;
+}
+const paneSize = new ResizeObserver(entries => { for (const e of entries) { const p = panes.find(q => q.el === e.target); if (p) { p.w = e.target.offsetWidth; p.h = e.target.offsetHeight; } } });
 function renderViewer() {
-  const box = $("viewer");
-  box.hidden = !panes.length;
-  document.body.classList.toggle("viewer-open", !box.hidden);
-  $("viewerNote").textContent = panes.length >= MAX_PANES ? `Showing ${MAX_PANES} files; adding another closes the oldest.` : "Shift-click buildings to add more files.";
-  $("viewerPanes").innerHTML = panes.map((p, i) => {
-    const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES);
-    return `<article class="pane" data-pane="${i}" aria-label="${esc(p.path)}">
-      <div class="pane-head"><button type="button" class="explain-path" data-path="${esc(p.path)}">${pathHtml(p.path)}</button>
-        ${askEnabled ? `<button type="button" class="mini" data-pane-explain="${i}">Explain</button>` : ""}
-        <button type="button" class="mini" data-pane-close="${i}" aria-label="Close ${esc(p.path)}">✕</button></div>
-      ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
-      ${p.link ? linkBanner(p.link) : ""}
-      <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
-        return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
-      ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}
-    </article>`;
-  }).join("");
-  panes.forEach((p, i) => { if (p.line) { const el = $("viewerPanes").querySelector(`[data-pane="${i}"] [data-l="${p.line}"]`); if (el) el.scrollIntoView({ block: "center" }); } });
-  const last = $("viewerPanes").lastElementChild;
-  if (last) last.scrollIntoView({ inline: "end", block: "nearest" });
+  const layer = $("viewerPanes");
+  $("viewer").hidden = !panes.length;
+  $("viewerNote").textContent = panes.length >= MAX_PANES ? `${MAX_PANES} windows open; another closes the oldest.` : "Drag a title bar to move, a corner to resize.";
+  for (const el of [...layer.children]) if (!panes.some(p => p.el === el)) { paneSize.unobserve(el); el.remove(); }
+  for (const p of panes) {
+    if (!p.el) {
+      p.el = document.createElement("article"); p.el.className = "pane";
+      layer.appendChild(p.el); paneSize.observe(p.el);
+      if (p.x == null) placeNew(p);
+      toFront(p);
+    }
+    p.el.setAttribute("aria-label", p.path);
+    if (p.dirty) { p.el.innerHTML = paneHtml(p); p.dirty = false; p.scroll = true; }
+    Object.assign(p.el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px", zIndex: p.z });
+    if (p.scroll) {   // bring the marked line to the middle of this window only, not the page
+      p.scroll = false;
+      const body = p.el.querySelector(".pane-body"), row = p.line && body.querySelector(`[data-l="${p.line}"]`);
+      if (row) body.scrollTop = row.offsetTop - body.clientHeight / 2;
+    }
+  }
 }
+const paneOf = el => panes.find(p => p.el === el.closest(".pane"));
+$("viewerPanes").addEventListener("pointerdown", e => {
+  const p = paneOf(e.target);
+  if (!p) return;
+  toFront(p);
+  if (!e.target.closest(".pane-head") || e.target.closest("button")) return;
+  const start = { x: e.clientX, y: e.clientY, px: p.x, py: p.y }, head = e.target.closest(".pane-head");
+  head.setPointerCapture(e.pointerId);
+  const move = ev => {   // keep at least the title bar on screen
+    p.x = Math.min(innerWidth - 80, Math.max(80 - p.w, start.px + ev.clientX - start.x));
+    p.y = Math.min(innerHeight - 40, Math.max(0, start.py + ev.clientY - start.y));
+    p.el.style.left = p.x + "px"; p.el.style.top = p.y + "px";
+  };
+  const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up); };
+  head.addEventListener("pointermove", move); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
+});
 $("viewerPanes").addEventListener("click", e => {
+  const p = paneOf(e.target);
+  if (!p) return;
   const go2 = e.target.closest("[data-goto]");
-  if (go2) { const i = +go2.closest("[data-pane]").dataset.pane; panes[i].line = +go2.dataset.goto; renderViewer(); return; }
-  const close = e.target.closest("[data-pane-close]"), ex = e.target.closest("[data-pane-explain]"), go = e.target.closest("[data-path]");
-  if (close) { panes.splice(+close.dataset.paneClose, 1); renderViewer(); }
-  else if (ex) explainFile(panes[+ex.dataset.paneExplain].path);
-  else if (go) { const b = bmap.get(go.dataset.path); if (b) flyToBuilding(b); }
+  if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
+  if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); }
+  else if (e.target.closest("[data-pane-explain]")) explainFile(p.path);
+  else if (e.target.closest("[data-path]")) { const b = bmap.get(p.path); if (b) flyToBuilding(b); }
 });
 $("viewerClose").onclick = () => { panes = []; renderViewer(); };
+$("viewerTile").onclick = () => tileWindows();
 
 // ---------- connections ----------
 // Which files import which, read from the source by the import parser above. Arcs over the city show the
@@ -2728,7 +2848,7 @@ function scanUsedBy(progress) {
 // What Gemini gets besides the file list when it plans an answer or a tour, all read from the code itself:
 // the README's opening, the project manifests, the import graph (with the most-used files and the likely
 // entry points), and the top-level functions and classes of the files that matter most. Built once per city.
-const DIGEST_MAX_FILES = 600, DIGEST_CHARS = 36000, OUTLINE_FILES = 70;
+const DIGEST_MAX_FILES = 600, DIGEST_CHARS = 20000, OUTLINE_FILES = 45;   // kept small so Gemini still answers quickly
 const MANIFESTS = /^(package\.json|pyproject\.toml|setup\.cfg|setup\.py|go\.mod|Cargo\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle(\.kts)?)$/i;
 const OUTLINE_RES = {
   py: /^(?:async\s+)?(?:class|def)\s+(\w+)/gm,
@@ -2754,9 +2874,9 @@ function repoDigest(progress) {
     const live = buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path);
     const code = live.filter(canImport), parts = [];
     const readme = live.filter(p => /(^|\/)readme(\.\w+)?$/i.test(p)).sort((a, b) => a.split("/").length - b.split("/").length)[0];
-    if (readme) { const c = await pullCode(readme); if (c) parts.push(`README (${readme}, opening):\n${c.text.slice(0, 3000)}`); }
-    for (const m of live.filter(p => MANIFESTS.test(p.split("/").pop())).sort((a, b) => a.split("/").length - b.split("/").length).slice(0, 3)) {
-      const c = await pullCode(m); if (c) parts.push(`${m}:\n${c.text.slice(0, 1500)}`);
+    if (readme) { const c = await pullCode(readme); if (c) parts.push(`README (${readme}, opening):\n${c.text.slice(0, 1800)}`); }
+    for (const m of live.filter(p => MANIFESTS.test(p.split("/").pop())).sort((a, b) => a.split("/").length - b.split("/").length).slice(0, 2)) {
+      const c = await pullCode(m); if (c) parts.push(`${m}:\n${c.text.slice(0, 900)}`);
     }
     if (code.length && code.length <= DIGEST_MAX_FILES) {
       const usedBy = await scanUsedBy(progress), out = new Map();
@@ -2773,7 +2893,7 @@ function repoDigest(progress) {
       const outlines = [];
       for (const f of key) { const c = await pullCode(f); const names = c ? outline(f, c.text) : []; if (names.length) outlines.push(`${f}: ${names.join(", ")}`); }
       if (outlines.length) parts.push(`Top-level functions and classes:\n${outlines.join("\n")}`);
-      const edges = code.filter(f => out.get(f).length).map(f => `${f} -> ${out.get(f).join(", ")}`);
+      const edges = code.filter(f => !aside(f) && out.get(f).length).map(f => `${f} -> ${out.get(f).join(", ")}`);   // the product's own imports
       if (edges.length) parts.push(`Imports between files (from the code's import lines):\n${edges.join("\n")}`);
     }
     let text = parts.join("\n\n");
@@ -2896,7 +3016,7 @@ async function startTour(topic) {
   if (!oauthToken) { status.innerHTML = needSignin("take a tour"); return; }
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
-  status.textContent = "Planning a tour…";
+  status.textContent = "Planning a tour… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
@@ -2945,6 +3065,7 @@ function goToStop(i) {
   if (b) flyToBuilding(b);
   renderTour();
   drawLinks();
+  focusStepWindow();
   clearTimeout(t.timer);
   if (t.playing) {   // auto-play runs through every step of every workflow, then back to the overview
     const next = t.i < steps.length - 1 ? () => goToStop(t.i + 1) : t.w < t.workflows.length - 1 ? () => goToWorkflow(t.w + 1, 0) : () => showOverview();
@@ -2952,6 +3073,16 @@ function goToStop(i) {
   }
 }
 function endTour() { if (tourState) clearTimeout(tourState.timer); tourState = null; }
+// With the workflow's files open as windows, the current step's comes to the front at its key line.
+function focusStepWindow() {
+  const t = tourState, st = tourStep();
+  if (!st) return;
+  const p = panes.find(q => q.path === st.path), w = t.workflows[t.w];
+  if (!p) return;
+  const key = (w.lines && w.lines.byPath && (w.lines.byPath.get(st.path) || [])[0]) || ((w.handoff && w.handoff.get(t.i)) || [])[0];
+  if (key) { p.line = key.line; p.dirty = true; }
+  toFront(p); renderViewer();
+}
 // The lines where a file imports the next step's file, found by running the import parser line by line.
 function handoffLines(path, text, next) {
   const r = getGraph().resolver, out = [];
@@ -3031,6 +3162,7 @@ function renderTour() {
         <button type="button" data-tour="back" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
         <button type="button" class="primary" data-tour="next">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
         <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
+        <button type="button" data-tour="files">Open this workflow's files</button>
       </div>
       <p class="side-note">Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step. Click a line number to see it in the code viewer.</p>`;
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
@@ -3046,6 +3178,7 @@ sideBody.addEventListener("click", e => {
   if (!act) return;
   const t = tourState, w = t.workflows[t.w];
   if (act.dataset.tour === "overview") return showOverview();
+  if (act.dataset.tour === "files") return viewFiles([...new Set(w.steps.map(st => st.path))]).then(() => focusStepWindow());
   if (act.dataset.tour === "back") { if (t.i > 0) goToStop(t.i - 1); else if (t.w > 0) goToWorkflow(t.w - 1, t.workflows[t.w - 1].steps.length - 1); }
   else if (act.dataset.tour === "next") {
     if (t.i < w.steps.length - 1) goToStop(t.i + 1);

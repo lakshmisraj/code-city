@@ -11,11 +11,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { getStore } from "@netlify/blobs";
 
-const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model: answers well inside Netlify's 10 s limit
+const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 40000;   // README, manifests, import graph and outlines, read by the page
-const BUDGET_MS = 8500;   // Netlify stops the function at 10 s; always answer before that
+const BUDGET_MS = 26000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const PER_HOUR = +process.env.ASK_PER_HOUR || 20, PER_DAY = +process.env.ASK_PER_DAY || 300;
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
 

@@ -33,6 +33,8 @@ Building heights are estimated from file size until you click a building, which 
 
 ### Folders, hotspots, pull requests and links
 
+- **Find a file**: matches light up in mint (not the orange used for imports and answers) and a dropdown lists them, best match first; arrow keys and Enter, or a click, open one.
+- **Color by Imports**: colours each file by how many files import it, from dark (none) to bright (the core modules). The first time, it reads every source file's imports (one GitHub download each, once per city).
 - **Folders**: click a district (or its name) to open the folder. Everything outside it dims, and the panel shows its size, the folders inside and its biggest files. The path at the top of a file's or folder's panel links to each parent folder.
 
 - **Hotspots** ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
@@ -56,11 +58,11 @@ Explanations form a chain: **Follow** on any connected file explains it next, as
 
 Arcs over the city show which files import which, read from the code's import lines (JavaScript and TypeScript, Python, Go, Ruby, Java and Kotlin, C and C++, CSS, Rust and PHP), never guessed. They show one file at a time: the file whose panel is open, the row you point at in a list, the explained files, or the tour stop. Sparks travel along each arc: orange from a file to what it imports, blue from the files that use it. A file's panel lists its **Imports**, and **Find the files that use this** reads the whole repo's imports once to list its **Used by** (one GitHub download per source file). Turn arcs off with **Show connections between files**.
 
-### Code viewer
+### Code windows
 
-**View code** (in a file's panel, next to any explained file, or Shift-click a building) opens the file's full source in the code viewer, where up to six files sit side by side. **View … side by side** buttons open several at once: an explanation's files and their connections, a file with its imports or the files that use it, or a folder's biggest files. Clicking a key part's line number in an explanation opens that file at that line. The viewer sits beside the explanation panel, or below it on narrower screens, so the two never cover each other.
+**View code** (in a file's panel, next to any explained file, or Shift-click a building) opens the file's full source in its own window, up to six at once. Drag a window by its title bar, resize it from its bottom-right corner, and click it to bring it to the front. New windows open in the space between the left card and the side panel; **Tile** lines them all up there again. **View … side by side** buttons open several at once and tile them: an explanation's files and their connections, a file with its imports or the files that use it, or a folder's biggest files. Clicking a key part's line number in an explanation opens that file at that line.
 
-Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with `gemini-3.5-flash-lite`, Google's fastest model, so answers arrive within Netlify's 10-second function limit.
+Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with `gemini-3.5-flash-lite`, Google's fastest model, and gives it up to 26 seconds (Netlify allows the function 60).
 
 ### Guided tours
 
@@ -68,6 +70,7 @@ Like asking, tours need Sign in with GitHub and count towards the same hourly li
 
 - **Overview: how the workflows merge.** The map draws every workflow at once, one colour each, and lights brightest the files workflows share. The panel explains how they fit together, lists each workflow with the ones it leads to, and lists the files where workflows meet.
 - **One workflow.** Open a workflow to step through it. Each step has its clickable file name (opens the file's panel; **View** opens its code), what happens there, its **important lines** (Gemini reads the code of the workflow's first four files when you open it), and the **hand-off** line where it imports the next step's file, found from the code. A hand-off with no import line behind it is marked *inferred*. Click any line number to see it in the code viewer.
+- **Open this workflow's files** opens one code window per step, tiled; as you step through, the current step's window comes to the front at its important line.
 - **Back / Next** step through, **Auto-play** runs through every workflow, and **All workflows** returns to the overview.
 
 ### Timelapse video
