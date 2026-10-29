@@ -11,10 +11,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { getStore } from "@netlify/blobs";
 
-// Google's fastest model. Its overloads come in short spikes ("high demand", or a reply that crawls), so a busy
-// reply is retried after a pause and a slow one gets a second copy sent alongside it; the first answer wins.
-// (gemini-3.8-flash was tried as a backup, but took over 24 s itself.)
-const MODEL = "gemini-3.5-flash-lite";
+// Google's fast "lite" models, newest first. One of them is often overloaded ("high demand", or a reply that
+// crawls), so a busy reply moves straight on to the next model and a slow one gets the next model asked alongside;
+// the first answer wins, and the model that gave it is asked first next time. (gemini-3.8-flash was tried as a
+// backup but took over 24 s itself.) The models this key can use are listed at GET ?models.
+const MODELS = (process.env.ASK_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite").split(",").map(m => m.trim()).filter(Boolean);
+let preferred = MODELS[0];   // the model that answered last, for as long as this function instance lives
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
 const MAX_TRIES = 4;
@@ -165,8 +167,9 @@ function codeBlocks(code) {
     c.text.split("\n").map((l, i) => `${i + 1}| ${l}`).join("\n")).join("\n\n");
 }
 
-// Sends the request; a busy reply is retried after RETRY_MS, and a request with no answer after HEDGE_MS gets
-// another copy sent alongside, up to MAX_TRIES in all. Resolves with the first answer; rejects once nothing more
+// Sends the request to the preferred model; a busy reply moves on to the next model (or, back at the same model,
+// retries after RETRY_MS), and a request with no answer after HEDGE_MS gets the next model asked alongside, up to
+// MAX_TRIES in all. Resolves with the first answer; rejects once nothing more
 // can be tried. attempts collects each try's start, time and outcome for the timing notes.
 function hedge(ask, attempts) {
   const t0 = Date.now();
@@ -174,17 +177,19 @@ function hedge(ask, attempts) {
     let settled = false, tries = 0, pending = 0, lastError = null, timer = 0, retry = 0;
     const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
     const finish = (ok, v) => { if (settled) return; settled = true; clearTimeout(timer); clearTimeout(retry); ok ? resolve(v) : reject(v); };
+    const order = [preferred, ...MODELS.filter(m => m !== preferred)];
     const launch = () => {
       if (settled || tries >= MAX_TRIES) return;
+      const model = order[tries % order.length];
       tries++; pending++;
       clearTimeout(timer); timer = setTimeout(launch, HEDGE_MS);
-      const rec = { model: MODEL, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
+      const rec = { model, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
       attempts.push(rec);
-      ask(MODEL).then(v => { Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true }); finish(true, v); }, e => {
+      ask(model).then(v => { Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true }); preferred = model; finish(true, v); }, e => {
         Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
         pending--; lastError = e;
         if (settled) return;
-        if (busy(e) && tries < MAX_TRIES) { clearTimeout(retry); retry = setTimeout(launch, RETRY_MS); }
+        if (busy(e) && tries < MAX_TRIES) { clearTimeout(retry); retry = setTimeout(launch, tries % order.length ? 0 : RETRY_MS); }   // another model at once; the same one after a pause
         else if (!pending) finish(false, e);
       });
     };
@@ -314,7 +319,7 @@ async function handle(event) {
       maxOutputTokens: OUTPUT_TOKENS[mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
       ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.timeout(Math.max(1000, left())) } });
     const tryModel = async model => {   // a model that doesn't take a thinking level gets the next one, then its default
-      const levels = [...THINKING, null];
+      const levels = /^gemini-2\./.test(model) ? [null] : [...THINKING, null];   // 2.5 models take no thinking level
       for (let level = levels.shift(); ; level = levels.shift()) {
         try { return { r: await create(model, level), model, level }; }
         catch (e) { if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e; }
