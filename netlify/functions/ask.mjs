@@ -15,6 +15,7 @@ const MODEL = "gemini-3.5-flash-lite";   // Google's fastest model
 const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 40000;   // README, manifests, import graph and outlines, read by the page
+const THINKING = "low";   // these are short, structured answers; less thinking answers much sooner
 const BUDGET_MS = 26000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const PER_HOUR = +process.env.ASK_PER_HOUR || 20, PER_DAY = +process.env.ASK_PER_DAY || 300;
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
@@ -156,6 +157,19 @@ function codeBlocks(code) {
     c.text.split("\n").map((l, i) => `${i + 1}| ${l}`).join("\n")).join("\n\n");
 }
 
+// The last few Gemini calls' timing, size and outcome (never the question or the code), kept in Netlify Blobs
+// so slow or failing answers can be looked into. Best effort: it never holds up or breaks an answer.
+async function note(entry) {
+  try {
+    const store = getStore({ name: "ask-diag" });
+    await Promise.race([(async () => {
+      const recent = (await store.get("recent", { type: "json" })) || [];
+      recent.push({ t: new Date().toISOString(), ...entry });
+      await store.setJSON("recent", recent.slice(-40));
+    })(), new Promise(r => setTimeout(r, 1500))]);
+  } catch (e) { /* diagnostics only */ }
+}
+
 // Adds one to a counter in Netlify Blobs and returns the new count. The etag check means two asks at the
 // same moment can't both read the old count; after a few lost races it counts anyway rather than fail.
 async function bump(store, key) {
@@ -230,28 +244,39 @@ async function handle(event) {
   if (over) return json(429, { error: over });
 
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  let reply;
+  const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : "ask";
+  const input = keyLines ? `Repository: ${repo}\nWorkflow: ${question}\n\n${codeBlocks(flow)}`
+    : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
+      (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
+      `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
+  let reply, level = THINKING;
   try {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const interaction = await Promise.race([client.interactions.create({
+    const create = () => Promise.race([client.interactions.create({
       model: MODEL,
       system_instruction: tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : SYSTEM,
       // The file list goes first and the question last, so repeat questions about one repo share a prefix.
-      input: keyLines ? `Repository: ${repo}\nWorkflow: ${question}\n\n${codeBlocks(flow)}`
-        : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
-          (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
-          `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`,
-      generation_config: { max_output_tokens: 4000 },
+      input,
+      generation_config: { max_output_tokens: 4000, ...(level ? { thinking_level: level } : {}) },
       response_format: { type: "text", mime_type: "application/json", schema: tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : ANSWER_SCHEMA },
-    }, { timeout_ms: Math.max(1000, left()) }), deadline]).finally(() => clearTimeout(timer));
+    }, { timeout_ms: Math.max(1000, left()) }), deadline]);
+    let interaction;
+    try { interaction = await create(); }
+    catch (e) {   // a model that doesn't take this thinking level: ask again with its default
+      if (!(level && e && e.status === 400 && /thinking/i.test(String(e.message)))) throw e;
+      level = null; interaction = await create();
+    } finally { clearTimeout(timer); }
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     reply = JSON.parse(interaction.output_text || "");
+    await note({ mode, ms: Date.now() - started, chars: input.length, ok: true, level });
   } catch (e) {
-    console.log(`ask: failed after ${Date.now() - started} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
+    const ms = Date.now() - started;
+    console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
+    await note({ mode, ms, chars: input.length, ok: false, level, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
-    if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: "That took too long to answer. Try a narrower question." });
+    if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
     // Google's own reason (e.g. "API key not valid", "model not found") helps fix setup problems; it never contains the key.
     const reason = String((e && e.message) || "").replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 200);
     return json(502, { error: `Gemini couldn't answer just now${e && e.status ? ` (${e.status})` : ""}${reason ? `: ${reason}` : ""}` });
