@@ -251,19 +251,28 @@ async function handle(event) {
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
-  let reply, levels = [...THINKING, null], level = levels.shift();
+  let reply, levels = [...THINKING, null], level = levels.shift(), pre = 0;
+  const api = process.env.ASK_API || (Math.random() < 0.5 ? "generate" : "interactions");   // ASK_API pins one
   try {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const create = () => Promise.race([client.interactions.create({
-      model: MODEL,
-      system_instruction: tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : SYSTEM,
-      // The file list goes first and the question last, so repeat questions about one repo share a prefix.
-      input,
-      generation_config: { max_output_tokens: OUTPUT_TOKENS[mode], ...(level ? { thinking_level: level } : {}) },
-      response_format: { type: "text", mime_type: "application/json", schema: tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : ANSWER_SCHEMA },
-    }, { timeout_ms: Math.max(1000, left()) }), deadline]);
+    const system = tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : SYSTEM;
+    const schema = tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : ANSWER_SCHEMA;
+    // Trial: half the calls use the classic generateContent API instead of Interactions, and the timing notes
+    // record which, to see which one answers sooner. The file list goes first and the question last, so repeat
+    // questions about one repo share a prefix.
+    const create = () => Promise.race([api === "generate"
+      ? client.models.generateContent({ model: MODEL, contents: input, config: {
+          systemInstruction: system, maxOutputTokens: OUTPUT_TOKENS[mode], responseMimeType: "application/json", responseJsonSchema: schema,
+          ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.timeout(Math.max(1000, left())) } })
+          .then(r => ({ output_text: r.text, usage: { total_output_tokens: r.usageMetadata && r.usageMetadata.candidatesTokenCount, total_thought_tokens: r.usageMetadata && r.usageMetadata.thoughtsTokenCount } }))
+      : client.interactions.create({
+          model: MODEL, system_instruction: system, input,
+          generation_config: { max_output_tokens: OUTPUT_TOKENS[mode], ...(level ? { thinking_level: level } : {}) },
+          response_format: { type: "text", mime_type: "application/json", schema },
+        }, { timeout_ms: Math.max(1000, left()) }), deadline]);
+    pre = Date.now() - started;
     let interaction;
     try {
       for (;;) {
@@ -276,13 +285,13 @@ async function handle(event) {
     } finally { clearTimeout(timer); }
     console.log(`ask: ${files.length} files, answered in ${Date.now() - started} ms`);
     const u = interaction.usage || {};
-    await note({ mode, ms: Date.now() - started, chars: input.length, ok: true, level, out: u.total_output_tokens, thought: u.total_thought_tokens });
+    await note({ mode, api, pre, ms: Date.now() - started, chars: input.length, ok: true, level, out: u.total_output_tokens, thought: u.total_thought_tokens });
     try { reply = JSON.parse(interaction.output_text || ""); }
     catch (e) { return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." }); }
   } catch (e) {
     const ms = Date.now() - started;
     console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
-    await note({ mode, ms, chars: input.length, ok: false, level, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
+    await note({ mode, api, pre, ms, chars: input.length, ok: false, level, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
     // Google's own reason (e.g. "API key not valid", "model not found") helps fix setup problems; it never contains the key.
