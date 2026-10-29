@@ -169,6 +169,20 @@ details.more[open] summary { margin-bottom: 8px; }
 .adds { color: var(--added); font-family: var(--f-mono); } .dels { color: var(--fire); font-family: var(--f-mono); }
 .side-note { font-size: 12px; line-height: 1.5; color: var(--ink-dim); margin: 0; }
 .side-note b { color: var(--ink); font-weight: 600; }
+.wf-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.wf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wf-card { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.wf-card:hover, .wf-card:focus-visible { border-color: var(--sodium); background: var(--street-2); }
+.wf-name { font: 700 14px var(--f-display); letter-spacing: .02em; color: var(--ink); }
+.wf-sum { font-size: 12px; line-height: 1.45; color: var(--ink-dim); }
+.wf-meta { font-size: 11px; color: var(--ink-dim); font-family: var(--f-mono); }
+.wf-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.wf-step { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-left: 2px solid var(--line); }
+.wf-step.current { border-left-color: var(--sodium); background: var(--street-2); border-radius: 0 6px 6px 0; }
+.wf-step-head { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: baseline; font: 700 14px var(--f-display); color: var(--ink); }
+.wf-step-head .n { font: 12px var(--f-mono); color: var(--ink-dim); }
+.wf-step-head:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+.todos.parts li code { font: 11px var(--f-mono); color: var(--ink); word-break: break-all; }
 .drawer-body .tour-stop h3 { margin: 0 0 2px; font: 700 18px var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--ink); }
 .tour-path { margin: 0 0 8px; font: 12px var(--f-mono); color: var(--ink-dim); word-break: break-all; }
 .tour-path i { font-style: normal; }
@@ -258,6 +272,13 @@ body.side-open #viewer { right: calc(max(16px, env(safe-area-inset-right, 0px)) 
 .vl .ln { flex-shrink: 0; width: 4.5ch; padding-right: 1.2ch; text-align: right; color: var(--ink-dim); opacity: .6; user-select: none; }
 .vl.hit { background: color-mix(in srgb, var(--sodium) 22%, transparent); }
 .vl.hit .ln { color: var(--sodium); opacity: 1; }
+.vl.import { background: color-mix(in srgb, var(--sodium) 16%, transparent); box-shadow: inset 3px 0 0 var(--sodium); }
+.vl.use { background: color-mix(in srgb, var(--changed) 12%, transparent); box-shadow: inset 3px 0 0 var(--changed); }
+.vl.hit.import, .vl.hit.use { background: color-mix(in srgb, var(--sodium) 30%, transparent); }
+.vmark { margin-left: auto; padding-left: 16px; font: 10px var(--f-body); color: var(--ink-dim); white-space: nowrap; }
+.pane-link { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); border-bottom: 1px solid var(--line); line-height: 1.6; }
+.pane-link b { color: var(--ink); font-family: var(--f-mono); }
+.pane-link .linkish { font-size: 11px; }
 .pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
 /* Nothing covers the explanations: the viewer sits between the left card and the side panel, or below the
    panels on narrower screens, and file details share the right-hand column with the side panel where the
@@ -1272,7 +1293,11 @@ function matFor(b) {
   if (b === hovered) return HOVER;
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
   if (folderSel != null && !askState && !tourState && !inFolder(b.userData.f.path, folderSel)) return DIM;
-  if (tourState) { const p = b.userData.f.path, st = tourState.steps[tourState.i]; return p === st.path ? PICKED : tourState.paths.has(p) || st.related.some(r => r.path === p) ? MATCH : DIM; }
+  if (tourState) {
+    const p = b.userData.f.path, t = tourState, st = tourStep();
+    if (!st) return (t.shared.get(p) || []).length > 1 ? PICKED : t.paths.has(p) ? MATCH : DIM;   // overview: shared files brightest
+    return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
+  }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (query) return b.userData.match ? MATCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
@@ -2393,13 +2418,15 @@ async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
   if (!oauthToken) { status.innerHTML = needSignin("ask questions"); return; }
+  status.textContent = "Reading the repo…";
+  const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
   status.textContent = "Asking Gemini…";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
-      body: JSON.stringify({ question: q, repo: currentRepo || cityName, files }),
+      body: JSON.stringify({ question: q, repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
@@ -2516,13 +2543,13 @@ async function explainCode(state, paths, question, from) {
   if (state.chain.length > 1 && askState === state) { const el = sideBody.querySelector(`[data-chain="${state.chain.indexOf(st)}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
 }
 function followLink(from, path) {
+  viewConnection(from, path);   // the two files side by side, with the lines that connect them marked
   const chain = askState.chain || [], k = chain.findIndex(st => st.paths.includes(path));
   if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }   // already in the chain
   if (chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Ask again to start a new one.`); return; }
   const b = bmap.get(path);
   if (b) flyToBuilding(b);
   explainCode(askState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
-  viewFile(from).then(() => viewFile(path));   // the two files side by side in the code viewer
 }
 function explainFile(path) {
   // With explanations already open, this one is added below them rather than replacing them.
@@ -2543,19 +2570,80 @@ function explainFile(path) {
 // Several files' full source side by side. Files come from the drawer's View code, the explanations' View
 // buttons and key-part line numbers, or shift-clicking a building. The oldest pane makes room for a new one.
 const MAX_PANES = 6, MAX_VIEW_LINES = 6000;
-async function viewFile(path, line) {
+async function viewFile(path, line, link) {
   const have = panes.find(p => p.path === path);
-  if (have) { if (line) have.line = line; renderViewer(); return; }
+  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; renderViewer(); return; }
   const c = await pullCode(path);
   if (!c) { toast("The source of that file isn't available here."); return; }
-  if (panes.find(p => p.path === path)) return viewFile(path, line);   // added while this one was loading
-  panes.push({ path, text: c.text, partial: c.partial, line: line || 0 });
+  if (panes.find(p => p.path === path)) return viewFile(path, line, link);   // added while this one was loading
+  panes.push({ path, text: c.text, partial: c.partial, line: line || 0, link: link || null });
   if (panes.length > MAX_PANES) panes.shift();
   closeDrawer();
   renderViewer();
 }
 async function viewFiles(paths) {   // several at once, in order, up to what the viewer holds
   for (const p of paths.slice(0, MAX_PANES)) await viewFile(p);
+}
+// ---------- connections in the code viewer ----------
+// Following a connection opens both files and marks where they connect: the import line that brings in the
+// other file, then each line that uses what it imported. With no import line between them (Gemini inferred
+// the connection), lines that mention the other file by name are marked instead.
+const MAX_USE_MARKS = 12;
+function importedNames(path, lines, k) {   // the names an import line brings in, as the code will use them
+  const kind = IMPORT_LANG[langOf(path)], line = lines[k], names = [];
+  if (kind === "py") {
+    let m = /^\s*from\s+\S+\s+import\s+(.+)$/.exec(line);
+    if (m) {
+      let list = m[1];
+      if (/\(\s*$/.test(list)) for (let j = k + 1; j < lines.length && j < k + 40; j++) { list += " " + lines[j]; if (lines[j].includes(")")) break; }
+      for (const part of list.replace(/[()\\#].*?$|[()\\]/g, " ").split(",")) { const w = part.trim().split(/\s+as\s+/); const n = (w[1] || w[0]).trim(); if (/^\w+$/.test(n)) names.push(n); }
+    } else if ((m = /^\s*import\s+(.+)$/.exec(line))) for (const part of m[1].split(",")) { const w = part.trim().split(/\s+as\s+/); names.push((w[1] || w[0]).trim().split(".")[0]); }
+  } else if (kind === "js") {
+    let m = /import\s+(?:type\s+)?([\s\S]*?)\s+from\s/.exec(line);
+    if (m) {
+      const spec = m[1], ns = /\*\s+as\s+(\w+)/.exec(spec), braces = /\{([^}]*)\}/.exec(spec), def = /^\s*([\w$]+)/.exec(spec.replace(/\{[^}]*\}/, ""));
+      if (ns) names.push(ns[1]);
+      if (braces) for (const part of braces[1].split(",")) { const w = part.trim().split(/\s+as\s+/); if (w[0]) names.push((w[1] || w[0]).trim()); }
+      if (def && def[1] !== "type") names.push(def[1]);
+    } else if ((m = /(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*require/.exec(line))) {
+      if (m[1].startsWith("{")) for (const part of m[1].slice(1, -1).split(",")) { const w = part.trim().split(/\s*:\s*/); if (w[0]) names.push((w[1] || w[0]).trim()); }
+      else names.push(m[1]);
+    }
+  } else if (kind === "go") { const m = /"([^"]+)"/.exec(line); if (m) names.push(m[1].split("/").pop()); }
+  else if (kind === "java") { const m = /\.(\w+)\s*;/.exec(line); if (m) names.push(m[1]); }
+  return names.filter(n => /^[\w$]+$/.test(n) && n.length > 1);
+}
+function connectionMarks(path, text, other) {
+  const r = getGraph().resolver, lines = text.split("\n"), byLine = new Map(), imports = [], uses = [], names = new Set();
+  lines.forEach((l, k) => {
+    if (/\b(import|require|include|use|mod|from)\b/.test(l) && r.deps(path, l).includes(other)) {
+      imports.push(k + 1); byLine.set(k + 1, { kind: "import", note: "imports " + other.split("/").pop() });
+      importedNames(path, lines, k).forEach(n => names.add(n));
+    }
+  });
+  const mention = imports.length ? null : new RegExp(`\\b${other.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^\w]/g, "\\$&")}\\b`);   // no import: look for the file's name
+  const use = names.size ? new RegExp(`\\b(${[...names].map(n => n.replace(/\$/g, "\\$")).join("|")})\\b`) : mention;
+  if (use) lines.forEach((l, k) => {
+    if (uses.length >= MAX_USE_MARKS || byLine.has(k + 1) || /^\s*(#|\/\/|\*)/.test(l)) return;
+    const m = use.exec(l);
+    if (m) { uses.push(k + 1); byLine.set(k + 1, { kind: "use", note: names.size ? "uses " + m[1] : "mentions it" }); }
+  });
+  return { other, byLine, imports, uses, inferred: !imports.length };
+}
+function linkBanner(link) {
+  const go = n => `<button type="button" class="linkish" data-goto="${n}">L${n}</button>`, name = esc(link.other.split("/").pop());
+  const parts = [];
+  if (link.imports.length) parts.push(`imported on ${link.imports.map(go).join(", ")}`);
+  if (link.uses.length) parts.push(`${link.inferred ? "mentioned" : "used"} on ${link.uses.map(go).join(", ")}${link.uses.length >= MAX_USE_MARKS ? " and more" : ""}`);
+  return `<p class="pane-link">↔ <b>${name}</b>: ${parts.length ? parts.join("; ") : "no line here refers to it"}${link.inferred && !link.imports.length ? ` <span class="chip guess">no import line</span>` : ""}</p>`;
+}
+async function viewConnection(from, to) {
+  const [a, b] = await Promise.all([pullCode(from), pullCode(to)]);
+  await getGraph().ready;
+  const la = a && connectionMarks(from, a.text, to), lb = b && connectionMarks(to, b.text, from);
+  const first = l => l && (l.imports[0] || l.uses[0]) || 0;
+  await viewFile(from, first(la), la);
+  await viewFile(to, first(lb), lb);
 }
 function renderViewer() {
   const box = $("viewer");
@@ -2569,7 +2657,9 @@ function renderViewer() {
         ${askEnabled ? `<button type="button" class="mini" data-pane-explain="${i}">Explain</button>` : ""}
         <button type="button" class="mini" data-pane-close="${i}" aria-label="Close ${esc(p.path)}">✕</button></div>
       ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
-      <div class="pane-body" tabindex="0">${shown.map((l, k) => `<div class="vl${k + 1 === p.line ? " hit" : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span></div>`).join("")}</div>
+      ${p.link ? linkBanner(p.link) : ""}
+      <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
+        return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
       ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}
     </article>`;
   }).join("");
@@ -2578,6 +2668,8 @@ function renderViewer() {
   if (last) last.scrollIntoView({ inline: "end", block: "nearest" });
 }
 $("viewerPanes").addEventListener("click", e => {
+  const go2 = e.target.closest("[data-goto]");
+  if (go2) { const i = +go2.closest("[data-pane]").dataset.pane; panes[i].line = +go2.dataset.goto; renderViewer(); return; }
   const close = e.target.closest("[data-pane-close]"), ex = e.target.closest("[data-pane-explain]"), go = e.target.closest("[data-path]");
   if (close) { panes.splice(+close.dataset.paneClose, 1); renderViewer(); }
   else if (ex) explainFile(panes[+ex.dataset.paneExplain].path);
@@ -2632,6 +2724,68 @@ function scanUsedBy(progress) {
   })();
   return g.scanning;
 }
+// ---------- repo digest ----------
+// What Gemini gets besides the file list when it plans an answer or a tour, all read from the code itself:
+// the README's opening, the project manifests, the import graph (with the most-used files and the likely
+// entry points), and the top-level functions and classes of the files that matter most. Built once per city.
+const DIGEST_MAX_FILES = 600, DIGEST_CHARS = 36000, OUTLINE_FILES = 70;
+const MANIFESTS = /^(package\.json|pyproject\.toml|setup\.cfg|setup\.py|go\.mod|Cargo\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle(\.kts)?)$/i;
+const OUTLINE_RES = {
+  py: /^(?:async\s+)?(?:class|def)\s+(\w+)/gm,
+  js: /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|interface|type|enum|const|let)\s+([\w$]+)/gm,
+  go: /^(?:func(?:\s+\([^)]*\))?|type)\s+(\w+)/gm,
+  java: /^\s*(?:public\s+|protected\s+|abstract\s+|final\s+|static\s+)*(?:class|interface|enum|record|fun|object)\s+(\w+)/gm,
+  rb: /^\s{0,2}(?:class|module|def)\s+([\w:.?!]+)/gm,
+  rs: /^\s*pub(?:\([^)]*\))?\s+(?:fn|struct|enum|trait|type|mod)\s+(\w+)/gm,
+  php: /^\s*(?:abstract\s+|final\s+)?(?:class|interface|trait|function)\s+(\w+)/gm,
+  c: /^[\w\s\*]+?\b(\w+)\s*\([^;]*\)\s*\{/gm,
+};
+function outline(path, text) {
+  const re = OUTLINE_RES[IMPORT_LANG[langOf(path)]];
+  if (!re) return [];
+  const names = [];
+  for (const m of text.matchAll(re)) { if (!names.includes(m[1]) && !/^(if|for|while|switch|return)$/.test(m[1])) names.push(m[1]); if (names.length >= 12) break; }
+  return names;
+}
+function repoDigest(progress) {
+  const g = getGraph();
+  if (g.digest) return g.digest;
+  g.digest = (async () => {
+    const live = buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path);
+    const code = live.filter(canImport), parts = [];
+    const readme = live.filter(p => /(^|\/)readme(\.\w+)?$/i.test(p)).sort((a, b) => a.split("/").length - b.split("/").length)[0];
+    if (readme) { const c = await pullCode(readme); if (c) parts.push(`README (${readme}, opening):\n${c.text.slice(0, 3000)}`); }
+    for (const m of live.filter(p => MANIFESTS.test(p.split("/").pop())).sort((a, b) => a.split("/").length - b.split("/").length).slice(0, 3)) {
+      const c = await pullCode(m); if (c) parts.push(`${m}:\n${c.text.slice(0, 1500)}`);
+    }
+    if (code.length && code.length <= DIGEST_MAX_FILES) {
+      const usedBy = await scanUsedBy(progress), out = new Map();
+      for (const f of code) out.set(f, knownDeps(f) || []);
+      const aside = f => /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?)\//i.test(f);   // not the product itself
+      const rank = f => [...(usedBy.get(f) || [])].filter(u => !aside(u)).length;
+      const core = code.filter(f => !aside(f) && rank(f) > 0).sort((a, b) => rank(b) - rank(a)).slice(0, 15);
+      if (core.length) parts.push(`Most-imported files (the core):\n${core.map(f => `${f} (used by ${rank(f)})`).join("\n")}`);
+      const entry = code.filter(f => !rank(f) && out.get(f).length && !aside(f))
+        .sort((a, b) => out.get(b).length - out.get(a).length).slice(0, 10);
+      if (entry.length) parts.push(`Likely entry points (import others, imported by none):\n${entry.join("\n")}`);
+      const key = [...new Set([...core, ...entry, ...code.filter(f => !aside(f))
+        .sort((a, b) => (bmap.get(b).userData.lines + rank(b) * 200) - (bmap.get(a).userData.lines + rank(a) * 200))])].slice(0, OUTLINE_FILES);
+      const outlines = [];
+      for (const f of key) { const c = await pullCode(f); const names = c ? outline(f, c.text) : []; if (names.length) outlines.push(`${f}: ${names.join(", ")}`); }
+      if (outlines.length) parts.push(`Top-level functions and classes:\n${outlines.join("\n")}`);
+      const edges = code.filter(f => out.get(f).length).map(f => `${f} -> ${out.get(f).join(", ")}`);
+      if (edges.length) parts.push(`Imports between files (from the code's import lines):\n${edges.join("\n")}`);
+    }
+    let text = parts.join("\n\n");
+    if (text.length > DIGEST_CHARS) text = text.slice(0, DIGEST_CHARS) + "\n(cut short)";
+    return text;
+  })();
+  return g.digest;
+}
+function digestProgress(status, label) {
+  return (n, total) => { status.textContent = `${label}: reading the repo's code (${fmt(n)} of ${fmt(total)} files)…`; };
+}
+
 function focusPaths() {   // whose connections the arcs show
   if (hoverFocus) return [hoverFocus];
   if (picked) return [picked.userData.f.path];
@@ -2639,11 +2793,14 @@ function focusPaths() {   // whose connections the arcs show
     const done = askState.chain.filter(st => st.files), last = done[done.length - 1];
     return last ? last.paths : [];
   }
-  if (sideMode === "tour" && tourState) return [tourState.steps[tourState.i].path];
+  if (sideMode === "tour" && tourState) { const st = tourStep(); return st ? [st.path] : []; }
   return [];
 }
-function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in" (from uses to) or "chain"
+function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in" (from uses to), "chain", or "wf<k>" (a tour workflow)
   const pairs = [];
+  if (sideMode === "tour" && tourState) {   // the overview draws every workflow; a workflow draws itself
+    tourState.workflows.forEach((w, k) => { if (tourState.w < 0 || tourState.w === k) for (let j = 0; j < w.steps.length - 1; j++) pairs.push([w.steps[j].path, w.steps[j + 1].path, "wf" + k]); });
+  }
   if (sideMode === "ask" && askState && askState.chain) for (const st of askState.chain) if (st.from) pairs.push([st.from, st.paths[0], "chain"]);
   if (!showLinks) return pairs;
   const g = graph;
@@ -2660,6 +2817,10 @@ const ARC = {
   in: { tube: new THREE.MeshBasicMaterial({ color: 0x8fb0ff, transparent: true, opacity: 0.55, fog: false }), spark: 0xd6e2ff, w: 1 },
   chain: { tube: new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.95, fog: false }), spark: 0xffe0b0, w: 2.2 },
 };
+function wfArc(kind) {   // one colour per tour workflow
+  if (!ARC[kind]) { const c = WF_COLORS[+kind.slice(2) % WF_COLORS.length]; ARC[kind] = { tube: new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, fog: false }), spark: 0xffffff, w: 1.8 }; }
+  return ARC[kind];
+}
 const SPARK_GEO = new THREE.SphereGeometry(1, 8, 6);
 let linkGroup = null, sparks = [];   // sparks: [{ mesh, curve, phase }]
 function drawLinks() {
@@ -2673,7 +2834,7 @@ function drawLinks() {
     seen.add(key);
     const p = top(a), q = top(b), mid = p.clone().lerp(q, 0.5);
     mid.y = Math.max(p.y, q.y) + 4 + p.distanceTo(q) * 0.35;
-    const curve = new THREE.QuadraticBezierCurve3(p, mid, q), st = ARC[kind];
+    const curve = new THREE.QuadraticBezierCurve3(p, mid, q), st = ARC[kind] || wfArc(kind);
     group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, r * st.w, 6, false), st.tube));   // a tube, since WebGL lines are always one pixel thin
     const sparkMat = new THREE.MeshBasicMaterial({ color: st.spark, fog: false });
     for (let k = 0; k < (reduceMotion ? 1 : 3); k++) {
@@ -2722,24 +2883,29 @@ document.getElementById("dLinks").addEventListener("click", async e => {
 });
 
 // ---------- guided tours ----------
-// Gemini plans a walk through what the software does, one feature per stop, each with the file that does it
-// and the files it works with; the camera flies stop to stop while the panel narrates and arcs show the links.
+// A tour walks through the software's main workflows ("Starting the app", "Handling a request"), each an
+// ordered walk through files. The overview draws every workflow on the map at once in its own colour, with the
+// files they share (where they merge) lit brightest. Opening a workflow reads its code: Gemini points out the
+// important lines, and the import parser finds the line where each step hands off to the next.
 const TOUR_STEP_MS = 7000;   // auto-play pace
-let tourState = null;        // { title, steps: [{ path, title, narration }], i, playing, timer }
+const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
+let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
 $("tourBtn").onclick = () => startTour($("askInput").value);
 async function startTour(topic) {
   const status = $("askStatus");
   if (!oauthToken) { status.innerHTML = needSignin("take a tour"); return; }
+  status.textContent = "Reading the repo…";
+  const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
   status.textContent = "Planning a tour…";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
-      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files }),
+      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
+    if (!r.ok || !Array.isArray(data.workflows)) {
       status.innerHTML = esc(data.error || `Couldn't plan a tour (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
       return;
@@ -2747,59 +2913,149 @@ async function startTour(topic) {
     status.textContent = "";
     if (askState) askState = null;
     endTour();   // an old tour's auto-play timer must not drive the new one
-    tourState = { title: data.title, steps: data.steps.map(st => ({ ...st, related: st.related || [] })), paths: new Set(data.steps.map(st => st.path)), i: 0, playing: false, timer: 0 };
+    const shared = new Map();
+    data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
+    tourState = { title: data.title, overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
+      w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
     openSide("tour");
-    goToStop(0);
+    showOverview();
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
+}
+function tourStep() { const t = tourState; return t && t.w >= 0 ? t.workflows[t.w].steps[t.i] : null; }
+function showOverview() {
+  const t = tourState;
+  if (!t) return;
+  clearTimeout(t.timer); t.w = -1; t.playing = false;
+  resetView(true);
+  renderTour(); drawLinks();
+}
+function goToWorkflow(w, i) {
+  const t = tourState;
+  if (!t || !t.workflows[w]) return;
+  t.w = w;
+  loadKeyLines(w);
+  goToStop(i || 0);
 }
 function goToStop(i) {
   const t = tourState;
-  if (!t) return;
-  t.i = Math.max(0, Math.min(t.steps.length - 1, i));
-  const b = bmap.get(t.steps[t.i].path);
+  if (!t || t.w < 0) return;
+  const steps = t.workflows[t.w].steps;
+  t.i = Math.max(0, Math.min(steps.length - 1, i));
+  const b = bmap.get(steps[t.i].path);
   if (b) flyToBuilding(b);
   renderTour();
   drawLinks();
   clearTimeout(t.timer);
-  if (t.playing) {
-    if (t.i < t.steps.length - 1) t.timer = setTimeout(() => goToStop(t.i + 1), reduceMotion ? TOUR_STEP_MS * 1.5 : TOUR_STEP_MS);
-    else t.playing = false;
+  if (t.playing) {   // auto-play runs through every step of every workflow, then back to the overview
+    const next = t.i < steps.length - 1 ? () => goToStop(t.i + 1) : t.w < t.workflows.length - 1 ? () => goToWorkflow(t.w + 1, 0) : () => showOverview();
+    t.timer = setTimeout(next, reduceMotion ? TOUR_STEP_MS * 1.5 : TOUR_STEP_MS);
   }
 }
 function endTour() { if (tourState) clearTimeout(tourState.timer); tourState = null; }
+// The lines where a file imports the next step's file, found by running the import parser line by line.
+function handoffLines(path, text, next) {
+  const r = getGraph().resolver, out = [];
+  text.split("\n").forEach((line, k) => {
+    if (out.length < 3 && /\b(import|require|include|use|mod|from)\b/.test(line) && r.deps(path, line).includes(next)) out.push({ line: k + 1, text: line.trim().slice(0, 120) });
+  });
+  return out;
+}
+async function loadKeyLines(w) {
+  const t = tourState, wf = t.workflows[w];
+  if (wf.lines) return;
+  wf.lines = { loading: true };
+  const redraw = () => { if (tourState === t && t.w === w && sideMode === "tour") renderTour(); };
+  const paths = [...new Set(wf.steps.map(st => st.path))];
+  const code = new Map((await Promise.all(paths.map(pullCode))).filter(Boolean).map(c => [c.path, c]));
+  await getGraph().ready;
+  wf.handoff = new Map(wf.steps.map((st, k) => [k, k < wf.steps.length - 1 && code.has(st.path) ? handoffLines(st.path, code.get(st.path).text, wf.steps[k + 1].path) : []]));
+  redraw();
+  const send = paths.filter(p => code.has(p)).slice(0, 4).map(p => ({ path: p, text: code.get(p).text }));
+  if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
+  try {
+    const r = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      body: JSON.stringify({ mode: "lines", question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
+        files: [{ path: send[0].path, lines: 1 }], code: send }),
+    });
+    const data = await r.json().catch(() => ({}));
+    wf.lines = r.ok ? { byPath: new Map(data.steps.map(st => [st.path, st.lines])), read: new Set(send.map(c => c.path)) }
+      : { error: esc(data.error || `Couldn't read the code (error ${r.status}).`) };
+  } catch (e) { wf.lines = { error: "Couldn't reach Code City's server." }; }
+  redraw();
+}
+function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k % WF_COLORS.length]}" aria-hidden="true"></span>`; }
 function renderTour() {
-  const t = tourState, st = t.steps[t.i];
+  const t = tourState;
   const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
-    ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
+    ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
-  $("sideSub").textContent = `Stop ${t.i + 1} of ${t.steps.length}`;
-  sideBody.innerHTML = `
-    <div class="tour-stop">
-      <h3>${esc(st.title)}</h3>
-      <p class="tour-path">${pathHtml(st.path)}</p>
-      <p class="ask-answer">${esc(st.narration)}</p>
-    </div>
-    ${st.related.length ? `<div><h3>Works with</h3><ol class="rank links">${st.related.map(r => `<li><button type="button" data-path="${esc(r.path)}"><span class="n">→</span><span class="path">${pathHtml(r.path)}</span><span class="meta">${esc(r.how)}</span></button></li>`).join("")}</ol></div>` : ""}
-    <div class="side-actions">
-      <button type="button" data-tour="back" ${t.i === 0 ? "disabled" : ""}>Back</button>
-      <button type="button" class="primary" data-tour="next">${t.i === t.steps.length - 1 ? "Finish tour" : "Next stop"}</button>
-      <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
-    </div>
-    <h3>All stops</h3>
-    <ol class="rank">${t.steps.map((s, k) => `<li><button type="button" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}>
-      <span class="n">${k + 1}</span><span class="path">${esc(s.title)}</span><span class="meta">${pathHtml(s.path)}</span></button></li>`).join("")}</ol>
-    <p class="side-note">Gemini plans tours from file names and sizes, not the code, so treat them as a starting point. Click a file and press Explain this code to read it.</p>`;
-  if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the list was redrawn; keep keyboard focus
+  if (t.w < 0) {
+    const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
+    $("sideSub").textContent = `${t.workflows.length} workflows`;
+    sideBody.innerHTML = `
+      <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${esc(t.overview)}</p></div>
+      <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
+        <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
+      ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
+        <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
+      <div class="side-actions">
+        <button type="button" class="primary" data-wf="0">Start the first workflow</button>
+        <button type="button" data-tour="play">Auto-play all</button>
+      </div>
+      <p class="side-note">The map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans workflows from the repo's README, imports and functions; opening one reads its code for the important lines.</p>`;
+  } else {
+    const w = t.workflows[t.w], L = w.lines || {};
+    $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
+    sideBody.innerHTML = `
+      <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
+        ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
+        ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3><p class="ask-answer">${esc(w.summary)}</p>
+        ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
+      ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
+      <ol class="wf-steps">${w.steps.map((st, k) => {
+        const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
+        return `<li class="wf-step${k === t.i ? " current" : ""}" data-stop-box="${k}">
+          <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
+          <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
+          <p class="explain-text">${esc(st.narration)}</p>
+          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><em data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${l.line}</em>${esc(l.note)}</li>`).join("")}</ul></div>`
+            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
+          ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
+          ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><em data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${h.line}</em><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
+        </li>`; }).join("")}</ol>
+      <div class="side-actions">
+        <button type="button" data-tour="back" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
+        <button type="button" class="primary" data-tour="next">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
+        <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
+      </div>
+      <p class="side-note">Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step. Click a line number to see it in the code viewer.</p>`;
+    const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
+    if (cur && !again) cur.scrollIntoView({ block: "nearest" });
+  }
+  if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the panel was redrawn; keep keyboard focus
 }
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
-  const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]");
+  const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
+  if (wf) { e.stopPropagation(); return goToWorkflow(+wf.dataset.wf, 0); }
   if (stop) { e.stopPropagation(); return goToStop(+stop.dataset.stop); }
   if (!act) return;
-  const t = tourState;
-  if (act.dataset.tour === "back") goToStop(t.i - 1);
-  else if (act.dataset.tour === "next") { if (t.i === t.steps.length - 1) { closeSide(); resetView(true); } else goToStop(t.i + 1); }
-  else { t.playing = !t.playing; goToStop(t.playing && t.i === t.steps.length - 1 ? 0 : t.i); }
+  const t = tourState, w = t.workflows[t.w];
+  if (act.dataset.tour === "overview") return showOverview();
+  if (act.dataset.tour === "back") { if (t.i > 0) goToStop(t.i - 1); else if (t.w > 0) goToWorkflow(t.w - 1, t.workflows[t.w - 1].steps.length - 1); }
+  else if (act.dataset.tour === "next") {
+    if (t.i < w.steps.length - 1) goToStop(t.i + 1);
+    else if (t.w < t.workflows.length - 1) goToWorkflow(t.w + 1, 0);
+    else { closeSide(); resetView(true); }
+  } else {   // play / pause
+    t.playing = !t.playing;
+    if (t.w < 0) { if (t.playing) goToWorkflow(0, 0); else renderTour(); }
+    else goToStop(t.i);
+  }
 }, true);
 
 // ---------- timelapse video ----------

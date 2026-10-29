@@ -44,13 +44,13 @@ Building heights are estimated from file size until you click a building, which 
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Gemini reads the city's file list (names and sizes, not the code), answers in a few sentences, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
+Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
 
 Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour plus 20 code explanations, and the whole site 300 Gemini calls a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
 
 **Explain this code** in a file's panel (or **Explain** on a code viewer pane) explains one file, and **Explain this folder** a folder's three biggest files. With explanations already open, a new one is added below them instead of replacing them. Gemini reads at most 24,000 characters of each file and says when it only saw the start.
 
-Explanations form a chain: **Follow** on any connected file explains it next, as a new step below the ones before ("followed from app.py"), and opens both files side by side in the code viewer, so you can trace a request from file to file. The trail at the top jumps between steps, thicker arcs mark the path the chain took, and a chain holds up to 8 steps.
+Explanations form a chain: **Follow** on any connected file explains it next, as a new step below the ones before ("followed from app.py"), and opens both files side by side in the code viewer with the lines that connect them marked: the import line that brings in the other file, and each line that uses what it imports. A strip above each file lists them ("↔ ctx.py: imported on L33; used on L87, L101…"); click one to jump to it. When no import line links the two, lines that mention the other file are marked instead. This way you can trace a request from file to file. The trail at the top jumps between steps, thicker arcs mark the path the chain took, and a chain holds up to 8 steps.
 
 ### Connections between files
 
@@ -64,7 +64,11 @@ Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI
 
 ### Guided tours
 
-Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Tour** next to the Ask box for a functionality tour: what the software does, one feature per stop ("Signing in", "Routing a request"), in the order a user or a request meets them. Type a topic first ("how checkout works") to focus it. Gemini plans four to eight stops, each with the file that does most of the work and up to four files it works with; the camera flies from building to building while the panel narrates each one, and arcs show each stop's imports. Step through with Back / Next, jump to any stop, or press Auto-play.
+Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Tour** next to the Ask box (or type a topic first, such as "how checkout works"). Using the same reading of the repo, Gemini splits the software into its main workflows ("Starting the app", "Handling a request"), each an ordered walk through files that follows real imports where it can.
+
+- **Overview: how the workflows merge.** The map draws every workflow at once, one colour each, and lights brightest the files workflows share. The panel explains how they fit together, lists each workflow with the ones it leads to, and lists the files where workflows meet.
+- **One workflow.** Open a workflow to step through it. Each step has its clickable file name (opens the file's panel; **View** opens its code), what happens there, its **important lines** (Gemini reads the code of the workflow's first four files when you open it), and the **hand-off** line where it imports the next step's file, found from the code. A hand-off with no import line behind it is marked *inferred*. Click any line number to see it in the code viewer.
+- **Back / Next** step through, **Auto-play** runs through every workflow, and **All workflows** returns to the overview.
 
 ### Timelapse video
 
