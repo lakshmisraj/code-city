@@ -111,6 +111,18 @@ Opens http://localhost:8787. Paste any public GitHub, GitLab or Bitbucket URL (o
 
 The local server only answers its own page: other websites can't make it clone or read anything, and it never runs programs that a folder's own git settings name (hooks, fsmonitor). `python3 codecity.py export` can read any folder.
 
+## Dev server
+
+For working on the site itself: the dev copy of the page, signed in with GitHub on every load, and the dev copy of the Ask function (so Ask, tours and explanations run your changes before they're deployed).
+
+1. Copy `.env.example` to `.env` (git ignores it) and fill in:
+   - `GITHUB_TOKEN`: a [fine-grained token](https://github.com/settings/personal-access-tokens/new) with no extra permissions. It only tells Code City who you are.
+   - `GEMINI_API_KEY`: your Gemini key, for Ask. Leave it empty to run without Ask.
+2. Make it private: `chmod 600 .env` (the server refuses to start otherwise).
+3. Run `node dev-server.mjs` and open http://codecity.localhost:8813
+
+It rebuilds the page whenever `code-city.html` changes, so a reload shows edits. It only listens on this machine and only answers `codecity.localhost`, so nothing else on the network, and no other website, can read the signed-in page or spend questions through it. Question limits and timing notes need Netlify Blobs, so they're off here. Needs Node 18+ and Python 3.
+
 ## Troubleshooting
 
 - **"GitHub allows 60 requests an hour…"**: your network has used its unauthenticated GitHub requests. Sign in with GitHub (or paste a token) for 5,000 an hour, or wait for the reset time shown.
@@ -134,6 +146,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 |---|---|
 | `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
+| `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |
 
 ## License

@@ -212,6 +212,7 @@ async function textModels() {
 // The last few Gemini calls' timing, size and outcome (never the question or the code), kept in Netlify Blobs
 // so slow or failing answers can be looked into. Best effort: it never holds up or breaks an answer.
 async function note(entry) {
+  if (LOCAL) return;
   try {
     const store = getStore({ name: "ask-diag" });
     await Promise.race([(async () => {
@@ -233,7 +234,10 @@ async function bump(store, key) {
   }
 }
 // Returns an error message when this ask would go over a limit, or null. Counts by GitHub account id.
+// Run by dev-server.mjs on a developer's own machine, where Netlify Blobs doesn't exist: no limits, no notes.
+const LOCAL = process.env.ASK_LOCAL === "1";
 async function overLimit(userId, kind) {
+  if (LOCAL) return null;
   const store = getStore({ name: "ask-limits", consistency: "strong" });
   const now = new Date(), hour = now.toISOString().slice(0, 13), today = hour.slice(0, 10);
   const key = kind === "explain" ? `user/${userId}/explain/${hour}` : `user/${userId}/${hour}`;

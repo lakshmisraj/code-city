@@ -4,3 +4,6 @@ __pycache__/
 .DS_Store
 *.zip
 node_modules/
+
+# Local secrets for dev-server.mjs: never commit
+.env
