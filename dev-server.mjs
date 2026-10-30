@@ -9,8 +9,11 @@
 //
 // It only listens on this machine (127.0.0.1) and only answers requests addressed to codecity.localhost, so
 // nothing on the network, and no other website (even through DNS rebinding), can read the page holding the
-// token or spend questions through it. Needs Node 18+ and Python 3 (to rebuild the page); nothing to install.
+// token or spend questions through it. Like Jupyter, it prints a link with a one-time key at start: only a
+// browser that opened it (and so holds its cookie) gets the signed-in page or can ask, so other programs on this
+// machine can't read the token from it. Needs Node 18+ and Python 3 (to rebuild the page); nothing to install.
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -21,6 +24,8 @@ const SITE = path.join(ROOT, "site");
 const PORT = +process.env.PORT || 8813;
 const HOST = `codecity.localhost:${PORT}`;   // a plain "localhost" would put the page in local-app mode
 const ENV_FILE = process.env.ENV_FILE || path.join(ROOT, ".env");
+const KEY = crypto.randomBytes(24).toString("hex");   // this run's key: in the link printed below, then a cookie
+const hasKey = req => (req.headers.cookie || "").split(/;\s*/).includes("cc_dev=" + KEY);
 
 // .env: KEY=value lines, # comments, optional quotes. Values already in the environment win.
 function loadEnv(file) {
@@ -65,6 +70,12 @@ http.createServer(async (req, res) => {
   try {
     if (req.headers.host !== HOST) return send(res, 421, { error: `Open http://${HOST}` });   // stops DNS rebinding
     const url = new URL(req.url, `http://${HOST}`);
+    if (url.searchParams.get("key") === KEY) {   // the printed link: remember this browser, then drop the key from the address
+      url.searchParams.delete("key");
+      res.writeHead(302, { Location: url.pathname + url.search, "Set-Cookie": `cc_dev=${KEY}; Path=/; HttpOnly; SameSite=Strict`, "Cache-Control": "no-store" });
+      return res.end();
+    }
+    if (url.pathname === "/.netlify/functions/github-signout") return send(res, 200, { revoked: false });   // the .env token stays yours
     if (url.pathname === "/.netlify/functions/github-login") {
       if (url.searchParams.has("check")) return send(res, 200, { enabled: true });
       res.writeHead(302, { Location: "/" }); return res.end();   // already signed in, from .env
@@ -72,12 +83,15 @@ http.createServer(async (req, res) => {
     if (url.pathname === "/.netlify/functions/ask") {
       if (!ask) return req.method === "GET" ? send(res, 200, { enabled: false }) : send(res, 503, { error: "Add GEMINI_API_KEY to .env to use Ask on the dev server." });
       // only this page may spend questions: other sites can't make same-origin requests
-      if (req.method !== "GET" && !["same-origin", "none", undefined].includes(req.headers["sec-fetch-site"])) return send(res, 403, { error: "Only the dev page can ask." });
+      if (req.method !== "GET" && (!hasKey(req) || !["same-origin", "none", undefined].includes(req.headers["sec-fetch-site"]))) return send(res, 403, { error: "Only the dev page can ask. Open the link the dev server printed." });
       const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
       const r = await ask(new Request(url, { method: req.method, headers: req.headers, body }));
       res.writeHead(r.status, Object.fromEntries(r.headers)); return res.end(Buffer.from(await r.arrayBuffer()));
     }
-    if (url.pathname === "/" || url.pathname === "/index.html") return send(res, 200, freshPage(), TYPES[".html"]);
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      if (!hasKey(req)) return send(res, 401, "Open the link the dev server printed in its terminal (it has this run's key).", "text/plain; charset=utf-8");
+      return send(res, 200, freshPage(), TYPES[".html"]);
+    }
     const file = path.join(SITE, decodeURIComponent(url.pathname));
     if (!file.startsWith(SITE + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(res, 404, "Not found", "text/plain");
     send(res, 200, fs.readFileSync(file), TYPES[path.extname(file).toLowerCase()] || "application/octet-stream");
@@ -86,5 +100,6 @@ http.createServer(async (req, res) => {
     send(res, 500, { error: "The dev server hit an error; see its terminal." });
   }
 }).listen(PORT, "127.0.0.1", () => {
-  console.log(`Code City dev: http://${HOST}  (signed in from .env${ask ? ", Ask runs netlify/functions/ask.mjs here" : "; add GEMINI_API_KEY to .env for Ask"})`);
+  console.log(`Code City dev: http://${HOST}/?key=${KEY}`);
+  console.log(`  open that link (it has this run's key); signed in from .env${ask ? ", Ask runs netlify/functions/ask.mjs here" : "; add GEMINI_API_KEY to .env for Ask"}`);
 });

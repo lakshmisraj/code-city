@@ -2,10 +2,15 @@
 
 **Live:** https://code-city-view.netlify.app
 
-See a codebase as a 3D city at night. Each file is a building: height is lines of code, width is number of functions, and folders are raised districts. TODO / FIXME comments burn on the rooftops.
+Code City helps you understand a codebase quickly: where it starts, which files the rest depends on, how its workflows run and join, and how it grew. It draws the repo as a 3D city at night. Each file is a building (height is lines of code, width is number of functions), folders are raised districts, and TODO / FIXME comments burn on the rooftops.
 
-- **Play history**: watch the city grow commit by commit, from the first file to today. New files flash and rise, and deleted files are demolished in a cloud of dust.
-- **Change heat**: color buildings by how many commits touched them. Hot files are where bugs tend to live and where refactoring pays off.
+### Try it
+
+1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
+2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
+3. Click a building to see its outline, imports and the files that use it; **View code** and **Explain this code** go deeper.
+4. Signed in with GitHub, press **Tour** for the main workflows and where they meet, or ask a question.
+5. Press **Play history** to watch the city grow, commit by commit.
 
 ### Words used on the site
 
@@ -14,6 +19,8 @@ See a codebase as a 3D city at night. Each file is a building: height is lines o
 | Building | One file. Height is lines of code, width is the number of functions. |
 | District | A folder, raised one step for each level of nesting. |
 | Fire | A TODO, FIXME or HACK comment on that file's roof. |
+| Entry point | Where execution starts: a file the project declares (package.json `main`/`bin`, pyproject scripts…), one named like an entry point (`main.py`, `cmd/x/main.go`…), or one no other file imports. |
+| Core | The files most of the product imports (tests, docs and examples aren't counted). |
 | Change heat | How many commits touched a file, from dark blue (rarely) to orange-red (constantly). |
 | Hotspot | A file in the repo's top tenth for how often it changes (at least 2 changes). The PR view and the PR bot flag these. The **Hotspots** list ranks by *commits × lines* instead, so big files that keep changing come first. |
 
@@ -30,6 +37,14 @@ Without signing in, GitHub allows **60 requests an hour** per network. **Sign in
 The timeline follows the default branch's main line: each merge is one step for the branch it brought in, and commits are placed by the date they landed (the committer date), so rebased work shows up where it was merged. Files left out of the city (too big, or past the 4,000-file limit) are left out of the history too. A load can be stopped with **Cancel**; starting another load stops the one before.
 
 Building heights are estimated from file size until you click a building, which loads its real source. Loading all time from the first commit replays real line counts.
+
+### How this repo is built
+
+Opens by itself when a repo loads (and from **How it's built** in the left card). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). It needs no AI and no sign-in: it's read from the code's import lines, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour.
+
+### History
+
+**Play history** in the left card opens the history bar (▾ hides it again): play the city's growth, scrub to any commit, change the speed, or record a video. Loading history from the history panel opens it for you.
 
 ### Folders, hotspots, pull requests and links
 
@@ -48,9 +63,9 @@ Building heights are estimated from file size until you click a building, which 
 
 Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
 
-Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour plus 20 code explanations, and the whole site 300 Gemini calls a day (set `ASK_PER_HOUR` and `ASK_PER_DAY` to change them); the counts are kept in Netlify Blobs.
+Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, plus 20 code explanations and 20 important-line readings, and at most 80 calls a day; the whole site gets 300 a day (set `ASK_PER_HOUR`, `ASK_PER_USER_DAY` and `ASK_PER_DAY` to change them). Calls that fail don't count. The counts are kept in Netlify Blobs. Signing out also revokes the sign-in token with GitHub.
 
-**Explain this code** in a file's panel (or **Explain** on a code viewer pane) explains one file, and **Explain this folder** a folder's three biggest files. With explanations already open, a new one is added below them instead of replacing them. Gemini reads at most 24,000 characters of each file and says when it only saw the start.
+After an answer, **Explain the code of the top files** reads their code. **Explain this code** in a file's panel (or **Explain** on a code window) explains one file, and **Explain this folder** a folder's three biggest files. With explanations already open, a new one is added below them instead of replacing them. Gemini reads at most 24,000 characters of each file and says when it only saw the start.
 
 Explanations form a chain: **Follow** on any connected file explains it next, as a new step below the ones before ("followed from app.py"), and opens both files side by side in the code viewer with the lines that connect them marked: the import line that brings in the other file, and each line that uses what it imports. A strip above each file lists them ("↔ ctx.py: imported on L33; used on L87, L101…"); click one to jump to it. When no import line links the two, lines that mention the other file are marked instead. This way you can trace a request from file to file. The trail at the top jumps between steps, thicker arcs mark the path the chain took, and a chain holds up to 8 steps.
 
@@ -60,13 +75,11 @@ Arcs over the city show which files import which, read from the code's import li
 
 ### Windows
 
-**View code** (in a file's panel, next to any explained file, an outline entry, or Shift-click a building) opens the file's full source in its own window. **Explain** puts the explanation in the same window: code on the left, explanation on the right, at equal widths; **Follow** opens the followed file's window the same way, with the lines that connect the two marked. Explanations of several files at once (after Ask, or Explain this folder) get a window of their own, whose **View code** opens their files.
+**View code** (in a file's panel, next to any explained file, an outline entry, or Shift-click a building) opens the file's full source in its own window. **Explain this code** opens just the explanation, with **View code** to add the code to the same window: code on the left, explanation on the right, at equal widths (stacked on narrow screens). If the code is already open, the explanation joins its window. **Follow** opens the followed file next to the one it came from, with the lines that connect the two marked. Explanations of several files at once get a window of their own.
 
-Drag a window by its title bar and resize it from its corner. **–** rolls it up to its title bar (**+** rolls it back down) and **✕** closes it. New windows never move or close the ones already open, and the side panels stay open beside them. A strip of tabs, one per window, brings any window to the front; **▾** folds the strip away. Files and web addresses named in any description are links.
+Drag a window by its title bar and resize it from its corner. **–** puts it away in its tab and **✕** closes it. A strip of tabs, one per window, brings any window back; files that share a name show enough of their folders to tell apart, and **▾** folds the strip. New windows never move or close the ones already open, and the side panels stay open beside them. The guide at the bottom can be closed, and steps aside while windows are open. Files and web addresses named in any description are links.
 
 If you leave the page (signing in with GitHub, the back button, a reload), its windows, explanations and Ask answer come back when the same repo loads again within half an hour.
-
-Site owner setup: create a Gemini API key in Google AI Studio, add it as `GEMINI_API_KEY` to the site's environment variables (marked secret) and redeploy. Until then the Ask box stays hidden. It runs `netlify/functions/ask.mjs` with Google's fast "lite" models (`gemini-3.5-flash-lite`, then `gemini-3.1-flash-lite` and `gemini-2.5-flash-lite`; set `ASK_MODELS` to change the list). When one is busy or slow the next is asked, the first answer wins, and that model goes first next time. Answers get up to 26 seconds (Netlify allows the function 60). `GET /.netlify/functions/ask?models` lists the models the key can use, and each call's timing is noted in the `ask-diag` Netlify Blobs store (never the question or the code).
 
 ### Guided tours
 
@@ -86,6 +99,16 @@ Like asking, tours need Sign in with GitHub and count towards the same hourly li
 The bot that comments on pull requests with hotspots, missing tests, who to ask, and a link to the PR in Code City lives in its own repo: **[lakshmisraj/code-city-pr-summary](https://github.com/lakshmisraj/code-city-pr-summary)**. Setup and `.codecity.yml` settings are documented there. In short:
 
 ```yaml
+# .github/workflows/code-city.yml
+name: Code City PR summary
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -119,9 +142,9 @@ For working on the site itself: the dev copy of the page, signed in with GitHub 
    - `GITHUB_TOKEN`: a [fine-grained token](https://github.com/settings/personal-access-tokens/new) with no extra permissions. It only tells Code City who you are.
    - `GEMINI_API_KEY`: your Gemini key, for Ask. Leave it empty to run without Ask.
 2. Make it private: `chmod 600 .env` (the server refuses to start otherwise).
-3. Run `node dev-server.mjs` and open http://codecity.localhost:8813
+3. Run `node dev-server.mjs` and open the link it prints (http://codecity.localhost:8813/?key=…). The key is new on every run and keeps other programs on your machine from reading the signed-in page.
 
-It rebuilds the page whenever `code-city.html` changes, so a reload shows edits. It only listens on this machine and only answers `codecity.localhost`, so nothing else on the network, and no other website, can read the signed-in page or spend questions through it. Question limits and timing notes need Netlify Blobs, so they're off here. Needs Node 18+ and Python 3.
+It rebuilds the page whenever `code-city.html` changes, so a reload shows edits. It only listens on this machine, only answers `codecity.localhost`, and only gives the signed-in page and Ask to the browser that opened its link, so nothing else on the network or the machine, and no other website, can read the token or spend questions through it. Question limits and timing notes need Netlify Blobs, so they're off here. Needs Node 18+ and Python 3.
 
 ## Troubleshooting
 
@@ -144,9 +167,10 @@ The timelapse follows the main line of history (first parents), with each merge 
 
 | Path | What it is |
 |---|---|
-| `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view |
+| `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, "How this repo is built", windows |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
+| `netlify/functions/` | Server code on Netlify: `ask.mjs` (Ask, tours, explanations, important lines via Gemini), `github-login.js` / `github-callback.js` (Sign in with GitHub) and `github-signout.js` (revokes the token on sign-out) |
 | `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |
 
 ## License
