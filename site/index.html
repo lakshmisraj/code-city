@@ -192,6 +192,10 @@ details.more[open] summary { margin-bottom: 8px; }
 .wf-step-head { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: baseline; font: 700 14px var(--f-display); color: var(--ink); }
 .wf-step-head .n { font: 12px var(--f-mono); color: var(--ink-dim); }
 .wf-step-head:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+.outline li { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; }
+.outline li:hover { background: var(--street-2); }
+.outline li.nested { padding-left: 18px; }
+.outline .kind { margin-left: 8px; font-size: 10px; color: var(--ink-dim); opacity: .8; }
 .todos.parts li code { font: 11px var(--f-mono); color: var(--ink); word-break: break-all; }
 .drawer-body .tour-stop h3 { margin: 0 0 2px; font: 700 18px var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--ink); }
 .tour-path { margin: 0 0 8px; font: 12px var(--f-mono); color: var(--ink-dim); word-break: break-all; }
@@ -1491,9 +1495,10 @@ function openDrawer(b) {
     document.getElementById("dTodos").innerHTML = "";
     document.getElementById("dCode").innerHTML = `<p class="note">Loading the source from GitHub…</p>`;
     loadSource(b);
-  } else document.getElementById("dCode").innerHTML = f.text != null
-    ? `<h3>First lines</h3><pre class="code">${esc(f.text)}</pre>`
-    : `<p class="note">${!f.nowLines ? "This file was deleted before today."
+  } else if (b.userData.lines > 0 && (f.text != null || codeRepo())) {
+    document.getElementById("dCode").innerHTML = `<div id="dOutline"><p class="note">Reading its outline…</p></div>`;
+    renderOutline(f.path);
+  } else document.getElementById("dCode").innerHTML = `<p class="note">${!f.nowLines ? "This file was deleted before today."
         : fromGitHub ? "GitHub didn't return this file's source."
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
@@ -1504,6 +1509,20 @@ function openDrawer(b) {
   drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
+}
+// The drawer's outline: the file's functions and classes with their lines; clicking one opens the code there.
+// Files with nothing to outline (config, docs) show their first lines instead.
+async function renderOutline(path) {
+  const c = await pullCode(path);
+  const box = document.getElementById("dOutline");
+  if (!box || !picked || picked.userData.f.path !== path) return;
+  if (!c) { box.innerHTML = `<p class="note">The source of this file isn't available here.</p>`; return; }
+  const items = outlineItems(path, c.text);
+  box.innerHTML = items.length
+    ? `<h3>Outline <span class="count">${fmt(items.length)}</span></h3><ul class="todos parts outline">${items.map(i =>
+        `<li class="${i.nested ? "nested" : ""}" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></li>`).join("")}</ul>` +
+      (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "")
+    : `<h3>First lines</h3><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre>`;
 }
 function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
 
@@ -1560,6 +1579,8 @@ function openFolder(dir) {
   syncUrl();
 }
 drawer.addEventListener("click", e => {
+  const oline = e.target.closest("[data-oline]");
+  if (oline && picked) return viewFile(picked.userData.f.path, +oline.dataset.oline);
   const all = e.target.closest("[data-view-all]");
   if (all) return viewFiles(JSON.parse(all.dataset.viewAll));
   const dir = e.target.closest("[data-dir]"), file = e.target.closest("[data-file]");
@@ -2860,13 +2881,29 @@ const OUTLINE_RES = {
   php: /^\s*(?:abstract\s+|final\s+)?(?:class|interface|trait|function)\s+(\w+)/gm,
   c: /^[\w\s\*]+?\b(\w+)\s*\([^;]*\)\s*\{/gm,
 };
-function outline(path, text) {
-  const re = OUTLINE_RES[IMPORT_LANG[langOf(path)]];
+// A file's functions and classes with the line each starts on (Python methods too, one level in).
+const OUTLINE_KIND = /\b(class|def|function|interface|type|enum|const|let|func|struct|trait|mod|module|record|object|fn|fun)\b/;
+function outlineItems(path, text, max = 80) {
+  const kind = IMPORT_LANG[langOf(path)], re = OUTLINE_RES[kind];
   if (!re) return [];
-  const names = [];
-  for (const m of text.matchAll(re)) { if (!names.includes(m[1]) && !/^(if|for|while|switch|return)$/.test(m[1])) names.push(m[1]); if (names.length >= 12) break; }
-  return names;
+  const starts = [0];   // offset of each line, to turn a match position into a line number
+  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
+  const lineAt = pos => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= pos) lo = mid; else hi = mid - 1; } return lo + 1; };
+  const items = [], seen = new Set();
+  const add = (m, nested) => {
+    const name = m[1] || m[2], k = (OUTLINE_KIND.exec(m[0]) || [""])[0], line = lineAt(m.index);
+    if (!name || /^(if|for|while|switch|return)$/.test(name) || seen.has(line)) return;
+    seen.add(line); items.push({ name, line, nested, kind: nested ? "method" : k === "def" || k === "func" || k === "fn" || k === "fun" ? "function" : k || "function" });
+  };
+  for (const m of text.matchAll(re)) add(m, false);
+  if (kind === "js") for (const m of text.matchAll(/^(?:[\w$]+\.)+([\w$]+)\s*=\s*(?:async\s+)?function\b/gm)) add(m, false);   // app.init = function () {…}
+  if (kind === "py") for (const m of text.matchAll(/^ {4}(?:async\s+)?def\s+(\w+)/gm)) add(m, true);
+  items.sort((a, b) => a.line - b.line);
+  let top = null;   // one level in: a method inside a class, a nested function anywhere else
+  for (const i of items) { if (i.kind === "method") i.kind = top && top.kind === "class" ? "method" : "nested"; else top = i; }
+  return items.slice(0, max);
 }
+function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
 function repoDigest(progress) {
   const g = getGraph();
   if (g.digest) return g.digest;
