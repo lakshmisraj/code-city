@@ -472,11 +472,11 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 <nav id="rail" aria-label="Tools">
   <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span class="rail-label" aria-hidden="true">Repo</span></button>
-  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built, workflows, hotspots, history">
+  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built and its workflows">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
   <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file or a pull request">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
-  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours and connections">
+  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections, hotspots and history">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
   <span class="rail-spacer"></span>
   <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how Code City works">
@@ -539,12 +539,10 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   </section>
 
   <section class="segment" data-seg="understand">
-    <p class="seg-note">Start with how the repo is built, then follow its workflows. Hotspots shows the big files that keep changing.</p>
+    <p class="seg-note">Start with how the repo is built, then follow its workflows.</p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>How it's built</b><span>Entry points and core files, read from the code</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>The main workflows and where they meet. Type a topic in Ask first to focus it (AI, signed in)</span></button>
-      <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
-      <button id="histBtn" type="button" class="seg-action" aria-expanded="false" hidden><b>Play history</b><span>Watch the city grow, commit by commit</span></button>
     </div>
   </section>
 
@@ -577,6 +575,13 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
+    <div class="field">
+      <span class="label">Over time</span>
+      <div class="seg-actions">
+        <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
+        <button id="histBtn" type="button" class="seg-action" aria-expanded="false" hidden><b>Play history</b><span>Watch the city grow, commit by commit</span></button>
+      </div>
+    </div>
     <div class="field" id="howTo">
       <span class="label">Colours</span>
       <div class="legend" id="legend"></div>
@@ -604,9 +609,9 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </ul></div>
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
-      <li><b>Understand</b>: how it's built, the workflows tour, hotspots, and Play history.</li>
+      <li><b>Understand</b>: how it's built, and the workflows tour.</li>
       <li><b>Find</b>: a file by name, or a pull request's changes.</li>
-      <li><b>Display</b>: colour by language, change heat or imports; show or hide connections.</li>
+      <li><b>Display</b>: colour by language, change heat or imports; show or hide connections; hotspots, and Play history to watch the city grow.</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
     <div><h3>Moving around</h3><ul>
@@ -1639,7 +1644,7 @@ const phoneMQ = matchMedia("(max-width: 640px), (max-height: 500px) and (pointer
 function roomFor() { if (phoneMQ.matches && segOpen) openSeg(null, false, true); }
 
 // ---------- timeline ----------
-// The history bar stays out of the way until "Play history" (under Understand) opens it; ▾ hides it again.
+// The history bar stays out of the way until "Play history" (under Display) opens it; ▾ hides it again.
 let tlOpen = false;
 function syncTimeline() {
   const show = !!hist && tlOpen, btn = document.getElementById("histBtn");
@@ -2969,6 +2974,7 @@ async function initAsk() {
   catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
   $("askForm").hidden = !askEnabled;
   $("tourBtn2").hidden = !askEnabled;
+  if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
@@ -3144,6 +3150,8 @@ function addPane(p) {
   return true;
 }
 async function viewFile(path, line, link) {   // resolves with the file's window, or null
+  const ex = !codePane(path) && panes.find(q => q.kind === "explain" && q.st && q.st.paths.length === 1 && q.st.paths[0] === path);
+  if (ex) { await addCodeTo(ex); if (!codePane(path)) return null; }   // its explanation is open on its own: the code joins that window
   const have = codePane(path);
   if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; have.collapsed = false; toFront(have); renderViewer(); return have; }
   const gen = cityGen, c = await pullCode(path);
