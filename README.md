@@ -10,9 +10,10 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
-3. Click a building to see its outline, imports and the files that use it; **View code** and **Explain this code** go deeper.
-4. Signed in with GitHub, press **Workflows tour** (under Understand) for the main workflows and where they meet, or ask a question in the top bar.
-5. Load some history and the history bar opens: press **Play history** on it to watch the city grow, commit by commit.
+3. Click a building to see its functions, imports and the files that use it; **View code** and **Explain this code** go deeper.
+4. Press **Trace** next to a function (or on an entry in How this repo is built) to follow what it calls, file to file, and what calls it.
+5. Signed in with GitHub, press **Workflows tour** (under Understand) for the main workflows and where they meet, or ask a question in the top bar.
+6. Load some history and the history bar opens: press **Play history** on it to watch the city grow, commit by commit.
 
 ### Words used on the site
 
@@ -74,6 +75,19 @@ Explanations form a chain: **Follow** on any connected file explains it next, as
 ### Connections between files
 
 Arcs over the city show which files import which, read from the code's import lines (JavaScript and TypeScript, Python, Go, Ruby, Java and Kotlin, C and C++, CSS, Rust and PHP), never guessed. They show one file at a time: the file whose panel is open, the row you point at in a list, the explained files, or the tour stop. Sparks travel along each arc: orange from a file to what it imports, blue from the files that use it. A file's panel lists its **Imports**, and **Find the files that use this** reads the whole repo's imports once to list its **Used by** (one GitHub download per source file). Turn arcs off with **Show connections between files**.
+
+### Function-level links (Trace)
+
+For Python, JavaScript, TypeScript and Go, a parser ([tree-sitter](https://tree-sitter.github.io/), in `site/vendor/tree-sitter`, loaded only when it's needed) reads every function in the repo, the calls inside it and the names each file imports, then matches each call to the function it reaches. No AI is involved. It reads each source file once per city, using the same downloads as the import scan.
+
+- A file's panel lists its **Functions**, each with how many functions it calls (→) and how many places call it (←).
+- **Trace** opens a tree of what a function calls, file to file: open a branch to follow it further, click a name to open the code there. **Called by** goes the other way. The files on the trace light up and arcs join them.
+- **How this repo is built** adds **Where requests and commands come in**: route handlers (`@app.route`, `app.get('/x', …)`, `http.HandleFunc`), CLI commands, `func main` and `if __name__ == "__main__"` blocks. Trace from one to follow a request.
+- **Explain this path** (signed in) has Gemini walk through the first path down the trace.
+
+Each link says how it was found: **sure** (defined in the file, imported from another, or called on an imported module or class), **self** (a method on self / this, found in the class or the classes it extends), **likely** (called on an object whose type isn't written down, and only one method in the repo has that name), **passes** (handed to other code as a callback or route, which calls it later), and **run time** (picked at run time, for example looked up in a table, so the trace stops there and says so). Calls into libraries and built-ins are counted, not listed.
+
+Limits: other languages fall back to file-level connections. Calls through variables whose type the code doesn't name, decorators that wrap functions, and dependency injection can't always be followed; the trace shows where it stops.
 
 ### Windows
 
@@ -173,6 +187,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `netlify/functions/` | Server code on Netlify: `ask.mjs` (Ask, tours, explanations, important lines via Gemini), `github-login.js` / `github-callback.js` (Sign in with GitHub) and `github-signout.js` (revokes the token on sign-out) |
+| `site/vendor/tree-sitter/` | The parser behind Trace: web-tree-sitter 0.20.8 and grammars for Python, JavaScript, TypeScript and Go (see its README) |
 | `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |
 
 ## License

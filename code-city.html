@@ -105,6 +105,30 @@ body.seg-closed .card { display: none; }
 #dRole { margin: 0; font-size: 12px; color: var(--ink-dim); }
 #dRole b { color: var(--sodium); font-weight: 600; }
 #dRole:empty { display: none; }
+.tr { list-style: none; margin: 0; padding: 0 0 0 14px; display: flex; flex-direction: column; gap: 1px; border-left: 1px solid var(--line); }
+#sideBody > div > .tr { padding-left: 0; border-left: 0; }
+.tr-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 6px; row-gap: 1px; align-items: center; padding: 3px 4px; border-radius: 6px; }
+.tr-row > .tr-tog { grid-row: 1; grid-column: 1; }
+.tr-row > .tr-name, .tr-row > .tr-dyn { grid-row: 1; grid-column: 2; }
+.tr-row > .tr-go { grid-row: 1 / span 2; grid-column: 3; }
+.tr-meta { grid-row: 2; grid-column: 2; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.tr-meta .linkish { font: 11px var(--f-mono); }
+.tr-row:hover { background: var(--street-2); }
+.tr-tog { all: unset; width: 14px; text-align: center; color: var(--ink-dim); cursor: pointer; flex: none; font-size: 11px; }
+.tr-tog[disabled] { cursor: default; opacity: .5; }
+.tr-name { all: unset; cursor: pointer; font: 600 12px var(--f-mono); color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.tr-name:hover, .tr-name:focus-visible { color: var(--sodium); text-decoration: underline; }
+.tr-where { font: 11px var(--f-mono); color: var(--ink-dim); overflow-wrap: anywhere; }
+.tr-dyn { font: 11.5px var(--f-mono); color: var(--ink-dim); overflow-wrap: anywhere; min-width: 0; }
+.tr-note { font-size: 11px; color: var(--ink-dim); flex: none; }
+.tr-go { align-self: center; }
+.tr-out { padding: 2px 4px 2px 24px; font-size: 11.5px; color: var(--ink-dim); }
+.tr-head { display: flex; flex-direction: column; gap: 6px; }
+.tr-head > b { font: 600 14px var(--f-mono); color: var(--sodium); word-break: break-all; }
+.tr-key .chip { margin: 0 2px; }
+.fnlist li { display: flex; align-items: center; gap: 6px; }
+.fnlist .oline { flex: 1; min-width: 0; }
+.fn-n { font: 11px var(--f-mono); color: var(--ink-dim); white-space: nowrap; }
 .map-key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--ink-dim); margin: 0; }
 .map-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
@@ -608,7 +632,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><h3>Start here</h3><ul>
       <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
       <li><b>Understand &rsaquo; How it's built</b> opens by itself: the entry points, the core files, and what the project says it is.</li>
-      <li>Click any file to see its role, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
+      <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
+      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Start from <b>Where requests and commands come in</b> to follow a request.</li>
     </ul></div>
     <div><h3>Reading the city</h3><ul>
       <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
@@ -624,6 +649,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Find</b>: a file by name.</li>
       <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
       <li><b>Display</b>: colour by language, change heat or imports; show or hide connections; hotspots.</li>
+      <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
     <div><h3>Moving around</h3><ul>
@@ -990,6 +1016,8 @@ function makeResolver(paths) {
       for (const imp of parseImports(from, text)) for (const p of resolve(from, imp)) if (p && p !== from) out.add(p);
       return [...out];
     },
+    // The files one import specifier names, as seen from this file (for function-level links).
+    resolveSpec(from, spec) { return resolve(from, { spec, names: [] }).filter(Boolean); },
     // Each import in this file that points at one of the given files: [{ index, stmt, to, alias }].
     importsOf(from, text, targets) {
       const want = new Set(targets), out = [];
@@ -1576,6 +1604,7 @@ function matFor(b) {
     if (!st) return (t.shared.get(p) || []).length > 1 ? PICKED : t.paths.has(p) ? MATCH : DIM;   // overview: shared files brightest
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
+  if (sideMode === "trace" && traceState) { const p = b.userData.f.path; return p === traceState.path ? PICKED : traceState.files.has(p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (sideMode === "map") { const r = mapRole(b.userData.f.path); if (r) return r === "entry" ? PICKED : MATCH; }
   if (query) return b.userData.match ? SEARCH : DIM;
@@ -1843,6 +1872,18 @@ async function renderOutline(path) {
   const box = document.getElementById("dOutline");
   if (!box || !picked || picked.userData.f.path !== path) return;
   if (!c) { box.innerHTML = `<p class="note">The source of this file isn't available here.</p>`; return; }
+  const idx = callsReady(), fx = idx && idx.files.get(path);
+  if (!fx && callGrammar(path) && !(callIdx && callIdx.city === buildings && callIdx.error)) loadCalls();   // renders this again once functions are read
+  if (fx && fx.defs.some(d => d.kind !== "alias")) {
+    const defs = fx.defs.map((d, i) => ({ d, i })).filter(x => x.d.kind !== "alias");
+    box.innerHTML = `<details class="more"${defs.length <= 25 ? " open" : ""}><summary>Functions · ${fmt(defs.length)}</summary><ul class="todos parts outline fnlist">${defs.map(({ d, i }) => {
+      const n = idx.counts(path, i);
+      return `<li class="${d.parent >= 0 ? "nested" : ""}"><button type="button" class="oline" data-oline="${d.line}" title="Open the code at line ${d.line}"><em>L${d.line}</em><b>${esc(d.name)}</b><span class="kind">${esc(d.kind === "function" && d.inline ? "handler" : d.kind)}</span></button>` +
+        (d.kind === "class" ? "" : `<span class="fn-n" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">→${n.calls} ←${n.callers}</span><button type="button" class="mini" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
+    }).join("")}</ul><p class="note">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p></details>` +
+      `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
+    return;
+  }
   const items = outlineItems(path, c.text);
   box.innerHTML = (items.length
     ? `<details class="more"${items.length <= 12 ? " open" : ""}><summary>Outline · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
@@ -2730,7 +2771,7 @@ function closeSide(quiet) {
   $("mapBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -2809,7 +2850,7 @@ function loadMap() {
   const redraw = () => { if (mapState === st && sideMode === "map") renderSide(); };
   let last = 0;
   systemFacts((n, total) => { st.n = n; st.total = total; if (Date.now() - last > 300) { last = Date.now(); redraw(); } })
-    .then(f => { st.facts = f; redraw(); if (picked) $("dRole").innerHTML = fileRole(picked.userData.f.path); }, () => { st.error = true; redraw(); });
+    .then(f => { st.facts = f; redraw(); if (picked) $("dRole").innerHTML = fileRole(picked.userData.f.path); if (codeRepo() || buildings.some(b => b.userData.f.text != null)) loadCalls(); }, () => { st.error = true; redraw(); });
 }
 function langSummary() {
   const count = {}, lines = {};
@@ -2833,6 +2874,11 @@ function renderMap() {
     html += f.entries.length ? `<div><h3>Starts here</h3><ol class="rank">${f.entries.map((e, i) => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
       : `<p class="side-note">No clear entry point: this looks like a library others import.</p>`;
     html += f.core.length ? `<div><h3>The core</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
+    const idx = callsReady();
+    if (idx) {
+      const all = idx.entries.filter(e => idx.def(e.path, e.i) || e.i < 0), main = all.filter(e => !aside(e.path)), list = (main.length ? main : all).slice(0, 12);
+      if (list.length) html += `<div><h3>Where requests and commands come in <span class="count">${fmt((main.length ? main : all).length)}</span></h3><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(e.why)} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></div>`;
+    } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
     if (askEnabled) html += `<div class="side-actions"><button type="button" class="primary" data-map-tour>Show the workflows (tour)</button></div>`;
   }
@@ -3651,11 +3697,12 @@ function focusPaths() {   // whose connections the arcs show
   if (sideMode === "tour" && tourState) { const st = tourStep(); return st ? [st.path] : []; }
   return [];
 }
-function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in" (from uses to), "chain", or "wf<k>" (a tour workflow)
+function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in" (from uses to), "chain" (explanations, traces), or "wf<k>" (a tour workflow)
   const pairs = [];
   if (sideMode === "tour" && tourState) {   // the overview draws every workflow; a workflow draws itself
     tourState.workflows.forEach((w, k) => { if (tourState.w < 0 || tourState.w === k) for (let j = 0; j < w.steps.length - 1; j++) pairs.push([w.steps[j].path, w.steps[j + 1].path, "wf" + k]); });
   }
+  if (sideMode === "trace" && traceState) for (const [a, b] of traceState.edges) pairs.push([a, b, "chain"]);   // the calls the trace shows, file to file
   for (const p of panes) if (p.st && p.st.from) pairs.push([p.st.from, p.st.paths[0], "chain"]);   // the path the open explanations followed
   if (!showLinks) return pairs;
   const g = graph;
@@ -3713,6 +3760,488 @@ function setShowLinks(on) {
 }
 $("linksToggle").checked = showLinks;
 $("linksToggle").onchange = e => setShowLinks(e.target.checked);
+
+// ---------- function-level links ----------
+// Which function calls which, read with tree-sitter (a real parser, loaded only when it's needed). Each file
+// gives its functions, the calls inside each, the names it imports and the functions it hands to other code
+// (callbacks, routes). Calls are then matched to functions across the repo, each with how sure the match is:
+//   sure    the name is defined in this file, imported from another, or called on an imported module or class
+//   self    a method called on self / this / the receiver, found in the class or its bases
+//   likely  obj.name() on an object of unknown type, where exactly one class in the repo has that method
+//   passes  the function is handed to other code (a callback or a route), which will call it
+//   dynamic the function is picked at run time (looked up in a table, say), so it can't be followed
+// Python, JavaScript, TypeScript and Go for now.
+const CALL_GRAMMARS = { py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", mts: "typescript", cts: "typescript", tsx: "tsx", go: "go" };
+function callGrammar(path) { const m = /\.(\w+)$/.exec(path); return m ? CALL_GRAMMARS[m[1].toLowerCase()] || null : null; }
+const ROUTE_CALL = /\.(get|post|put|patch|delete|all|use|route|HandleFunc|Handle|GET|POST|PUT|PATCH|DELETE|Any|Group)\s*$/;
+const ROUTE_DECO = /^@?\s*[\w.]*\b(route|get|post|put|patch|delete|head|options|websocket|api_route|command|group|task|on|listener|handler|endpoint|subscribe|consumer|before_request|after_request|errorhandler|cli\.command)\b/;
+const GENERIC_METHODS = new Set(["get", "set", "add", "run", "call", "apply", "bind", "send", "write", "read", "open", "close", "push", "pop", "append", "extend", "update", "keys", "values", "items", "map", "filter", "reduce", "join", "split", "format", "copy", "clear", "remove", "insert", "start", "stop", "init", "next", "then", "catch", "emit", "log", "error", "warn", "info", "debug", "toString", "render", "match", "test", "exec", "replace", "find", "has", "delete", "load", "save", "parse", "handle", "process", "execute", "invoke", "resolve", "reject", "flush", "reset", "string", "len", "String", "Error"]);
+const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+
+// One file's functions, calls, imported names and callbacks. Lines are 1-based.
+function extractCalls(grammar, root) {
+  const defs = [], calls = [], refs = [], binds = [];
+  let mainGuard = 0;   // Python: the line of if __name__ == "__main__", where the file starts when it's run
+  const lang = grammar === "python" ? "py" : grammar === "go" ? "go" : "js";
+  const line = n => n.startPosition.row + 1;
+  const field = (n, f) => n.childForFieldName(f);
+  const dotted = n => {   // "a", "a.b.c", "self.x", "this.x" for plain names and attribute chains; null otherwise
+    if (!n) return null;
+    if (n.type === "identifier" || n.type === "this" || n.type === "super" || n.type === "property_identifier" || n.type === "field_identifier" || n.type === "package_identifier" || n.type === "type_identifier" || n.type === "shorthand_property_identifier") return n.text;
+    if (n.type === "attribute") { const o = dotted(field(n, "object")), a = field(n, "attribute"); return o && a ? o + "." + a.text : null; }
+    if (n.type === "member_expression") { const o = dotted(field(n, "object")), a = field(n, "property"); return o && a ? o + "." + a.text : null; }
+    if (n.type === "selector_expression") { const o = dotted(field(n, "operand")), a = field(n, "field"); return o && a ? o + "." + a.text : null; }
+    if (n.type === "call" && lang === "py") { const f = field(n, "function"); if (f && f.text === "super") return "super"; }
+    return null;
+  };
+  const addDef = (name, kind, node, ctx, extra) => { defs.push({ name, kind, cls: kind === "method" ? ctx.cls : null, line: line(node), end: node.endPosition.row + 1, parent: ctx.def, ...extra }); return defs.length - 1; };
+  const addCall = (fn, node, ctx, args, isNew) => {
+    const d = dotted(fn), prop = fn && ({ attribute: "attribute", member_expression: "property", selector_expression: "field" })[fn.type];
+    if (d == null && prop && field(fn, prop)) calls.push({ from: ctx.def, name: field(fn, prop).text, recv: "?", line: line(node) });   // a.b().c(): c on an object of unknown type
+    else if (d == null) { if (fn && !/^require\s*\(/.test(fn.text)) calls.push({ from: ctx.def, dyn: clip(fn.text.replace(/\s+/g, " "), 60), line: line(node) }); }
+    else { const i = d.lastIndexOf("."); calls.push({ from: ctx.def, name: i < 0 ? d : d.slice(i + 1), recv: i < 0 ? null : d.slice(0, i), line: line(node), ...(isNew ? { ctor: true } : {}) }); }
+    if (args) for (const a of args.namedChildren) {   // functions handed to the callee: callbacks, views, handlers
+      const v = a.type === "keyword_argument" || a.type === "pair" ? field(a, "value") : a;
+      const r = v && (v.type === "identifier" || v.type === "attribute" || v.type === "member_expression" || v.type === "selector_expression") ? dotted(v) : null;
+      if (r && r !== "self" && r !== "this") { const i = r.lastIndexOf("."); refs.push({ from: ctx.def, name: i < 0 ? r : r.slice(i + 1), recv: i < 0 ? null : r.slice(0, i), line: line(v), via: clip(fn ? fn.text : "", 40) }); }
+    }
+  };
+  const kids = (n, ctx) => { for (const c of n.namedChildren) walk(c, ctx); };
+  // app.get("/users", function (req, res) {...}), http.HandleFunc("/", func(w, r) {...}): the inline function is
+  // named after the call ("app.get('/users') handler"), and a route-like call makes it an entry point.
+  const callArgs = (fn, a, ctx) => {
+    if (!a) return;
+    const str = a.namedChildren.find(c => c.type === "string" || c.type === "interpreted_string_literal" || c.type === "template_string");
+    for (const c of a.namedChildren) {
+      if (isFn(c) || c.type === "func_literal") {
+        const callee = fn ? clip(fn.text.replace(/\s+/g, ""), 32) : "?", label = `${callee}(${str ? clip(str.text, 28) : ""}) handler`;
+        const i = addDef(label, "function", c, ctx, { inline: true, deco: fn && ROUTE_CALL.test(fn.text) ? [label.replace(/ handler$/, "")] : [] });
+        const b = c.childForFieldName("body"); if (b) kids(b, { def: i });
+      } else walk(c, ctx);
+    }
+  };
+  function walk(n, ctx) {
+    const t = n.type;
+    if (lang === "py") {
+      if (t === "decorated_definition") {
+        const deco = n.namedChildren.filter(c => c.type === "decorator").map(c => clip(c.text.replace(/\s+/g, " "), 80));
+        for (const c of n.namedChildren) if (c.type === "decorator") kids(c, ctx);
+        const d = field(n, "definition"); if (d) walk(d, { ...ctx, deco });
+        return;
+      }
+      if (t === "function_definition") {
+        const deco = ctx.deco || [], prop = deco.some(x => /^@(\w+\.)?(property|cached_property|\w+\.setter|\w+\.getter)\b/.test(x));
+        const name = field(n, "name"), i = addDef(name ? name.text : "?", ctx.inClass ? "method" : "function", n, ctx, { deco, ...(prop ? { prop } : {}), ...(ctx.inClass ? { self: firstParam(n) } : {}) });
+        const b = field(n, "body"); if (b) kids(b, { def: i, cls: ctx.cls, inClass: false });
+        return;
+      }
+      if (t === "class_definition") {
+        const name = field(n, "name"), sup = field(n, "superclasses");
+        const bases = sup ? sup.namedChildren.map(dotted).filter(Boolean) : [];
+        const i = addDef(name ? name.text : "?", "class", n, ctx, { bases, deco: ctx.deco || [] });
+        const b = field(n, "body"); if (b) kids(b, { def: i, cls: name ? name.text : "?", inClass: true });
+        return;
+      }
+      if (t === "call") { const fn = field(n, "function"); addCall(fn, n, ctx, field(n, "arguments")); if (fn && fn.type !== "identifier" && fn.type !== "attribute") walk(fn, ctx); else if (fn && fn.type === "attribute") walk(field(fn, "object"), ctx); const a = field(n, "arguments"); if (a) kids(a, ctx); return; }
+      if (t === "import_statement") {
+        for (const c of n.namedChildren) {
+          if (c.type === "dotted_name") binds.push({ local: c.text, spec: c.text, name: null, line: line(n) });
+          else if (c.type === "aliased_import") { const nm = field(c, "name"), al = field(c, "alias"); if (nm && al) binds.push({ local: al.text, spec: nm.text, name: null, line: line(n) }); }
+        }
+        return;
+      }
+      if (t === "import_from_statement") {
+        const mod = field(n, "module_name"); if (!mod) return;
+        for (const c of n.namedChildren) {
+          if (c === mod || c.id === mod.id) continue;
+          if (c.type === "wildcard_import") binds.push({ local: "*", spec: mod.text, name: "*", line: line(n) });
+          else if (c.type === "dotted_name") binds.push({ local: c.text, spec: mod.text, name: c.text, line: line(n) });
+          else if (c.type === "aliased_import") { const nm = field(c, "name"), al = field(c, "alias"); if (nm && al) binds.push({ local: al.text, spec: mod.text, name: nm.text, line: line(n) }); }
+        }
+        return;
+      }
+      if (t === "if_statement" && ctx.def === -1 && /^if\s+__name__\s*==\s*['"]__main__['"]/.test(n.text)) mainGuard = line(n);
+      return kids(n, ctx);
+    }
+    if (lang === "go") {
+      if (t === "function_declaration" || t === "method_declaration") {
+        let cls = null, self = null;
+        if (t === "method_declaration") {
+          const rp = field(n, "receiver"), pd = rp && rp.namedChildren.find(c => c.type === "parameter_declaration");
+          if (pd) { const nm = field(pd, "name"); self = nm ? nm.text : null; let ty = field(pd, "type"); while (ty && ty.type !== "type_identifier") ty = ty.namedChildren.find(c => c.type === "type_identifier" || c.type === "pointer_type" || c.type === "generic_type") || null; cls = ty ? ty.text : null; }
+        }
+        const name = field(n, "name"), i = addDef(name ? name.text : "?", cls ? "method" : "function", n, { ...ctx, cls }, cls ? { self } : {});
+        const b = field(n, "body"); if (b) kids(b, { def: i });
+        return;
+      }
+      if (t === "type_spec") { const name = field(n, "name"); if (name) addDef(name.text, "class", n, ctx, { bases: [] }); return; }
+      if (t === "call_expression") { const fn = field(n, "function"); addCall(fn, n, ctx, field(n, "arguments")); if (fn && fn.type === "selector_expression") walk(field(fn, "operand"), ctx); else if (fn && fn.type !== "identifier") walk(fn, ctx); callArgs(fn, field(n, "arguments"), ctx); return; }
+      if (t === "import_spec") {
+        const p = field(n, "path"), nm = field(n, "name"); if (!p) return;
+        const spec = p.text.replace(/^"|"$/g, ""); if (nm && (nm.text === "_" || nm.text === ".")) return;
+        binds.push({ local: nm ? nm.text : spec.split("/").pop().replace(/^go-|\.v\d+$|-go$/g, ""), spec, name: null, line: line(n) });
+        return;
+      }
+      return kids(n, ctx);
+    }
+    // JavaScript and TypeScript
+    if (t === "function_declaration" || t === "generator_function_declaration") {
+      const name = field(n, "name"), i = addDef(name ? name.text : "default", "function", n, ctx, { exported: !!ctx.exported });
+      const b = field(n, "body"); if (b) kids(b, { def: i });
+      return;
+    }
+    if (t === "class_declaration" || t === "abstract_class_declaration" || (t === "class" && ctx.named)) {
+      const name = field(n, "name") || null, nm = name ? name.text : ctx.named || "default";
+      const her = n.namedChildren.find(c => c.type === "class_heritage");
+      let bases = [];
+      if (her) { const ext = her.namedChildren.find(c => c.type === "extends_clause") || her; bases = ext.namedChildren.map(dotted).filter(Boolean).slice(0, 1); }
+      const i = addDef(nm, "class", n, ctx, { bases, exported: !!ctx.exported });
+      const b = field(n, "body"); if (b) kids(b, { def: i, cls: nm, inClass: true });
+      return;
+    }
+    if (t === "method_definition" || ((t === "field_definition" || t === "public_field_definition") && isFn(field(n, "value")))) {
+      const name = field(n, "name") || field(n, "property"), i = addDef(name ? name.text : "?", ctx.inClass ? "method" : "function", n, ctx, ctx.inClass ? { self: "this" } : {});
+      const b = field(n, "body") || field(n, "value"); if (b) kids(b, { def: i });
+      return;
+    }
+    if (t === "variable_declarator") {
+      const name = field(n, "name"), v = field(n, "value");
+      if (name && name.type === "identifier" && isFn(v)) { const i = addDef(name.text, "function", n, ctx, { exported: !!ctx.exported }); const b = field(v, "body"); if (b) kids(b, { def: i }); return; }
+      if (name && name.type === "identifier" && v && v.type === "class") return walk(v, { ...ctx, named: name.text });
+      const req = v && requireSpec(v);
+      if (req && name) {
+        if (name.type === "identifier") binds.push({ local: name.text, spec: req, name: null, line: line(n) });
+        else if (name.type === "object_pattern") for (const c of name.namedChildren) {
+          if (c.type === "shorthand_property_identifier_pattern") binds.push({ local: c.text, spec: req, name: c.text, line: line(n) });
+          else if (c.type === "pair_pattern") { const k = field(c, "key"), val = field(c, "value"); if (k && val) binds.push({ local: val.text, spec: req, name: k.text, line: line(n) }); }
+        }
+        return;
+      }
+      return kids(n, ctx);
+    }
+    if (t === "assignment_expression") {   // exports.foo = function () {}, module.exports.foo = () => {}
+      const l = field(n, "left"), r = field(n, "right"), d = dotted(l);
+      if (d && isFn(r) && /^(module\.)?exports\.[\w$]+$|^[\w$]+(\.prototype)?\.[\w$]+$/.test(d) && !/^this\./.test(d)) {
+        const parts = d.split("."), proto = parts[0] !== "exports" && parts[0] !== "module";
+        const i = addDef(parts[parts.length - 1], proto ? "method" : "function", n, proto ? { ...ctx, cls: parts[0] } : ctx, proto ? { self: "this" } : { exported: true });
+        const b = field(r, "body"); if (b) kids(b, { def: i });
+        return;
+      }
+      return kids(n, ctx);
+    }
+    if (t === "export_statement") {
+      const isDefault = n.children.some(c => c.type === "default");
+      for (const c of n.namedChildren) walk(c, { ...ctx, exported: isDefault ? "default" : true });
+      if (isDefault) { const v = n.namedChildren.find(c => c.type === "identifier"); if (v) defs.push({ name: "default", kind: "alias", alias: v.text, line: line(n), end: line(n), parent: -1 }); }
+      return;
+    }
+    if (t === "import_statement") {
+      const src = field(n, "source"); if (!src) return;
+      const spec = src.text.replace(/^['"]|['"]$/g, ""), clause = n.namedChildren.find(c => c.type === "import_clause");
+      if (clause) for (const c of clause.namedChildren) {
+        if (c.type === "identifier") binds.push({ local: c.text, spec, name: "default", line: line(n) });
+        else if (c.type === "namespace_import") { const id = c.namedChildren.find(x => x.type === "identifier"); if (id) binds.push({ local: id.text, spec, name: null, line: line(n) }); }
+        else if (c.type === "named_imports") for (const s of c.namedChildren) if (s.type === "import_specifier") { const nm = field(s, "name"), al = field(s, "alias"); if (nm) binds.push({ local: (al || nm).text, spec, name: nm.text, line: line(n) }); }
+      }
+      return;
+    }
+    if (t === "call_expression" || t === "new_expression") {
+      const fn = field(n, t === "new_expression" ? "constructor" : "function");
+      if (!(fn && fn.type === "identifier" && fn.text === "require")) addCall(fn, n, ctx, field(n, "arguments"), t === "new_expression");
+      if (fn && fn.type === "member_expression") walk(field(fn, "object"), ctx); else if (fn && fn.type !== "identifier") walk(fn, ctx);
+      callArgs(fn, field(n, "arguments"), ctx);
+      return;
+    }
+    return kids(n, ctx);
+  }
+  function firstParam(fn) { const ps = fn.childForFieldName("parameters"); const p = ps && ps.namedChildren[0]; return p && p.type === "identifier" ? p.text : "self"; }
+  function isFn(v) { return !!v && (v.type === "arrow_function" || v.type === "function" || v.type === "function_expression" || v.type === "generator_function"); }
+  function requireSpec(v) {
+    while (v && v.type === "await_expression") v = v.namedChildren[0];
+    if (!v || v.type !== "call_expression") return null;
+    const f = v.childForFieldName("function"), a = v.childForFieldName("arguments"), s = a && a.namedChildren[0];
+    return f && f.text === "require" && s && s.type === "string" ? s.text.replace(/^['"]|['"]$/g, "") : null;
+  }
+  walk(root, { def: -1, cls: null, inClass: false });
+  return { lang, defs, calls, refs, binds, mainGuard };
+}
+
+// Matches every file's calls to functions across the repo. files: Map(path -> extractCalls result).
+// resolveSpec(from, spec) -> [paths] uses the import resolver; dirOf(path) -> folder.
+function makeCallIndex(files, resolveSpec, dirOf) {
+  const top = new Map(), methods = new Map(), byMethod = new Map(), goDir = new Map(), classesByName = new Map();
+  for (const [path, f] of files) {
+    const t = new Map();
+    f.defs.forEach((d, i) => {
+      if (d.kind === "method" && d.cls) {
+        const k = path + "\u0000" + d.cls; if (!methods.has(k)) methods.set(k, new Map()); if (!methods.get(k).has(d.name)) methods.get(k).set(d.name, i);
+        if (!byMethod.has(d.name)) byMethod.set(d.name, []); byMethod.get(d.name).push({ path, i });
+        if (f.lang === "go") { const dk = dirOf(path) + "\u0000" + d.cls; if (!goDir.has(dk)) goDir.set(dk, new Map()); if (!goDir.get(dk).has(d.name)) goDir.get(dk).set(d.name, { path, i }); }
+      } else if (d.parent === -1) {
+        if (!t.has(d.name)) t.set(d.name, i);
+        if (d.kind === "class") { if (!classesByName.has(d.name)) classesByName.set(d.name, []); classesByName.get(d.name).push({ path, i }); }
+        if (f.lang === "go" && d.kind !== "class") { const dk = dirOf(path) + "\u0000"; if (!goDir.has(dk)) goDir.set(dk, new Map()); goDir.get(dk).set(d.name, { path, i }); }
+        if (f.lang === "go" && d.kind === "class") { const dk = dirOf(path) + "\u0000#type"; if (!goDir.has(dk)) goDir.set(dk, new Map()); goDir.get(dk).set(d.name, { path, i }); }
+      }
+    });
+    top.set(path, t);
+    f.bindMap = new Map(f.binds.filter(b => b.local !== "*").map(b => [b.local, b]));
+  }
+  const specCache = new Map();
+  const target = (from, spec) => { const k = from + "\u0000" + spec; if (!specCache.has(k)) specCache.set(k, (resolveSpec(from, spec) || []).filter(p => files.has(p))); return specCache.get(k); };
+  // A Python "from pkg import name" can name a submodule rather than a function.
+  const pySub = (from, b) => b.name && b.name !== "*" ? target(from, /^\.+$/.test(b.spec) ? b.spec + b.name : b.spec + "." + b.name) : [];
+  const ctorOf = (path, i) => { const d = files.get(path).defs[i], m = methods.get(path + "\u0000" + d.name); const c = m && (m.get("__init__") ?? m.get("constructor")); return c != null ? { path, i: c } : { path, i }; };
+  const symbolIn = (path, name) => {   // a top-level function or class of that file (following JS default exports)
+    const f = files.get(path); if (!f) return null;
+    let i = top.get(path).get(name);
+    if (name === "default") { const al = f.defs.find(d => d.kind === "alias"); if (al) i = top.get(path).get(al.alias); else i = f.defs.findIndex(d => d.exported === "default"); if (i < 0) i = undefined; }
+    if (i == null) return null;
+    return files.get(path).defs[i].kind === "class" ? { path, i, cls: true } : { path, i };
+  };
+  const methodOf = (path, cls, name, seen = new Set()) => {   // the method in that class or, failing that, its bases
+    const key = path + "\u0000" + cls; if (seen.has(key) || seen.size > 6) return null; seen.add(key);
+    const m = methods.get(key); if (m && m.has(name)) return { path, i: m.get(name) };
+    const f = files.get(path), ci = top.get(path) && top.get(path).get(cls), c = ci != null && f.defs[ci];
+    for (const base of (c && c.bases) || []) { const at = classAt(path, base); if (at) { const hit = methodOf(at.path, at.name, name, seen); if (hit) return hit; } }
+    return null;
+  };
+  const classAt = (from, name) => {   // where a class named in this file (directly, or imported) is defined
+    const f = files.get(from), short = name.split(".").pop();
+    if (!name.includes(".") && top.get(from).has(name) && f.defs[top.get(from).get(name)].kind === "class") return { path: from, name };
+    const b = f.bindMap.get(name) || f.bindMap.get(name.split(".")[0]);
+    if (b) { for (const p of name.includes(".") && !b.name ? target(from, b.spec) : b.name ? target(from, b.spec).concat(pySub(from, b)) : []) if (top.get(p).has(short)) return { path: p, name: short }; }
+    const all = classesByName.get(short); return all && all.length === 1 ? { path: all[0].path, name: short } : null;
+  };
+  const moduleFiles = (from, b) => b.name ? pySub(from, b) : target(from, b.spec);
+  function resolve(from, c, def) {   // one call or reference -> { path, i, how } | { dyn } | null (outside the repo)
+    const f = files.get(from);
+    if (c.dyn) return { dyn: c.dyn, how: "dynamic" };
+    if (!c.recv) {
+      if (f.lang === "go") { const g = goDir.get(dirOf(from) + "\u0000"), hit = g && g.get(c.name); if (hit) return { ...hit, how: "sure" }; const ty = goDir.get(dirOf(from) + "\u0000#type"); if (ty && ty.get(c.name)) return null; }
+      const own = symbolIn(from, c.name); if (own) return { ...(own.cls ? ctorOf(own.path, own.i) : own), how: "sure" };
+      const b = f.bindMap.get(c.name);
+      if (b && b.name) { for (const p of target(from, b.spec)) { const s = symbolIn(p, b.name); if (s) return { ...(s.cls ? ctorOf(s.path, s.i) : s), how: "sure" }; } }
+      for (const w of f.binds) if (w.local === "*") for (const p of target(from, w.spec)) { const s = symbolIn(p, c.name); if (s) return { ...(s.cls ? ctorOf(s.path, s.i) : s), how: "sure" }; }
+      return null;
+    }
+    const own = def >= 0 ? selfOf(f, def) : null, selfCls = own && own.cls;
+    if (own && (c.recv === own.self || (f.lang === "py" && c.recv === "cls"))) {
+      if (f.lang === "go") { const g = goDir.get(dirOf(from) + "\u0000" + selfCls), hit = g && g.get(c.name); return hit ? { ...hit, how: "self" } : null; }
+      const hit = methodOf(from, selfCls, c.name); if (hit) return { ...hit, how: "self" };
+      return null;
+    }
+    if ((c.recv === "super" || c.recv === "super()") && selfCls) {
+      const ci = top.get(from).get(selfCls), cd = ci != null && f.defs[ci];
+      for (const base of (cd && cd.bases) || []) { const at = classAt(from, base); if (at) { const hit = methodOf(at.path, at.name, c.name); if (hit) return { ...hit, how: "self" }; } }
+      return null;
+    }
+    const b = f.bindMap.get(c.recv);
+    if (b) {
+      if (!b.name || f.lang === "go") {   // a module, namespace or Go package
+        const mods = f.lang === "go" ? target(from, b.spec) : moduleFiles(from, b);
+        if (f.lang === "go") { for (const p of mods) { const g = goDir.get(dirOf(p) + "\u0000"), hit = g && g.get(c.name); if (hit) return { ...hit, how: "sure" }; } return null; }
+        for (const p of mods) { const s = symbolIn(p, c.name); if (s) return { ...(s.cls ? ctorOf(s.path, s.i) : s), how: "sure" }; }
+        if (!b.name) return null;
+      }
+      for (const p of pySub(from, b)) { const s = symbolIn(p, c.name); if (s) return { ...(s.cls ? ctorOf(s.path, s.i) : s), how: "sure" }; }
+      for (const p of target(from, b.spec)) { const s = symbolIn(p, b.name); if (s && s.cls) { const hit = methodOf(p, files.get(p).defs[s.i].name, c.name); if (hit) return { ...hit, how: "sure" }; } }
+      return null;
+    }
+    if (!c.recv.includes(".")) { const at = top.get(from).has(c.recv) && f.defs[top.get(from).get(c.recv)].kind === "class" ? { path: from, name: c.recv } : null; if (at) { const hit = methodOf(at.path, at.name, c.name); if (hit) return { ...hit, how: "sure" }; } }
+    if (GENERIC_METHODS.has(c.name) || c.name.length < 4 || c.name.startsWith("__")) return null;
+    const cands = byMethod.get(c.name);
+    return cands && cands.length === 1 && !files.get(cands[0].path).defs[cands[0].i].prop ? { ...cands[0], how: "likely" } : null;
+  }
+  function selfOf(f, i) { for (let d = f.defs[i]; d; d = d.parent >= 0 ? f.defs[d.parent] : null) if (d.kind === "method" && d.cls) return { cls: d.cls, self: d.self }; return null; }   // the method this code is in
+  // Every function's calls, resolved once: out.get(path)[i] = [{ to: {path, i} | null, how, line, name, dyn }]
+  const out = new Map(), into = new Map(), entries = [];
+  for (const [path, f] of files) {
+    const per = f.defs.map(() => []), mod = [];
+    for (const c of f.calls) { const r = resolve(path, c, c.from); (c.from >= 0 ? per[c.from] : mod).push({ r, c, kind: "call" }); }
+    for (const c of f.refs) { const r = resolve(path, c, c.from); if (r && !r.dyn && (r.how === "sure" || r.how === "self") && !files.get(r.path).defs[r.i].prop) (c.from >= 0 ? per[c.from] : mod).push({ r: { ...r, how: "passes" }, c, kind: "ref" }); }
+    out.set(path, { per, mod });
+    f.defs.forEach((d, i) => {
+      if ((d.deco || []).some(x => ROUTE_DECO.test(x))) entries.push({ path, i, why: d.deco.find(x => ROUTE_DECO.test(x)) });
+      else if (d.inline && d.deco.length) entries.push({ path, i, why: d.deco[0] });
+      else if (f.lang === "go" && d.name === "main" && d.kind === "function") entries.push({ path, i, why: "func main" });
+    });
+    if (f.mainGuard) entries.push({ path, i: -1, why: 'if __name__ == "__main__"' });
+  }
+  for (const [path, o] of out) {
+    const add = (fromI, e) => { if (!e.r || e.r.dyn || e.r.path == null) return; const k = e.r.path + "\u0000" + e.r.i; if (!into.has(k)) into.set(k, []); into.get(k).push({ path, i: fromI, how: e.r.how, line: e.c.line }); };
+    o.per.forEach((list, i) => list.forEach(e => add(i, e)));
+    o.mod.forEach(e => add(-1, e));
+    for (const e of o.mod.concat(...o.per)) if (e.kind === "ref" && e.r && e.r.path && /\b(route|get|post|put|patch|delete|use|add_url_rule|handle|HandleFunc|on|addEventListener|command|register)\b/.test(e.c.via)) entries.push({ path: e.r.path, i: e.r.i, why: e.c.via + "(…)" });
+  }
+  const seenEntry = new Set();
+  return {
+    files,
+    def: (path, i) => files.get(path) && files.get(path).defs[i],
+    // What this function calls, in order, each target once: [{ path, i, how, line, name } | { dyn, line } | { outside: n }]
+    callees(path, i) {
+      const o = out.get(path); if (!o) return [];
+      const list = i >= 0 ? o.per[i] : o.mod, seen = new Set(), res = []; let outside = 0;
+      for (const { r, c } of list) {
+        if (!r) { outside++; continue; }
+        if (r.dyn) { res.push({ dyn: r.dyn, line: c.line, how: "dynamic" }); continue; }
+        const k = r.path + "\u0000" + r.i; if (seen.has(k) || (r.path === path && r.i === i)) continue; seen.add(k);
+        res.push({ path: r.path, i: r.i, how: r.how, line: c.line });
+      }
+      if (outside) res.push({ outside });
+      return res;
+    },
+    callers(path, i) { const seen = new Set(); return (into.get(path + "\u0000" + i) || []).filter(e => { const k = e.path + "\u0000" + e.i; if (seen.has(k)) return false; seen.add(k); return true; }); },
+    counts(path, i) { return { calls: this.callees(path, i).filter(e => e.path).length, callers: this.callers(path, i).length }; },
+    entries: entries.filter(e => { const k = e.path + "\u0000" + e.i; if (seenEntry.has(k)) return false; seenEntry.add(k); return true; }),
+  };
+}
+// The parser loads on first use, from this site (vendor/tree-sitter), one grammar per language the repo has.
+// Every supported file is read once per city (the same downloads the import scan uses).
+const TS_BASE = "vendor/tree-sitter/";
+let tsReady = null, callIdx = null;   // callIdx: { city, ready, idx, n, total, error }
+const tsParsers = new Map();
+function loadTreeSitter() {
+  if (!tsReady) {
+    tsReady = new Promise((ok, fail) => { const s = document.createElement("script"); s.src = TS_BASE + "tree-sitter.js"; s.onload = ok; s.onerror = () => fail(new Error("The parser didn't load.")); document.head.appendChild(s); })
+      .then(() => TreeSitter.init({ locateFile: f => TS_BASE + f }));
+    tsReady.catch(() => { tsReady = null; });   // tried again next time
+  }
+  return tsReady;
+}
+function tsParser(grammar) {
+  if (!tsParsers.has(grammar)) tsParsers.set(grammar, TreeSitter.Language.load(TS_BASE + `tree-sitter-${grammar}.wasm`).then(L => { const p = new TreeSitter(); p.setLanguage(L); return p; }));
+  return tsParsers.get(grammar);
+}
+const callFiles = () => buildings.filter(b => b.userData.lines > 0 && callGrammar(b.userData.f.path)).map(b => b.userData.f.path).slice(0, MAX_SCAN);
+const folderOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+function callsReady() { return callIdx && callIdx.city === buildings && callIdx.idx ? callIdx.idx : null; }
+function loadCalls(onProgress) {
+  if (callIdx && callIdx.city === buildings) return callIdx.ready;
+  const st = callIdx = { city: buildings, idx: null, n: 0, total: 0 };
+  const redraw = () => { if (callIdx !== st) return; if (sideMode === "trace" || sideMode === "map") renderSide(); if (onProgress) onProgress(st); };
+  st.ready = (async () => {
+    await loadTreeSitter();
+    const g = getGraph(); await g.ready;
+    const paths = callFiles(), queue = paths.slice(), files = new Map();
+    st.total = paths.length;
+    let last = 0;
+    await Promise.all(Array.from({ length: 8 }, async () => {
+      while (queue.length && callIdx === st) {
+        const p = queue.shift(), c = await pullCode(p);
+        if (c && c.text) {
+          const grammar = callGrammar(p), parser = await tsParser(grammar), tree = parser.parse(c.text.length > MAX_PARSE * 3 ? c.text.slice(0, MAX_PARSE * 3) : c.text);
+          try { files.set(p, extractCalls(grammar, tree.rootNode)); } catch (e) { /* a file the extractor can't read: left out */ } finally { tree.delete(); }
+        }
+        st.n++;
+        if (Date.now() - last > 300) { last = Date.now(); redraw(); }
+      }
+    }));
+    if (callIdx !== st) return null;
+    st.idx = makeCallIndex(files, (from, spec) => g.resolver.resolveSpec(from, spec), folderOf);
+    redraw();
+    if (picked && callGrammar(picked.userData.f.path)) renderOutline(picked.userData.f.path);
+    return st.idx;
+  })();
+  st.ready.catch(() => { st.error = true; redraw(); });
+  return st.ready;
+}
+let nameCount = null;   // { city, counts: Map(file name -> how many files have it) }
+function shortFile(path) {   // "app.py", or "sansio/app.py" when the repo has more than one app.py
+  if (!nameCount || nameCount.city !== buildings) { const counts = new Map(); for (const b of buildings) { const n = b.userData.f.path.split("/").pop(); counts.set(n, (counts.get(n) || 0) + 1); } nameCount = { city: buildings, counts }; }
+  const parts = path.split("/"); return nameCount.counts.get(parts[parts.length - 1]) > 1 ? parts.slice(-2).join("/") : parts[parts.length - 1];
+}
+function fnName(idx, path, i) {
+  if (i < 0) return shortFile(path) + " (top level)";
+  const d = idx.def(path, i); return d ? (d.cls ? d.cls + "." : "") + d.name : "?";
+}
+const HOW = {
+  sure: ["sure", "The name is defined here, imported from that file, or called on an imported module or class"],
+  self: ["self", "A method called on self / this, found in its class or the classes it extends"],
+  likely: ["likely", "Called on an object whose type isn't written down; this is the only method in the repo with that name"],
+  passes: ["passes", "Handed to other code (a callback, a route, a hook), which calls it later"],
+  dynamic: ["run time", "Picked at run time (looked up in a table, or returned by another call), so it can't be followed from the code alone"],
+};
+const howChip = how => `<span class="chip ${how === "sure" || how === "self" ? "real" : "guess"}" title="${esc(HOW[how][1])}">${HOW[how][0]}</span>`;
+
+// ---------- Trace: what a function calls, file to file, and what calls it ----------
+let traceState = null;   // { path, i, open: Set(node keys), files: Set, edges: [[from, to]] }
+function openTrace(path, i) {
+  traceState = { path, i, open: new Set(), seeded: false, files: new Set([path]), edges: [] };
+  openSide("trace");
+  loadCalls();
+}
+function renderTrace() {
+  const st = traceState, idx = callsReady();
+  $("sideTitle").textContent = "Trace";
+  if (!idx) {
+    $("sideSub").textContent = st.path;
+    const c = callIdx && callIdx.city === buildings ? callIdx : null;
+    sideBody.innerHTML = c && c.error ? `<p class="side-note">Couldn't load the parser that reads functions. Check your connection and try again.</p>`
+      : `<p class="side-note">Reading functions${c && c.total ? `… ${fmt(c.n)} of ${fmt(c.total)} files` : "…"}</p>`;
+    return;
+  }
+  if (!st.seeded) { st.seeded = true; for (const e of idx.callees(st.path, st.i)) if (e.path) st.open.add("0>" + e.path + ":" + e.i); }   // the first two levels start open
+  const d = st.i >= 0 ? idx.def(st.path, st.i) : null;
+  $("sideSub").textContent = `${st.path}${d ? ":" + d.line : ""}`;
+  st.files = new Set([st.path]); st.edges = [];
+  const row = (e, key, depth, above, from) => {
+    if (e.outside) return `<li class="tr-out">+ ${fmt(e.outside)} call${e.outside === 1 ? "" : "s"} to libraries or built-ins</li>`;
+    if (e.dyn) return `<li><div class="tr-row"><span class="tr-tog">?</span><code class="tr-dyn">${esc(e.dyn)}</code><span class="tr-meta">${howChip("dynamic")}<button type="button" class="linkish" data-fn-at="${esc(from)}" data-fn-line="${e.line}" title="Open the code at this call">${esc(shortFile(from))}:${e.line}</button></span></div></li>`;
+    const id = e.path + ":" + e.i, k = key + ">" + id, def = idx.def(e.path, e.i), loop = above.has(id);
+    const more = !loop && depth < 14 && idx.callees(e.path, e.i).some(x => x.path || x.dyn), open = more && st.open.has(k);
+    st.files.add(e.path); if (from !== e.path) st.edges.push([from, e.path]);
+    return `<li><div class="tr-row" data-fpath="${esc(e.path)}">` +
+      `<button type="button" class="tr-tog" ${more ? `data-tr-toggle="${esc(k)}" aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} what it calls"` : `disabled aria-hidden="true"`}>${more ? (open ? "▾" : "▸") : "·"}</button>` +
+      `<button type="button" class="tr-name" data-fn-view="${esc(e.path)}" data-fn-i="${e.i}" title="Open the code">${esc(fnName(idx, e.path, e.i))}</button>` +
+      `<span class="tr-meta"><span class="tr-where">${esc(shortFile(e.path))}:${def ? def.line : ""}</span>${howChip(e.how)}${loop ? `<span class="tr-note">calls back up</span>` : ""}</span>` +
+      `<button type="button" class="mini tr-go" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace from this function">Trace</button></div>` +
+      (open ? `<ul class="tr">${idx.callees(e.path, e.i).map(x => row(x, k, depth + 1, new Set([...above, id]), e.path)).join("")}</ul>` : "") + `</li>`;
+  };
+  const rootId = st.path + ":" + st.i, calls = idx.callees(st.path, st.i);
+  const callers = idx.callers(st.path, st.i);
+  const up = (c, key, depth, below) => {   // what calls it, and what calls that
+    const id = c.path + ":" + c.i, k = key + "<" + id, loop = below.has(id), more = !loop && depth < 8 && idx.callers(c.path, c.i).length > 0, open = more && st.open.has(k);
+    st.files.add(c.path);
+    return `<li><div class="tr-row" data-fpath="${esc(c.path)}">` +
+      `<button type="button" class="tr-tog" ${more ? `data-tr-toggle="${esc(k)}" aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} what calls it"` : `disabled aria-hidden="true"`}>${more ? (open ? "▾" : "▸") : "·"}</button>` +
+      `<button type="button" class="tr-name" data-fn-at="${esc(c.path)}" data-fn-line="${c.line}" title="Open the code at this call">${esc(fnName(idx, c.path, c.i))}</button>` +
+      `<span class="tr-meta"><span class="tr-where">${esc(shortFile(c.path))}:${c.line}</span>${howChip(c.how)}</span>` +
+      (c.i >= 0 ? `<button type="button" class="mini tr-go" data-fn-trace="${esc(c.path)}" data-fn-i="${c.i}" title="Trace from this function">Trace</button>` : "") + `</div>` +
+      (open ? `<ul class="tr">${idx.callers(c.path, c.i).map(x => up(x, k, depth + 1, new Set([...below, id]))).join("")}</ul>` : "") + `</li>`;
+  };
+  const chain = [];   // the first path down, for "Explain this path"
+  for (let p = st.path, i = st.i, seen = new Set([st.path + ":" + st.i]); chain.length < 4;) { const next = idx.callees(p, i).find(x => x.path && !seen.has(x.path + ":" + x.i)); if (!next) break; seen.add(next.path + ":" + next.i); chain.push(next); p = next.path; i = next.i; }
+  sideBody.innerHTML =
+    `<div class="tr-head"><b>${esc(fnName(idx, st.path, st.i))}</b>${d && d.deco && d.deco.length ? `<span class="side-note">${esc(d.deco[0])}</span>` : ""}` +
+    `<div class="side-actions"><button type="button" data-fn-at="${esc(st.path)}" data-fn-line="${d ? d.line : 1}">View code</button>` +
+    (askEnabled && chain.length ? `<button type="button" class="primary" data-trace-explain>Explain this path</button>` : "") + `</div></div>` +
+    `<div><h3>Calls <span class="count">${fmt(calls.filter(e => e.path).length)}</span></h3>${calls.length ? `<ul class="tr">${calls.map(e => row(e, "0", 1, new Set([rootId]), st.path)).join("")}</ul>` : `<p class="side-note">It doesn't call other functions in this repo.</p>`}</div>` +
+    `<div><h3>Called by <span class="count">${fmt(callers.length)}</span></h3>${callers.length ? `<ul class="tr">${callers.map(c => up(c, "0", 1, new Set([rootId]))).join("")}</ul>` : `<p class="side-note">Nothing in this repo calls it directly${d && d.deco && d.deco.length ? `; ${esc(d.deco[0])} registers it` : ""}.</p>`}</div>` +
+    `<p class="side-note tr-key">Read from the code with a parser, no AI. ${howChip("sure")} defined or imported · ${howChip("self")} on self / this · ${howChip("likely")} the only method with that name · ${howChip("passes")} handed over as a callback · ${howChip("dynamic")} picked at run time. Point at a label for more.</p>`;
+  drawLinks();
+}
+document.addEventListener("click", e => {
+  const tog = e.target.closest("[data-tr-toggle]");
+  if (tog && traceState) { const k = tog.dataset.trToggle; if (traceState.open.has(k)) traceState.open.delete(k); else traceState.open.add(k); renderTrace(); const again = sideBody.querySelector(`[data-tr-toggle="${CSS.escape(k)}"]`); if (again) again.focus(); return; }
+  const tr = e.target.closest("[data-fn-trace]");
+  if (tr) { e.stopPropagation(); return openTrace(tr.dataset.fnTrace, +tr.dataset.fnI); }
+  const view = e.target.closest("[data-fn-view]"), idx = callsReady();
+  if (view && idx) { e.stopPropagation(); const d = idx.def(view.dataset.fnView, +view.dataset.fnI); return viewFile(view.dataset.fnView, d ? d.line : 0); }
+  const at = e.target.closest("[data-fn-at]");
+  if (at) { e.stopPropagation(); return viewFile(at.dataset.fnAt, +at.dataset.fnLine || 0); }
+  if (e.target.closest("[data-trace-explain]") && traceState && idx) {
+    const st = traceState, steps = [{ path: st.path, i: st.i }];
+    for (let p = st.path, i = st.i, seen = new Set([st.path + ":" + st.i]); steps.length < 5;) { const next = idx.callees(p, i).find(x => x.path && !seen.has(x.path + ":" + x.i)); if (!next) break; seen.add(next.path + ":" + next.i); steps.push(next); p = next.path; i = next.i; }
+    const paths = [...new Set(steps.map(s => s.path))].slice(0, MAX_EXPLAIN);
+    return explainCode(explainState, paths, `Walk through this call path step by step: ${steps.map(s => `${fnName(idx, s.path, s.i)} (${s.path})`).join(" calls ")}. What does each step do, what does it pass on, and where does control go next?`);
+  }
+});
+sideBody.addEventListener("mouseover", e => {
+  if (sideMode !== "trace") return;
+  const row = e.target.closest("[data-fpath]"), b = row ? bmap.get(row.dataset.fpath) || null : null;
+  if (b !== hovered) hovered = b;
+});
 
 // The drawer's Imports and Used by lists for one file.
 async function renderFileLinks(path) {

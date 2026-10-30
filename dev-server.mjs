@@ -59,9 +59,11 @@ function freshPage() {
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json",
-  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json", ".txt": "text/plain" };
+  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json", ".txt": "text/plain", ".wasm": "application/wasm", ".md": "text/plain; charset=utf-8" };
+// The same Content-Security-Policy as the live site (from netlify.toml), so anything it would block shows up here first.
+const CSP = (/Content-Security-Policy\s*=\s*"([^"]+)"/.exec(fs.readFileSync(path.join(ROOT, "netlify.toml"), "utf8")) || [])[1];
 function send(res, status, body, type = "application/json") {
-  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...(CSP && type.startsWith("text/html") ? { "Content-Security-Policy": CSP } : {}) });
   res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 const readBody = req => new Promise((resolve, reject) => { const parts = []; req.on("data", c => parts.push(c)); req.on("end", () => resolve(Buffer.concat(parts).toString("utf8"))); req.on("error", reject); });

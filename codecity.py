@@ -266,6 +266,13 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in ("/", "/index.html"):
             return self.reply(200, "text/html; charset=utf-8", page())
+        if url.path.startswith("/vendor/tree-sitter/"):
+            # The parser behind function-level links. Only plain file names from that one folder.
+            name = url.path.rsplit("/", 1)[1]
+            fpath = os.path.join(HERE, "site", "vendor", "tree-sitter", name)
+            if re.fullmatch(r"[\w.-]+\.(js|wasm)", name) and os.path.isfile(fpath):
+                with open(fpath, "rb") as fh:
+                    return self.reply(200, "application/wasm" if name.endswith(".wasm") else "text/javascript", fh.read())
         if url.path == "/api/repo":
             # Only the app's own page may ask: other websites can make a browser send GET requests here, but they
             # can't add this header without a CORS preflight, which this server never approves.
