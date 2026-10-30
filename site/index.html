@@ -476,7 +476,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
   <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file or a pull request">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
-  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections, hotspots and history">
+  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections and hotspots">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
   <span class="rail-spacer"></span>
   <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how Code City works">
@@ -579,7 +579,6 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <span class="label">Over time</span>
       <div class="seg-actions">
         <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
-        <button id="histBtn" type="button" class="seg-action" aria-expanded="false" hidden><b>Play history</b><span>Watch the city grow, commit by commit</span></button>
       </div>
     </div>
     <div class="field" id="howTo">
@@ -611,7 +610,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
       <li><b>Understand</b>: how it's built, and the workflows tour.</li>
       <li><b>Find</b>: a file by name, or a pull request's changes.</li>
-      <li><b>Display</b>: colour by language, change heat or imports; show or hide connections; hotspots, and Play history to watch the city grow.</li>
+      <li><b>Display</b>: colour by language, change heat or imports; show or hide connections; hotspots.</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
     <div><h3>Moving around</h3><ul>
@@ -1644,19 +1643,16 @@ const phoneMQ = matchMedia("(max-width: 640px), (max-height: 500px) and (pointer
 function roomFor() { if (phoneMQ.matches && segOpen) openSeg(null, false, true); }
 
 // ---------- timeline ----------
-// The history bar stays out of the way until "Play history" (under Display) opens it; ▾ hides it again.
+// The history bar opens when history is loaded; ▾ hides it again.
 let tlOpen = false;
 function syncTimeline() {
-  const show = !!hist && tlOpen, btn = document.getElementById("histBtn");
+  const show = !!hist && tlOpen;
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
-  btn.hidden = !hist; btn.setAttribute("aria-expanded", show); btn.querySelector("b").textContent = show ? "Hide the history bar" : "Play history";
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
 }
-// Play history opens the bar and starts playing; the bar isn't shown otherwise.
-document.getElementById("histBtn").onclick = () => { tlOpen = !tlOpen; syncTimeline(); if (tlOpen) { roomFor(); if (!playing) playBtn.click(); playBtn.focus(); } };
-document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); document.getElementById("histBtn").focus(); };
+document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); };
 const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
 const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into about 40 seconds
 let speedIdx = 0, playAcc = 0;
@@ -3099,8 +3095,7 @@ async function explainCode(state, paths, question, from) {
   const real = await Promise.all(code.map(c => loadDeps(c.path)));   // the files each one really imports
   code.forEach((c, i) => { c.imports = real[i]; });
   st.real = new Map(code.map((c, i) => [c.path, new Set(real[i])]));
-  st.loading = false;
-  if (!code.length) { st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
+  if (!code.length) { st.loading = false; st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
@@ -3114,6 +3109,7 @@ async function explainCode(state, paths, question, from) {
     else st.errorHtml = esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
       (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
   } catch (e) { st.errorHtml = "Couldn't reach Code City's server. Check your connection and try again."; }
+  st.loading = false;   // only now: the window can be redrawn (View code, a resize) while Gemini is reading
   for (const p of paths) if (!state.files.has(p)) state.files.set(p, "");
   for (const [, deps] of st.real) for (const d of deps) if (!state.files.has(d)) state.files.set(d, "");   // the files they import light up too
   redraw();
@@ -3280,7 +3276,7 @@ function tileWindows(paths, since) {   // lines up the code windows for these fi
 }
 function explainCol(st) {
   return `${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
-    ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : explainHtml(st)}
+    ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
     ${st.files ? `<p class="side-note">Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</p>` : ""}`;
 }
 function paneHtml(p) {
