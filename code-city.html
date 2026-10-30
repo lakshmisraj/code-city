@@ -2673,6 +2673,7 @@ function startSignin() {
   location.href = SIGNIN_URL + "?return=" + encodeURIComponent(location.pathname + location.search);
 }
 function signOut() {
+  if (oauthToken) fetch("/.netlify/functions/github-signout", { method: "POST", headers: { Authorization: "Bearer " + oauthToken } }).catch(() => {});   // GitHub forgets the token too
   try { localStorage.removeItem(OAUTH_KEY); } catch (e) { /* storage blocked */ }
   oauthToken = null;
   $("signedinRow").hidden = true;
