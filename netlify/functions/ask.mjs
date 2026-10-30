@@ -9,6 +9,9 @@
 // (counted separately) and PER_USER_DAY calls a day, and the whole site PER_DAY; calls that fail don't count.
 // Needs GEMINI_API_KEY in the site's environment variables; ASK_PER_HOUR, ASK_PER_USER_DAY and ASK_PER_DAY
 // override the limits. GET tells the page whether asking is set up; GET ?models (signed in) lists the models.
+// The same request about the same code is answered from a saved copy for CACHE_DAYS, without calling Gemini or
+// counting towards any limit (the request carries the files' list, digest and code, so new code is a new request).
+import { createHash } from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
 import { getStore } from "@netlify/blobs";
 
@@ -29,6 +32,7 @@ const THINKING = ["minimal", "low"];   // short, structured answers need little 
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
 const OUTPUT_TOKENS = { ask: 1200, tour: 2500, explain: 1800, lines: 800 };
 const BUDGET_MS = 26000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
+const CACHE_DAYS = 14;
 const PER_HOUR = +process.env.ASK_PER_HOUR || 20, PER_DAY = +process.env.ASK_PER_DAY || 300;
 const PER_USER_DAY = +process.env.ASK_PER_USER_DAY || 80;   // one account can't use up the whole site's day
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
@@ -50,7 +54,7 @@ const SYSTEM = `You help developers find their way around a codebase that is sho
 You get the repository name, its file list grouped by folder (each file with its line count), and a question.
 Answer in two to four plain sentences. Then pick the files that best answer the question, most relevant first, at most ${MAX_ANSWER_FILES}, each with a reason under fifteen words.
 Use paths exactly as they appear in the list, joined with their folder.
-You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files and likely entry points, and files' top-level functions and classes. Trust it over file names: name the functions or classes involved, and follow the imports to find where things really happen. Say "likely" only when you are inferring beyond it.
+You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files and likely entry points, the most important files with why, main paths (the functions the code really calls from each entry point, read with a parser), and files' top-level functions and classes. Trust it over file names: name the functions or classes involved, and follow the imports and main paths to find where things really happen. Say "likely" only when you are inferring beyond it.
 If nothing in the list answers the question, say so and return no files.`;
 
 const TOUR_SCHEMA = {
@@ -85,7 +89,8 @@ You get the repository name, its file list grouped by folder (each file with its
 Split the software into its main workflows: two to ${MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words, a one or two sentence summary, and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
 Workflows often share files; reuse the same path when they do. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
 Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
-You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.`;
+You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, the most important files with why, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.
+It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).`;
 
 const LINES_SCHEMA = {
   type: "object",
@@ -269,6 +274,19 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
     || await over(`site/${today}`, PER_DAY, "Code City has answered all the questions it can today. Try again tomorrow."), refund];
 }
 
+// Saved answers, keyed by everything the answer depends on. Netlify Blobs on the site; memory on the dev server.
+const localCache = new Map();
+function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
+async function cacheGet(key) {
+  if (LOCAL) return localCache.get(key) || null;
+  try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
+  catch (e) { return null; }   // no saved copy to be had: ask Gemini
+}
+async function cachePut(key, body) {
+  if (LOCAL) { localCache.set(key, body); return; }
+  try { await getStore("ask-cache").setJSON(key, { at: Date.now(), body }); } catch (e) { /* not saved: asked again next time */ }
+}
+
 function dedupe(list) { const seen = new Set(); return list.filter(x => !seen.has(x.path) && seen.add(x.path)); }   // one entry per file
 
 function json(statusCode, body) {
@@ -319,6 +337,12 @@ async function handle(event) {
   if (keyLines && !flow.length) return json(400, { error: "There's no code to read." });
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
+  const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : "ask";
+  const ckey = cacheKey([mode, question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines ? "" : digest, code, flow]);
+  const saved = await cacheGet(ckey);
+  if (saved) { console.log(`ask: ${mode} answered from a saved copy`); return json(200, { ...saved, cached: true }); }
+  const done = async body => { await cachePut(ckey, body); return json(200, body); };
+
   // Only well-formed asks count towards the limits, and they're checked before Gemini is called.
   let over, refund = async () => {};
   try { [over, refund] = await overLimit(user.id, explain ? "explain" : keyLines ? "lines" : "ask"); }
@@ -326,7 +350,6 @@ async function handle(event) {
   if (over) return json(429, { error: over });
 
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : "ask";
   const input = keyLines ? `Repository: ${repo}\nWorkflow: ${question}\n\n${codeBlocks(flow)}`
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
@@ -395,12 +418,12 @@ async function handle(event) {
       links: (Array.isArray(f.links) ? f.links : []).filter(l => l && l.path !== f.path && (known.has(l.path) || sent.has(l.path)))
         .map(l => ({ path: l.path, how: String(l.how || "").slice(0, 160) })).slice(0, MAX_LINKS),
     }));
-    return json(200, { summary: reply.summary.slice(0, 1200), files: out });
+    return done({ summary: reply.summary.slice(0, 1200), files: out });
   }
   if (keyLines) {
     if (!reply || !Array.isArray(reply.steps)) return json(502, { error: "Gemini's reading came back in an unexpected shape. Try again." });
     const sent = new Map(flow.map(c => [c.path, c.text.split("\n").length]));
-    return json(200, { steps: dedupe(reply.steps.filter(st => st && sent.has(st.path))).map(st => ({
+    return done({ steps: dedupe(reply.steps.filter(st => st && sent.has(st.path))).map(st => ({
       path: st.path,
       lines: (Array.isArray(st.lines) ? st.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= 1 && l.line <= sent.get(st.path))
         .map(l => ({ line: l.line, note: String(l.note || "").slice(0, 160) })).slice(0, MAX_KEY_LINES),
@@ -418,10 +441,10 @@ async function handle(event) {
     const names = new Set(workflows.map(w => w.name));
     workflows.forEach(w => { w.feeds = w.feeds.filter(f => f !== w.name && names.has(f)); });   // only workflows that are in the tour
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
-    return json(200, { title: String(reply.title || "A tour of the city").slice(0, 100), overview: String(reply.overview || "").slice(0, 1000), workflows });
+    return done({ title: String(reply.title || "A tour of the city").slice(0, 100), overview: String(reply.overview || "").slice(0, 1000), workflows });
   }
   if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
-  return json(200, {
+  return done({
     answer: reply.answer.slice(0, 1500),
     files: dedupe(reply.files.filter(f => f && known.has(f.path))).map(f => ({ path: f.path, why: String(f.why || "").slice(0, 200) })).slice(0, MAX_ANSWER_FILES),
   });

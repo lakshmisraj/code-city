@@ -24,6 +24,8 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 | Fire | A TODO, FIXME or HACK comment on that file's roof. |
 | Entry point | Where execution starts: a file the project declares (package.json `main`/`bin`, pyproject scripts…), one named like an entry point (`main.py`, `cmd/x/main.go`…), or one no other file imports. |
 | Core | The files most of the product imports (tests, docs and examples aren't counted). |
+| Importance | A score out of 100 for each file: how many product files depend on it (directly or through others) counts most, then how many import it directly, calls into it from other files, whether execution starts there, how often it changes, and its size. Tests, docs and examples count for less. |
+| Main path | From an entry point, the way the code goes: at each step the call (or, for languages Trace doesn't read, the import) that leads to the most code, with error handling counted for less. |
 | Change heat | How many commits touched a file, from dark blue (rarely) to orange-red (constantly). |
 | Hotspot | A file in the repo's top tenth for how often it changes (at least 2 changes). The PR view and the PR bot flag these. The **Hotspots** list ranks by *commits × lines* instead, so big files that keep changing come first. |
 
@@ -43,7 +45,17 @@ Building heights are estimated from file size until you click a building, which 
 
 ### How this repo is built
 
-Opens by itself when a repo loads (and from **How it's built** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). It needs no AI and no sign-in: it's read from the code's import lines, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour.
+Opens by itself when a repo loads (and from **How it's built** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). Once functions are read it adds the **Main paths** (from each entry point, the functions the code really calls, drawn over the city in their own colours; **Open side by side** opens each step's code), **Where paths meet** (functions several paths reach), and every place requests and commands come in. It needs no AI and no sign-in: it's read from the code's import lines and functions, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour, which is built on the main paths.
+
+A repo's imports and functions are read as soon as it loads, and kept in this browser for that commit (the eight most recent; built-in repos for the day), so coming back reads nothing again.
+
+### Importance
+
+**Importance** under Display colours each file by its importance score (see the table above) and names the eight most important files over their buildings. A file's panel shows its score and the reasons that weigh most, such as "21 product files (not tests) depend on it, directly or through others".
+
+### System map
+
+**System map** under Understand groups the product's files into modules (folders, at a depth that gives a readable number), sorted into layers: the modules that use the others on top, the foundations at the bottom. Each module lists the modules it uses and how many use it; pointing at one lights its files. **Import cycles** lists modules that import each other, with an import each way, and the shortest loops of files that import each other when they load. Imports that don't run at load (inside a Python function, under `if TYPE_CHECKING:`, or TypeScript `import type`) are left out, since they can't cause load-time cycles.
 
 ### History
 
@@ -64,9 +76,9 @@ The history bar opens when you load history from the history panel (▾ hides it
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
+Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, the most important files and why, the main paths (real function calls from each entry point), and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
 
-Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, plus 20 code explanations and 20 important-line readings, and at most 80 calls a day; the whole site gets 300 a day (set `ASK_PER_HOUR`, `ASK_PER_USER_DAY` and `ASK_PER_DAY` to change them). Calls that fail don't count. The counts are kept in Netlify Blobs. Signing out also revokes the sign-in token with GitHub.
+Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, plus 20 code explanations and 20 important-line readings, and at most 80 calls a day; the whole site gets 300 a day (set `ASK_PER_HOUR`, `ASK_PER_USER_DAY` and `ASK_PER_DAY` to change them). Calls that fail don't count. The counts are kept in Netlify Blobs. The same question, tour or explanation about the same code (same files, digest and code) is answered from a saved copy for 14 days, in Netlify Blobs, without calling Gemini or counting towards a limit; changed code is a new request. Signing out also revokes the sign-in token with GitHub.
 
 After an answer, **Explain the code of the top files** reads their code. **Explain this code** in a file's panel (or **Explain** on a code window) explains one file, and **Explain this folder** a folder's three biggest files. With explanations already open, a new one is added below them instead of replacing them. Gemini reads at most 24,000 characters of each file and says when it only saw the start.
 
@@ -83,6 +95,7 @@ For Python, JavaScript, TypeScript and Go, a parser ([tree-sitter](https://tree-
 - A file's panel lists its **Functions**, each with how many functions it calls (→) and how many places call it (←).
 - **Trace** opens a tree of what a function calls, file to file: open a branch to follow it further, click a name to open the code there. **Called by** goes the other way. The files on the trace light up and arcs join them.
 - **How this repo is built** adds **Where requests and commands come in**: route handlers (`@app.route`, `app.get('/x', …)`, `http.HandleFunc`), CLI commands, `func main` and `if __name__ == "__main__"` blocks. Trace from one to follow a request.
+- Click a name in the trace to open the code of every step from the traced function down to it, one window per step, side by side in call order and numbered. Each opens at the line that calls the next step. **Side by side** does the same for the first path down. The windows move and resize like any other.
 - **Explain this path** (signed in) has Gemini walk through the first path down the trace.
 
 Each link says how it was found: **sure** (defined in the file, imported from another, or called on an imported module or class), **self** (a method on self / this, found in the class or the classes it extends), **likely** (called on an object whose type isn't written down, and only one method in the repo has that name), **passes** (handed to other code as a callback or route, which calls it later), and **run time** (picked at run time, for example looked up in a table, so the trace stops there and says so). Calls into libraries and built-ins are counted, not listed.
