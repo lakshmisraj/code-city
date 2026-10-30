@@ -622,7 +622,7 @@ const EXT = {
   json:"cfg", yml:"cfg", yaml:"cfg", toml:"cfg", ini:"cfg", xml:"cfg", gradle:"cfg", lock:"cfg",
   dart:"other", lua:"other", ex:"other", exs:"other", hs:"other", ml:"other", r:"other", jl:"other", zig:"other", elm:"other", clj:"other"
 };
-const SPECIAL = { dockerfile:"cfg", makefile:"cfg", gemfile:"rb", rakefile:"rb", procfile:"cfg" };
+const SPECIAL = { dockerfile:"cfg", makefile:"cfg", gemfile:"rb", rakefile:"rb", procfile:"cfg", "go.mod":"cfg" };   // go.mod names the Go module, so imports can be read
 const SKIP_DIRS = new Set(["node_modules",".git","dist","build",".next",".nuxt","out","coverage","venv",".venv","env","__pycache__","target","vendor",".idea",".vscode",".turbo",".cache","Pods","DerivedData",".gradle"]);
 const MAX_FILES = 4000, MAX_BYTES = 600 * 1024;
 // Notebooks are mostly saved outputs (images, tables), so they get a much higher limit; only their code cells count.
@@ -641,58 +641,91 @@ function langOf(path) {
 // ---------- imports ----------
 // Real connections between files, read from their import lines (no AI involved), so the arcs over the city can
 // be trusted. Each language's imports are matched to files in the city; anything that isn't one (a package, the
-// standard library) is left out.
+// standard library) is left out. Comments and docstrings are blanked first, so commented-out or example imports
+// don't count, and every import keeps its position so its line can be marked.
+const MAX_PARSE = 300 * 1024;   // big generated or minified files: only their start is read (keeps patterns fast)
 const IMPORT_RES = {
-  js: [/\bimport\s+(?:type\s+)?(?:[\w*{}\s,$]+\s+from\s+)?["']([^"'\n]+)["']/g, /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+\w+)?\s+from\s+["']([^"'\n]+)["']/g,
-       /\brequire\s*\(\s*["']([^"'\n]+)["']\s*\)/g, /\bimport\s*\(\s*["']([^"'\n]+)["']\s*\)/g],
-  py: [/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]+\(?([^\n#]+)/gm, /^[ \t]*import[ \t]+([^\n#]+)/gm],
-  go: [/^\s*import\s+(?:\w+\s+)?"([^"]+)"/gm, /^\s*import\s*\(([^)]*)\)/gm],
-  rb: [/\brequire_relative\s*\(?\s*["']([^"']+)["']/g, /\brequire\s*\(?\s*["']([^"']+)["']/g],
-  java: [/^\s*import\s+(?:static\s+)?([\w.]+)(?:\.\*)?\s*;/gm],
-  c: [/^\s*#\s*include\s*"([^"]+)"/gm],
-  css: [/@(?:import|use|forward)\s+(?:url\()?["']([^"']+)["']/g],
-  rs: [/^\s*(?:pub\s+)?mod\s+(\w+)\s*;/gm, /^\s*(?:pub\s+)?use\s+(crate|self|super)((?:::\w+)+)/gm],
-  php: [/\b(?:require|include)(?:_once)?\s*\(?\s*(?:__DIR__\s*\.\s*)?["']([^"']+)["']/g, /^\s*use\s+([\w\\]+)\s*;/gm],
+  js: [/\bimport[ \t]+(?:type[ \t]+)?(?:[\w*{}\s,$]{1,2000}?\s+from\s*)?["']([^"'\n]+)["']/g, /\bexport[ \t]+(?:type[ \t]+)?(?:\*|\{[^}]{0,2000}\})(?:[ \t]+as[ \t]+\w+)?\s+from\s*["']([^"'\n]+)["']/g,
+       /\brequire[ \t]*\([ \t]*["']([^"'\n]+)["'][ \t]*\)/g, /\bimport[ \t]*\([ \t]*["']([^"'\n]+)["'][ \t]*\)/g],
+  py: [/^[ \t]*from[ \t]+(\.{0,10}[\w.]*)[ \t]+import[ \t]+(\([^)]{0,4000}\)|[^\n#;]+)/gm, /(?:^|;)[ \t]*import[ \t]+([^\n#;]+)/gm],
+  go: [/^[ \t]*import[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/gm, /^[ \t]*import[ \t]*\(([^)]*)\)/gm],
+  rb: [/\brequire_relative[ \t]*(?:\([ \t]*)?["']([^"']+)["']/g, /(?:^|[;\s])require[ \t]*(?:\([ \t]*)?["']([^"']+)["']/g],
+  java: [/^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+?)(?:\.\*|\.\{[^}\n]*\})?[ \t]*;?[ \t]*$/gm],   // Java, Kotlin and Scala (no ; needed)
+  c: [/^[ \t]*#[ \t]*include[ \t]*"([^"]+)"/gm],
+  css: [/@(?:import|use|forward)[ \t]+(?:url\([ \t]*)?["']?([^"')\s;,]+)/g],
+  rs: [/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+(\w+)[ \t]*;/gm, /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t]+(crate|self|super)((?:::\w+)+)/gm],
+  php: [/\b(?:require|include)(?:_once)?[ \t]*(?:\([ \t]*)?(?:(?:__DIR__|dirname\(__FILE__\))[ \t]*\.[ \t]*)?["']([^"']+)["']/g, /^[ \t]*use[ \t]+([\w\\]+)[ \t]*;/gm],
 };
 const IMPORT_LANG = { ts: "js", js: "js", py: "py", nb: "py", go: "go", rb: "rb", java: "java", kt: "java", c: "c", css: "css", rs: "rs", php: "php" };
 const JS_EXTS = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte", ".d.ts"];
+const BUILTIN_JAVA = /^(java|javax|kotlin|kotlinx|scala|android|androidx|jdk|sun)\./;
 
-// The import specifiers in one file's source, as written.
+// The text with comments (and Python docstrings, JS template literals) replaced by spaces. Line breaks and
+// positions stay, and ordinary strings stay, since import paths are strings.
+function blankComments(kind, text) {
+  text = text.length > MAX_PARSE ? text.slice(0, MAX_PARSE) : text;
+  const out = text.split(""), n = text.length, hash = kind === "py" || kind === "rb" || kind === "php";
+  const blank = (a, b) => { for (let i = a; i < b && i < n; i++) if (out[i] !== "\n") out[i] = " "; };
+  for (let i = 0; i < n; i++) {
+    const c = text[i], d = text[i + 1];
+    if (kind === "py" && (c === '"' || c === "'") && text[i + 1] === c && text[i + 2] === c) {   // docstrings and long strings
+      const q = c + c + c, end = text.indexOf(q, i + 3), stop = end < 0 ? n : end + 3;
+      blank(i, stop); i = stop - 1; continue;
+    }
+    if (c === '"' || c === "'" || (c === "`" && kind !== "js")) {   // an ordinary string: step over it, keep it
+      let j = i + 1; while (j < n && text[j] !== c && text[j] !== "\n") j += text[j] === "\\" ? 2 : 1; i = j; continue;
+    }
+    if (c === "`" && kind === "js") { let j = i + 1; while (j < n && text[j] !== "`") j += text[j] === "\\" ? 2 : 1; blank(i, j + 1); i = j; continue; }
+    if (kind !== "css" && !hash && c === "/" && d === "/") { const e = text.indexOf("\n", i), stop = e < 0 ? n : e; blank(i, stop); i = stop - 1; continue; }
+    if (kind === "php" && c === "/" && d === "/") { const e = text.indexOf("\n", i), stop = e < 0 ? n : e; blank(i, stop); i = stop - 1; continue; }
+    if (kind !== "py" && kind !== "rb" && c === "/" && d === "*") { const e = text.indexOf("*/", i + 2), stop = e < 0 ? n : e + 2; blank(i, stop); i = stop - 1; continue; }
+    if (hash && c === "#" && !(kind === "php" && d === "[")) { const e = text.indexOf("\n", i), stop = e < 0 ? n : e; blank(i, stop); i = stop - 1; continue; }
+  }
+  return out.join("");
+}
+// The import specifiers in one file's source, as written, each with where its statement starts (index) and the
+// statement's text (stmt) for the names it brings in.
 function parseImports(path, text) {
   const kind = IMPORT_LANG[langOf(path)];
   if (!kind || !text) return [];
-  const out = [];
+  const src = blankComments(kind, text), out = [];
+  const add = (m, spec, extra) => out.push({ spec, index: m.index + (m[0].length - m[0].trimStart().length), stmt: m[0].trim(), ...extra });
   if (kind === "py") {
-    for (const m of text.matchAll(IMPORT_RES.py[0])) {
-      const names = m[2].replace(/[()\\]/g, "").split(",").map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => /^\w+$/.test(n));
-      out.push({ spec: m[1], names });
+    for (const m of src.matchAll(IMPORT_RES.py[0])) {
+      const names = m[2].replace(/[()\\]/g, " ").split(",").map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => /^\w+$/.test(n));
+      add(m, m[1], { names });
     }
-    for (const m of text.matchAll(IMPORT_RES.py[1]))
-      for (const n of m[1].split(",")) { const spec = n.trim().split(/\s+as\s+/)[0]; if (/^[\w.]+$/.test(spec)) out.push({ spec, names: [] }); }
+    for (const m of src.matchAll(IMPORT_RES.py[1]))
+      for (const n of m[1].split(",")) { const spec = n.trim().split(/\s+as\s+/)[0]; if (/^[\w.]+$/.test(spec)) add(m, spec, { names: [] }); }
     return out;
   }
   if (kind === "go") {
-    for (const m of text.matchAll(IMPORT_RES.go[0])) out.push({ spec: m[1] });
-    for (const m of text.matchAll(IMPORT_RES.go[1])) for (const q of m[1].matchAll(/"([^"]+)"/g)) out.push({ spec: q[1] });
+    for (const m of src.matchAll(IMPORT_RES.go[0])) add(m, m[1]);
+    for (const m of src.matchAll(IMPORT_RES.go[1])) {   // import ( "a" \n "b" ): each line is its own import
+      const start = m.index + m[0].indexOf("(") + 1;
+      for (const q of m[1].matchAll(/(?:([\w.]+)[ \t]+)?"([^"]+)"/g)) out.push({ spec: q[2], index: start + q.index, stmt: q[0], alias: q[1] });
+    }
     return out;
   }
   if (kind === "rb") {
-    for (const m of text.matchAll(IMPORT_RES.rb[0])) out.push({ spec: m[1], relative: true });
-    for (const m of text.matchAll(IMPORT_RES.rb[1])) out.push({ spec: m[1] });
+    for (const m of src.matchAll(IMPORT_RES.rb[0])) add(m, m[1], { relative: true });
+    for (const m of src.matchAll(IMPORT_RES.rb[1])) add(m, m[1]);
     return out;
   }
   if (kind === "rs") {
-    for (const m of text.matchAll(IMPORT_RES.rs[0])) out.push({ spec: m[1], mod: true });
-    for (const m of text.matchAll(IMPORT_RES.rs[1])) out.push({ spec: m[1] + m[2] });
+    for (const m of src.matchAll(IMPORT_RES.rs[0])) add(m, m[1], { mod: true });
+    for (const m of src.matchAll(IMPORT_RES.rs[1])) add(m, m[1] + m[2]);
     return out;
   }
-  for (const re of IMPORT_RES[kind]) for (const m of text.matchAll(re)) out.push({ spec: m[1] });
+  if (kind === "java") { for (const m of src.matchAll(IMPORT_RES.java[0])) if (!BUILTIN_JAVA.test(m[1] + ".")) add(m, m[1]); return out; }
+  for (const re of IMPORT_RES[kind]) for (const m of src.matchAll(re)) add(m, m[1]);
   return out;
 }
 
 // Turns specifiers into paths of files in the city. Built once per city from its file list.
 function makeResolver(paths) {
-  const all = new Set(paths), bySuffix = new Map();
+  const all = new Set(paths), bySuffix = new Map(), byDir = new Map();
+  const dirOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
   for (const p of paths) {   // every file under each of its trailing paths: "a/b/c.py" as "c.py", "b/c.py", "a/b/c.py"
     const parts = p.split("/");
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -700,11 +733,12 @@ function makeResolver(paths) {
       if (!bySuffix.has(k)) bySuffix.set(k, []);
       bySuffix.get(k).push(p);
     }
+    const d = dirOf(p); if (!byDir.has(d)) byDir.set(d, []); byDir.get(d).push(p);
   }
-  const dirOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
   const norm = p => { const out = []; for (const s of p.split("/")) { if (s === "..") out.pop(); else if (s && s !== ".") out.push(s); } return out.join("/"); };
   const join = (dir, rel) => norm(dir ? dir + "/" + rel : rel);
   const first = (cands) => { for (const c of cands) if (all.has(c)) return c; return null; };
+  const ancestors = dir => dir ? dir.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/")).concat([""]) : [""];   // "a/b" -> a/b, a, ""
   // A path written relative to an unknown root ("pkg/util.py"): the file whose path ends with it, if exactly
   // one does, or the one closest to the importing file.
   const bySuffixNear = (from, suffix) => {
@@ -720,30 +754,40 @@ function makeResolver(paths) {
     return first(JS_EXTS.map(e => base + e)) || (stem !== base ? first(JS_EXTS.map(e => stem + e)) : null) ||
       first(JS_EXTS.slice(1).map(e => (base ? base + "/" : "") + "index" + e));
   };
-  let goModule = null;   // set from go.mod when the city has one
+  let goModules = [];   // [{ dir, module }] from each go.mod, deepest first
+  // A Go package is a folder; it's linked through the file named after the folder (or its first file), so one
+  // import doesn't count as an import of every file in it.
+  const goPackage = d => {
+    const files = (byDir.get(d) || []).filter(p => p.endsWith(".go") && !p.endsWith("_test.go"));
+    if (!files.length) return null;
+    const name = d.split("/").pop();
+    return files.find(p => p.endsWith("/" + name + ".go") || p === name + ".go") || files.slice().sort()[0];
+  };
+  // the nearest crate root (the folder of lib.rs or main.rs) above a Rust file
+  const crateRoot = dir => { for (const a of ancestors(dir)) if (all.has(join(a, "lib.rs")) || all.has(join(a, "main.rs"))) return a; return "src"; };
 
   function resolve(from, imp) {
     const kind = IMPORT_LANG[langOf(from)], spec = imp.spec, dir = dirOf(from);
     if (kind === "js") {
       if (spec.startsWith(".")) return [jsFile(join(dir, spec))];
       if (spec.startsWith("/")) return [jsFile(norm(spec))];
-      const m = /^(?:@|~|#)\/(.*)$/.exec(spec);   // common path aliases for the source folder
-      if (m) return [jsFile("src/" + m[1]) || jsFile(m[1])];
+      const m = /^(?:@|~|#)\/(.*)$/.exec(spec);   // common path aliases for the source folder: the nearest src/ above
+      if (m) { for (const a of ancestors(dir)) { const hit = jsFile(join(a, "src/" + m[1])); if (hit) return [hit]; } return [jsFile(m[1])]; }
       return [];   // a package
     }
     if (kind === "py") {
       let base, mod = spec;
       if (spec.startsWith(".")) {
-        const dots = spec.match(/^\.+/)[0].length;
-        base = dir.split("/").filter(Boolean).slice(0, Math.max(0, dir.split("/").filter(Boolean).length - (dots - 1))).join("/");
+        const dots = spec.match(/^\.+/)[0].length, parts = dir.split("/").filter(Boolean);
+        if (dots - 1 > parts.length) return [];   // above the repo: not a file here
+        base = parts.slice(0, parts.length - (dots - 1)).join("/");
         mod = spec.slice(dots);
       }
       const rel = mod.replace(/\./g, "/");
       // Like Python's own search: the importing file's folder and its parents, then src/, then the repo root. A
       // package folder (one with __init__.py) is never searched for an absolute import, so "import typing" inside
       // a package means the standard library, not the package's own typing.py.
-      const roots = base != null ? [base] : [...dir.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/")), "src", "lib", ""]
-        .filter(r => !all.has(join(r, "__init__.py")));
+      const roots = base != null ? [base] : [...ancestors(dir), "src", "lib"].filter((r, i, a) => a.indexOf(r) === i && !all.has(join(r, "__init__.py")));
       const pick = p => first(roots.map(r => join(r, p)));
       const mainFile = rel ? pick(rel + ".py") || pick(rel + "/__init__.py") : (base != null ? first([join(base, "__init__.py")]) : null);
       // "from pkg import mod" names submodules as often as functions
@@ -751,18 +795,20 @@ function makeResolver(paths) {
       return !rel && subs.some(Boolean) ? subs : [mainFile, ...subs];   // "from . import views" points at views.py, not the package
     }
     if (kind === "go") {
-      let rel = spec;
-      if (goModule && (spec === goModule || spec.startsWith(goModule + "/"))) rel = spec.slice(goModule.length + 1);
-      else if (goModule || !spec.includes(".")) return [];   // another module or the standard library
-      return paths.filter(p => dirOf(p) === rel && p.endsWith(".go") && !p.endsWith("_test.go"));   // a Go import is a whole folder
+      const mod = goModules.find(g => spec === g.module || spec.startsWith(g.module + "/"));   // this repo's own modules only
+      if (!mod) return [];   // another module or the standard library
+      return [goPackage(join(mod.dir, spec.slice(mod.module.length + 1)))];
     }
     if (kind === "rb") {
       const s = spec.endsWith(".rb") ? spec : spec + ".rb";
-      return [imp.relative ? first([join(dir, s)]) : first(["lib/" + s]) || bySuffixNear(from, s)];
+      if (imp.relative) return [first([join(dir, s)])];
+      return [first(["lib/" + s, s, ...ancestors(dir).map(a => join(a, "lib/" + s))])];   // otherwise a gem or the standard library
     }
     if (kind === "java") {
-      const rel = spec.replace(/\./g, "/");
-      return [bySuffixNear(from, rel + ".java") || bySuffixNear(from, rel + ".kt")];
+      const rel = spec.replace(/\./g, "/"), exts = [".java", ".kt", ".scala"];
+      for (const ext of exts) { const hit = bySuffixNear(from, rel + ext); if (hit) return [hit]; }
+      const outer = rel.replace(/\/[^/]+$/, "");   // an inner class or a static member: its file has the outer name
+      return [outer !== rel ? exts.map(e => bySuffixNear(from, outer + e)).find(Boolean) || null : null];
     }
     if (kind === "c") return [first([join(dir, spec)]) || bySuffixNear(from, spec)];
     if (kind === "css") {
@@ -770,12 +816,11 @@ function makeResolver(paths) {
       return [first([join(dir, spec), ...[".css", ".scss", ".sass", ".less"].flatMap(e => [`${d ? d + "/" : ""}${b}${e}`, `${d ? d + "/" : ""}_${b}${e}`])])];
     }
     if (kind === "rs") {
-      if (imp.mod) {   // "mod x;" in foo.rs or mod.rs/lib.rs/main.rs
-        const name = from.split("/").pop(), here = /^(mod|lib|main)\.rs$/.test(name) ? dir : join(dir, name.replace(/\.rs$/, ""));
-        return [first([join(here, spec + ".rs"), join(here, spec + "/mod.rs")])];
-      }
+      const name = from.split("/").pop(), isModRoot = /^(mod|lib|main)\.rs$/.test(name);
+      const here = isModRoot ? dir : join(dir, name.replace(/\.rs$/, ""));   // this file's own module folder
+      if (imp.mod) return [first([join(here, spec + ".rs"), join(here, spec + "/mod.rs")])];   // "mod x;"
       const segs = spec.split("::").filter(Boolean), root = segs.shift();
-      let baseDir = root === "crate" ? (paths.find(p => /(^|\/)src\/(lib|main)\.rs$/.test(p)) || "src/lib.rs").replace(/\/?(lib|main)\.rs$/, "") : root === "super" ? dirOf(dir) : dir;
+      const baseDir = root === "crate" ? crateRoot(dir) : root === "super" ? (isModRoot ? dirOf(dir) : dir) : here;
       for (let i = segs.length; i > 0; i--) {   // the longest module path that is a file; the rest are items in it
         const rel = segs.slice(0, i).join("/"), hit = first([join(baseDir, rel + ".rs"), join(baseDir, rel + "/mod.rs")]);
         if (hit) return [hit];
@@ -784,19 +829,28 @@ function makeResolver(paths) {
     }
     if (kind === "php") {
       if (!spec.includes("\\")) return [first([join(dir, spec)]) || bySuffixNear(from, spec)];
-      const segs = spec.split("\\");   // a namespace: its root rarely matches the folder name ("App\\" in app/), so try shorter tails
-      for (let i = 0; i < segs.length - 1; i++) { const hit = bySuffixNear(from, segs.slice(i).join("/") + ".php"); if (hit) return [hit]; }
-      return [];
+      const segs = spec.split("\\").filter(Boolean);   // a namespace: whole, or without its root when the root is a folder ("App\\" in app/)
+      const whole = segs.join("/") + ".php", hit = bySuffix.has(whole) && bySuffixNear(from, whole);
+      if (hit) return [hit];
+      const tail = segs.slice(1).join("/") + ".php", root = (segs[0] || "").toLowerCase();
+      const near = segs.length > 2 && bySuffix.has(tail) ? (bySuffix.get(tail) || []).filter(p => p.toLowerCase().startsWith(root + "/") || p.toLowerCase().includes("/" + root + "/")) : [];
+      return [near.length ? bySuffixNear(from, tail) : null];
     }
     return [];
   }
   return {
-    setGoModule(m) { goModule = m; },
+    setGoModules(list) { goModules = list.slice().sort((a, b) => b.dir.length - a.dir.length); },
     // The files this one imports, without duplicates or itself.
     deps(from, text) {
       const out = new Set();
       for (const imp of parseImports(from, text)) for (const p of resolve(from, imp)) if (p && p !== from) out.add(p);
       return [...out];
+    },
+    // Each import in this file that points at one of the given files: [{ index, stmt, to, alias }].
+    importsOf(from, text, targets) {
+      const want = new Set(targets), out = [];
+      for (const imp of parseImports(from, text)) for (const p of resolve(from, imp)) if (p && want.has(p)) out.push({ index: imp.index, stmt: imp.stmt, to: p, alias: imp.alias });
+      return out;
     },
   };
 }
@@ -2428,6 +2482,7 @@ $("hotBtn").onclick = () => {
 // keeps its state.
 let nameIndex = null;   // file name -> paths, for the city on screen
 function fileByName(token) {
+  token = token.replace(/^\.\//, "");
   const b = bmap.get(token);
   if (b) return b.userData.lines > 0 ? token : null;
   if (!nameIndex) {
@@ -2435,7 +2490,9 @@ function fileByName(token) {
     for (const x of buildings) if (x.userData.lines > 0) { const p = x.userData.f.path, n = p.split("/").pop(); if (!nameIndex.has(n)) nameIndex.set(n, []); nameIndex.get(n).push(p); }
   }
   const name = token.split("/").pop(), hits = (nameIndex.get(name) || []).filter(p => p === name || p.endsWith("/" + token) || !token.includes("/"));
-  return hits.length ? hits.slice().sort((a, b) => a.length - b.length)[0] : null;
+  if (hits.length < 2) return hits[0] || null;
+  const product = hits.filter(p => !aside(p));   // a name several files share: only when one of them is the product's own
+  return product.length === 1 ? product[0] : null;
 }
 function fileLink(path, label) { return `<button type="button" class="flink" data-path="${esc(path)}" title="Open ${esc(path)}">${label != null ? esc(label) : pathHtml(path)}</button>`; }
 function rich(text) {
@@ -2849,45 +2906,46 @@ function widenForExplain(p) {
 // other file, then each line that uses what it imported. With no import line between them (Gemini inferred
 // the connection), lines that mention the other file by name are marked instead.
 const MAX_USE_MARKS = 12;
-function importedNames(path, lines, k) {   // the names an import line brings in, as the code will use them
-  const kind = IMPORT_LANG[langOf(path)], line = lines[k], names = [];
+// Line number of a position in a text.
+function lineOfIndex(text, index) { let n = 1; for (let i = text.indexOf("\n"); i >= 0 && i < index; i = text.indexOf("\n", i + 1)) n++; return n; }
+function importedNames(path, stmt, alias) {   // the names an import statement brings in, as the code will use them
+  const kind = IMPORT_LANG[langOf(path)], names = [], s = stmt.replace(/\s+/g, " ");
   if (kind === "py") {
-    let m = /^\s*from\s+\S+\s+import\s+(.+)$/.exec(line);
-    if (m) {
-      let list = m[1];
-      if (/\(\s*$/.test(list)) for (let j = k + 1; j < lines.length && j < k + 40; j++) { list += " " + lines[j]; if (lines[j].includes(")")) break; }
-      for (const part of list.replace(/[()\\#].*?$|[()\\]/g, " ").split(",")) { const w = part.trim().split(/\s+as\s+/); const n = (w[1] || w[0]).trim(); if (/^\w+$/.test(n)) names.push(n); }
-    } else if ((m = /^\s*import\s+(.+)$/.exec(line))) for (const part of m[1].split(",")) { const w = part.trim().split(/\s+as\s+/); names.push((w[1] || w[0]).trim().split(".")[0]); }
+    let m = /^from \S+ import (.+)$/.exec(s);
+    if (m) { for (const part of m[1].replace(/[()\\]/g, " ").split(",")) { const w = part.trim().split(/\s+as\s+/); const n = (w[1] || w[0]).trim(); if (/^\w+$/.test(n)) names.push(n); } }
+    else if ((m = /^;?\s*import (.+)$/.exec(s))) for (const part of m[1].split(",")) { const w = part.trim().split(/\s+as\s+/); names.push((w[1] || w[0]).trim().split(".")[0]); }
   } else if (kind === "js") {
-    let m = /import\s+(?:type\s+)?([\s\S]*?)\s+from\s/.exec(line);
+    let m = /import (?:type )?(.*?) from\b/.exec(s);
     if (m) {
-      const spec = m[1], ns = /\*\s+as\s+(\w+)/.exec(spec), braces = /\{([^}]*)\}/.exec(spec), def = /^\s*([\w$]+)/.exec(spec.replace(/\{[^}]*\}/, ""));
+      const spec = m[1], ns = /\* as (\w+)/.exec(spec), braces = /\{([^}]*)\}/.exec(spec), def = /^\s*([\w$]+)/.exec(spec.replace(/\{[^}]*\}/, ""));
       if (ns) names.push(ns[1]);
-      if (braces) for (const part of braces[1].split(",")) { const w = part.trim().split(/\s+as\s+/); if (w[0]) names.push((w[1] || w[0]).trim()); }
+      if (braces) for (const part of braces[1].split(",")) { const w = part.trim().replace(/^type /, "").split(/\s+as\s+/); if (w[0]) names.push((w[1] || w[0]).trim()); }
       if (def && def[1] !== "type") names.push(def[1]);
-    } else if ((m = /(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*require/.exec(line))) {
+    } else if ((m = /(?:const|let|var) (\{[^}]*\}|[\w$]+) ?= ?require/.exec(s))) {
       if (m[1].startsWith("{")) for (const part of m[1].slice(1, -1).split(",")) { const w = part.trim().split(/\s*:\s*/); if (w[0]) names.push((w[1] || w[0]).trim()); }
       else names.push(m[1]);
     }
-  } else if (kind === "go") { const m = /"([^"]+)"/.exec(line); if (m) names.push(m[1].split("/").pop()); }
-  else if (kind === "java") { const m = /\.(\w+)\s*;/.exec(line); if (m) names.push(m[1]); }
+  } else if (kind === "go") { const m = /"([^"]+)"/.exec(s); if (m) names.push(alias && alias !== "_" && alias !== "." ? alias : m[1].split("/").pop()); }
+  else if (kind === "java") { const m = /\.(\w+)\s*;?\s*$/.exec(s); if (m) names.push(m[1]); }
   return names.filter(n => /^[\w$]+$/.test(n) && n.length > 1);
 }
 function connectionMarks(path, text, other) {
-  const r = getGraph().resolver, lines = text.split("\n"), byLine = new Map(), imports = [], uses = [], names = new Set();
-  lines.forEach((l, k) => {
-    if (/\b(import|require|include|use|mod|from)\b/.test(l) && r.deps(path, l).includes(other)) {
-      imports.push(k + 1); byLine.set(k + 1, { kind: "import", note: "imports " + other.split("/").pop() });
-      importedNames(path, lines, k).forEach(n => names.add(n));
-    }
-  });
+  const r = getGraph().resolver, byLine = new Map(), imports = [], uses = [], names = new Set();
+  for (const imp of r.importsOf(path, text, [other])) {   // multi-line imports too: marked on the line they start
+    const k = lineOfIndex(text, imp.index);
+    if (!byLine.has(k)) { imports.push(k); byLine.set(k, { kind: "import", note: "imports " + other.split("/").pop() }); }
+    importedNames(path, imp.stmt, imp.alias).forEach(n => names.add(n));
+  }
   const mention = imports.length ? null : new RegExp(`\\b${other.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^\w]/g, "\\$&")}\\b`);   // no import: look for the file's name
   const use = names.size ? new RegExp(`\\b(${[...names].map(n => n.replace(/\$/g, "\\$")).join("|")})\\b`) : mention;
-  if (use) lines.forEach((l, k) => {
-    if (uses.length >= MAX_USE_MARKS || byLine.has(k + 1) || /^\s*(#|\/\/|\*)/.test(l)) return;
+  const kind = IMPORT_LANG[langOf(path)], code = kind ? blankComments(kind, text) : text;   // uses in comments don't count
+  if (use) code.split("\n").forEach((l, i) => {
+    const k = i + 1;
+    if (uses.length >= MAX_USE_MARKS || byLine.has(k)) return;
     const m = use.exec(l);
-    if (m) { uses.push(k + 1); byLine.set(k + 1, { kind: "use", note: names.size ? "uses " + m[1] : "mentions it" }); }
+    if (m) { uses.push(k); byLine.set(k, { kind: "use", note: names.size ? "uses " + m[1] : "mentions it" }); }
   });
+  imports.sort((a, b) => a - b);
   return { other, byLine, imports, uses, inferred: !imports.length };
 }
 function linkBanner(link) {
@@ -3063,7 +3121,9 @@ function getGraph() {
   if (graph) return graph;
   const resolver = makeResolver(buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path));
   graph = { resolver, out: new Map(), usedBy: null, scanning: null, ready: null };
-  graph.ready = bmap.has("go.mod") ? pullCode("go.mod").then(c => { const m = c && /^module\s+(\S+)/m.exec(c.text); if (m) resolver.setGoModule(m[1]); }) : Promise.resolve();
+  const mods = [...bmap.keys()].filter(p => p === "go.mod" || p.endsWith("/go.mod")).slice(0, 50);   // every Go module in the repo
+  graph.ready = Promise.all(mods.map(p => pullCode(p).then(c => { const m = c && /^module\s+(\S+)/m.exec(c.text); return m ? { dir: p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "", module: m[1] } : null; })))
+    .then(list => resolver.setGoModules(list.filter(Boolean)));
   return graph;
 }
 function canImport(path) { return !!IMPORT_LANG[langOf(path)]; }
@@ -3102,36 +3162,46 @@ function scanUsedBy(progress) {
 // entry points), and the top-level functions and classes of the files that matter most. Built once per city.
 const DIGEST_MAX_FILES = 600, DIGEST_CHARS = 20000, OUTLINE_FILES = 45;   // kept small so Gemini still answers quickly
 const MANIFESTS = /^(package\.json|pyproject\.toml|setup\.cfg|setup\.py|go\.mod|Cargo\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle(\.kts)?)$/i;
-const OUTLINE_RES = {
-  py: /^(?:async\s+)?(?:class|def)\s+(\w+)/gm,
-  js: /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|interface|type|enum|const|let)\s+([\w$]+)/gm,
-  go: /^(?:func(?:\s+\([^)]*\))?|type)\s+(\w+)/gm,
-  java: /^\s*(?:public\s+|protected\s+|abstract\s+|final\s+|static\s+)*(?:class|interface|enum|record|fun|object)\s+(\w+)/gm,
-  rb: /^\s{0,2}(?:class|module|def)\s+([\w:.?!]+)/gm,
-  rs: /^\s*pub(?:\([^)]*\))?\s+(?:fn|struct|enum|trait|type|mod)\s+(\w+)/gm,
-  php: /^\s*(?:abstract\s+|final\s+)?(?:class|interface|trait|function)\s+(\w+)/gm,
-  c: /^[\w\s\*]+?\b(\w+)\s*\([^;]*\)\s*\{/gm,
+const OUTLINE_RES = {   // top-level definitions (and, where marked, ones one level in)
+  py: /^(?:async[ \t]+)?(?:class|def)[ \t]+(\w+)/gm,
+  js: /^(?:export[ \t]+(?:default[ \t]+)?)?(?:declare[ \t]+)?(?:abstract[ \t]+)?(?:async[ \t]+)?(?:function\*?|class|interface|type|enum|const|let|namespace)[ \t]+([\w$]+)/gm,
+  go: /^(?:func(?:[ \t]+\([^)\n]*\))?|type)[ \t]+(\w+)/gm,
+  java: /^[ \t]*(?:(?:public|protected|private|abstract|final|static|sealed|data|open|internal|inline|enum|annotation|case)[ \t]+)*(?:class|interface|enum|record|fun|object|trait)[ \t]+(\w+)/gm,
+  rb: /^[ \t]{0,2}(?:class|module|def)[ \t]+([\w:.?!]+)/gm,
+  rs: /^[ \t]{0,4}(?:pub(?:\([^)\n]*\))?[ \t]+)?(?:(?:async|unsafe|const|extern(?:[ \t]+"\w+")?)[ \t]+)*(?:fn|struct|enum|trait|type|mod|union)[ \t]+(\w+)/gm,
+  php: /^[ \t]*(?:(?:abstract|final|public|protected|private|static|readonly)[ \t]+)*(?:class|interface|trait|enum|function)[ \t]+&?(\w+)/gm,
+  c: /^[\w \t*]{1,200}?\b(\w+)[ \t]*\([^;{]*\)[ \t]*\{/gm,
 };
-// A file's functions and classes with the line each starts on (Python methods too, one level in).
-const OUTLINE_KIND = /\b(class|def|function|interface|type|enum|const|let|func|struct|trait|mod|module|record|object|fn|fun)\b/;
+// Methods with a modifier in front (Java, Kotlin, C#-style), one level in.
+const OUTLINE_METHOD = { java: /^[ \t]+(?:(?:public|protected|private|static|final|abstract|synchronized|override|open|suspend|internal|default)[ \t]+)+(?:fun[ \t]+|[\w<>\[\],.? \t]{1,80}?[ \t]+)?(\w+)[ \t]*\(/gm };
+// A file's functions and classes with the line each starts on (Python methods too, one level in). Comments and
+// docstrings are blanked first, so example code in them isn't listed.
+const OUTLINE_KIND = /\b(class|def|function|interface|type|enum|const|let|func|struct|trait|mod|module|record|object|fn|fun|namespace|union)\b/;
 function outlineItems(path, text, max = 80) {
   const kind = IMPORT_LANG[langOf(path)], re = OUTLINE_RES[kind];
   if (!re) return [];
+  text = blankComments(kind, text);
   const starts = [0];   // offset of each line, to turn a match position into a line number
   for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
   const lineAt = pos => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= pos) lo = mid; else hi = mid - 1; } return lo + 1; };
   const items = [], seen = new Set();
-  const add = (m, nested) => {
-    const name = m[1] || m[2], k = (OUTLINE_KIND.exec(m[0]) || [""])[0], line = lineAt(m.index);
-    if (!name || /^(if|for|while|switch|return)$/.test(name) || seen.has(line)) return;
+  const add = (m, nested, forceKind) => {
+    const name = m[1] || m[2], k = forceKind || (OUTLINE_KIND.exec(m[0]) || [""])[0], line = lineAt(m.index + m[0].length - m[0].trimStart().length);
+    if (!name || /^(if|for|while|switch|return|new|else|catch)$/.test(name) || seen.has(line)) return;
+    const rest = text.slice(m.index + m[0].length, text.indexOf("\n", m.index + m[0].length) >>> 0);
+    if ((k === "const" || k === "let") && /^\s*(?::[^=]*)?=\s*(?:await\s+)?(?:require|import)\s*\(/.test(rest)) return;   // const fs = require("fs") isn't a definition
     seen.add(line); items.push({ name, line, nested, kind: nested ? "method" : k === "def" || k === "func" || k === "fn" || k === "fun" ? "function" : k || "function" });
   };
-  for (const m of text.matchAll(re)) add(m, false);
-  if (kind === "js") for (const m of text.matchAll(/^(?:[\w$]+\.)+([\w$]+)\s*=\s*(?:async\s+)?function\b/gm)) add(m, false);   // app.init = function () {…}
-  if (kind === "py") for (const m of text.matchAll(/^ {4}(?:async\s+)?def\s+(\w+)/gm)) add(m, true);
+  for (const m of text.matchAll(re)) add(m, kind === "rs" && /^[ \t]/.test(m[0]));
+  if (OUTLINE_METHOD[kind]) for (const m of text.matchAll(OUTLINE_METHOD[kind])) add(m, true);
+  if (kind === "js") for (const m of text.matchAll(/^(?:[\w$]+\.)+([\w$]+)[ \t]*=[ \t]*(?:async[ \t]+)?function\b/gm)) add(m, false);   // app.init = function () {…}
+  if (kind === "py") {
+    for (const m of text.matchAll(/^ {4}(?:async[ \t]+)?def[ \t]+(\w+)/gm)) add(m, true);
+    for (const m of text.matchAll(/^ {4}class[ \t]+(\w+)/gm)) add(m, true, "class");   // e.g. under "if TYPE_CHECKING:"
+  }
   items.sort((a, b) => a.line - b.line);
   let top = null;   // one level in: a method inside a class, a nested function anywhere else
-  for (const i of items) { if (i.kind === "method") i.kind = top && top.kind === "class" ? "method" : "nested"; else top = i; }
+  for (const i of items) { if (i.kind === "method") i.kind = top && /class|trait|interface|object|enum|record/.test(top.kind) ? "method" : "nested"; else if (!i.nested) top = i; }
   return items.slice(0, max);
 }
 function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
@@ -3417,12 +3487,12 @@ function focusStepWindow() {
   if (key) { p.line = key.line; p.dirty = true; }
   toFront(p); renderViewer();
 }
-// The lines where a file imports the next step's file, found by running the import parser line by line.
-function handoffLines(path, text, next) {
-  const r = getGraph().resolver, out = [];
-  text.split("\n").forEach((line, k) => {
-    if (out.length < 3 && /\b(import|require|include|use|mod|from)\b/.test(line) && r.deps(path, line).includes(next)) out.push({ line: k + 1, text: line.trim().slice(0, 120) });
-  });
+function handoffLines(path, text, next) {   // the lines where a file imports the next step's file
+  const lines = text.split("\n"), seen = new Set(), out = [];
+  for (const imp of getGraph().resolver.importsOf(path, text, [next])) {
+    const k = lineOfIndex(text, imp.index);
+    if (!seen.has(k) && out.length < 3) { seen.add(k); out.push({ line: k, text: (lines[k - 1] || "").trim().slice(0, 120) }); }
+  }
   return out;
 }
 async function loadKeyLines(w) {

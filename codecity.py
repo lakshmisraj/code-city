@@ -26,7 +26,7 @@ CACHE = os.path.join(os.path.expanduser("~"), ".cache", "code-city")
 CODE_EXT = set("""ts tsx mts cts js jsx mjs cjs vue svelte py ipynb go rs java scala kt kts c h cc cpp hpp cxx cs rb php
 swift css scss sass less html htm sql sh bash zsh ps1 md mdx rst txt json yml yaml toml ini xml gradle lock
 dart lua ex exs hs ml r jl zig elm clj""".split())
-SPECIAL = {"dockerfile", "makefile", "gemfile", "rakefile", "procfile"}
+SPECIAL = {"dockerfile", "makefile", "gemfile", "rakefile", "procfile", "go.mod"}
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", "out", "coverage", "venv", ".venv", "env",
              "__pycache__", "target", "vendor", ".idea", ".vscode", ".turbo", ".cache", "Pods", "DerivedData", ".gradle"}
 MAX_FILES, MAX_BYTES, MAX_COMMITS, PREVIEW_LINES = 4000, 600 * 1024, 1500, 80
