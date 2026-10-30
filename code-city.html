@@ -321,6 +321,18 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .pane-link b { color: var(--ink); font-family: var(--f-mono); }
 .pane-link .linkish { font-size: 11px; }
 .pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
+/* Ask sits in the top-right corner (except on phones, where it stays in the card); the right-hand panels start
+   below it. --ask-h is its height, kept up to date from the page. */
+@media (min-width: 641px) {
+  #askForm {
+    position: fixed; z-index: 8; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+    width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 14px; gap: 8px;
+    border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--street) 94%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  body.ask-on #side, body.ask-on #drawer { top: calc(24px + var(--ask-h, 96px) + env(safe-area-inset-top, 0px)); }
+  body.ask-on #drawer { max-height: calc(100% - 40px - var(--ask-h, 96px) - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+}
 /* File details share the right-hand column with the side panel where the two don't fit side by side. */
 @media (min-width: 641px) and (max-width: 1149px) {
   body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
@@ -2588,8 +2600,17 @@ async function initAsk() {
   try { const r = await fetch(ASK_URL, { cache: "no-store" }); askEnabled = r.ok && !!(await r.json()).enabled; }
   catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
   $("askForm").hidden = !askEnabled;
+  document.body.classList.toggle("ask-on", askEnabled);
 }
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
+new ResizeObserver(() => document.body.style.setProperty("--ask-h", $("askForm").offsetHeight + "px")).observe($("askForm"));   // the panels below it move with it
+// The card's blur would pin a fixed box to the card, so on wider screens Ask moves out to the page itself; on
+// phones it goes back into the card, before GitHub access.
+{
+  const wide = matchMedia("(min-width: 641px)"), form = $("askForm"), home = form.nextElementSibling;
+  const placeAsk = () => { if (wide.matches) document.body.appendChild(form); else home.parentNode.insertBefore(form, home); };
+  wide.addEventListener("change", placeAsk); placeAsk();
+}
 async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
@@ -2835,7 +2856,8 @@ let paneZ = 10;
 function freeArea() {
   const wide = innerWidth > 1099, tl = document.body.classList.contains("has-timeline") ? 76 : 0;
   // clear of the left card and of whichever right-hand panels are open (they stay open beside the windows)
-  const panelsLeft = [sidePanel, drawer].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
+  const ask = document.getElementById("askForm"), askFloats = !ask.hidden && getComputedStyle(ask).position === "fixed";
+  const panelsLeft = [sidePanel, drawer, ...(askFloats ? [ask] : [])].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
   const left = wide ? 344 : 16, right = wide && panelsLeft.length ? Math.min(...panelsLeft) - 12 : innerWidth - 16;
   const top = wide ? 16 : Math.min(innerHeight * 0.35, 220), bottom = innerHeight - 16 - tl - 48;
   return { x: left, y: top, w: Math.max(260, right - left), h: Math.max(200, bottom - top) };
