@@ -29,6 +29,7 @@ body {
   overflow: hidden; font-size: 14px; line-height: 1.45;
 }
 body.has-timeline { --tl-h: 76px; }
+.tl-close { padding: 6px 9px; color: var(--ink-dim); }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; touch-action: none; }
 
@@ -141,7 +142,7 @@ button:focus-visible, input:focus-visible, .linkish:focus-visible { outline: 2px
 #qList .path { font: 12px var(--f-mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #qList .path i { font-style: normal; color: var(--ink-dim); }
 #qList .meta { font-size: 11px; color: var(--ink-dim); }
-#qList li.more { cursor: default; font-size: 11px; color: var(--ink-dim); }
+#qList li.more { font-size: 11px; color: var(--sodium); }
 .ramp .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #22305c, #2f4a8f, #4f6fc4, #c58a3c, #e8822c, #f05a2a, #ff9a6a); }
 .ramp .ends { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; }
 .key { font-size: 12px; color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
@@ -194,8 +195,11 @@ details.more[open] summary { margin-bottom: 8px; }
 .wf-step-head { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: baseline; font: 700 14px var(--f-display); color: var(--ink); }
 .wf-step-head .n { font: 12px var(--f-mono); color: var(--ink-dim); }
 .wf-step-head:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
-.outline li { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; }
-.outline li:hover { background: var(--street-2); }
+.outline .oline { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; }
+.outline .oline:hover, .outline .oline:focus-visible { background: var(--street-2); }
+.outline .oline:focus-visible, .lnum:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+.lnum { all: unset; cursor: pointer; color: var(--ink-dim); margin-right: 6px; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.lnum:hover { color: var(--sodium); }
 .outline li.nested { padding-left: 18px; }
 .outline .kind { margin-left: 8px; font-size: 10px; color: var(--ink-dim); opacity: .8; }
 .todos.parts li code { font: 11px var(--f-mono); color: var(--ink); word-break: break-all; }
@@ -266,7 +270,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 #viewer { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
 .viewer-panes { position: absolute; inset: 0; }
 .win-tabs {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(12px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
   max-width: min(900px, calc(100vw - 32px)); overflow-x: auto; pointer-events: auto; display: flex; gap: 4px; padding: 4px;
   background: color-mix(in srgb, var(--street) 94%, transparent); border: 1px solid var(--line); border-radius: 10px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,.35);
@@ -289,15 +293,16 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   background: color-mix(in srgb, var(--street) 97%, transparent); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 14px 40px rgba(0,0,0,.5);
 }
-.pane.rolled { resize: none; min-height: 0; }
-.pane.rolled > :not(.pane-head) { display: none; }
-.pane.rolled .pane-head { border-bottom: 0; }
+.pane[hidden] { display: none; }
 .pane.front { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); }
 .flink { all: unset; cursor: pointer; font-family: var(--f-mono); font-size: .92em; color: var(--sodium); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--sodium) 40%, transparent); text-underline-offset: 2px; }
 .flink:hover, .flink:focus-visible { text-decoration-color: var(--sodium); }
 .ask-answer a, .explain-text a, .parts a { color: var(--sodium); }
 .pane-kind { font: 700 10px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
 .pane-split { flex: 1; min-height: 0; display: flex; }
+.pane.narrow .pane-split { flex-direction: column; }
+.pane.narrow .code-col, .pane.narrow .explain-col { flex: 0 0 50%; min-height: 0; }
+.pane.narrow .explain-col { border-left: 0; border-top: 1px solid var(--line); }
 .code-col { flex: 0 0 50%; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; }
 .explain-col { flex: 0 0 50%; min-width: 0; box-sizing: border-box; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; border-left: 1px solid var(--line); }
 .explain-col.solo { flex: 1 1 auto; border-left: 0; }
@@ -323,7 +328,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
 /* Ask sits in the top-right corner (except on phones, where it stays in the card); the right-hand panels start
    below it. --ask-h is its height, kept up to date from the page. */
-@media (min-width: 641px) {
+@media (min-width: 760px) {
   #askForm {
     position: fixed; z-index: 8; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
     width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 14px; gap: 8px;
@@ -338,7 +343,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
   body.side-open.drawer-open #drawer { top: calc(50% + 6px); bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; }
 }
-@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) { #viewer { z-index: 8; } }
+@media (max-width: 1099px), (max-height: 500px) and (pointer: coarse) { #viewer { z-index: 8; } }   /* no room beside the panels: windows go on top */
 
 #timeline {
   position: fixed; z-index: 6;
@@ -371,9 +376,13 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 #hint {
   position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
   bottom: calc(14px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--ink-dim); background: color-mix(in srgb, var(--street) 80%, transparent);
-  border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; white-space: nowrap;
 }
+#hint button { all: unset; cursor: pointer; padding: 2px 6px; border-radius: 999px; color: var(--ink-dim); }
+#hint button:hover, #hint button:focus-visible { color: var(--ink); background: var(--street-2); }
+body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window tabs take its place */
 #drop {
   position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
   background: color-mix(in srgb, var(--night) 80%, transparent); border: 3px dashed var(--sodium);
@@ -470,6 +479,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
     <div class="actions">
+      <button id="histBtn" type="button" aria-expanded="false" hidden>Play history</button>
       <button id="mapBtn" type="button" aria-pressed="false">How it's built</button>
       <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
     </div>
@@ -561,6 +571,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 <div id="toast" role="status" aria-live="polite"></div>
 
 <div id="timeline" hidden>
+  <button id="tlClose" type="button" class="tl-close" aria-label="Hide the history bar" title="Hide the history bar">▾</button>
   <button id="playBtn" type="button" class="primary">Play history</button>
   <div class="tl-main">
     <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
@@ -572,7 +583,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 
 
 <div id="tip" hidden></div>
-<div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building or folder &middot; shift-click to view code</div>
+<div id="hint"><span>Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building or folder &middot; shift-click to view code</span><button type="button" id="hintClose" aria-label="Close the guide" title="Close the guide">✕</button></div>
 <div id="drop" hidden>Drop a folder or city.json</div>
 <div id="busy" hidden role="status" aria-live="polite"><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
 
@@ -1200,10 +1211,12 @@ let city = new THREE.Group(); scene.add(city);
 let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
 let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
 let panes = [];   // files open in the code viewer: [{ path, text, partial, line }]
+let cityGen = 0;   // bumped for each new city; work that finishes after a switch checks it and stops
 const FOLDER_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4330, emissive: 0xf2a541, emissiveIntensity: 0.18, roughness: 0.9 });
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function clearCity() {
+  cityGen++;
   scene.remove(city);
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = new THREE.Group(); scene.add(city);
@@ -1298,8 +1311,8 @@ function buildCity(data) {
   const tags = { sample: "Example", folder: "Folder", git: "Git repo", json: "Git repo", github: "GitHub" };
   document.getElementById("mode").textContent = tags[data.source] || "Repo";
   document.getElementById("repoName").textContent = data.name;
-  document.body.classList.toggle("has-timeline", !!hist);
-  document.getElementById("timeline").hidden = !hist;
+  if (!hist) tlOpen = false;
+  syncTimeline();
   document.getElementById("cHeat").disabled = !hist;
   document.getElementById("cHeat").title = hist ? "" : "Needs git history: build a repo or open a city.json";
   if (!hist && colorMode === "heat") setColorMode("lang");
@@ -1453,6 +1466,20 @@ document.getElementById("cHeat").onclick = () => { setColorMode("heat"); documen
 document.getElementById("cImp").onclick = () => { setColorMode("imports"); document.getElementById("howTo").open = true; };
 
 // ---------- timeline ----------
+// The history bar stays out of the way until "Play history" (in the left card) opens it; ▾ hides it again.
+let tlOpen = false;
+function syncTimeline() {
+  const show = !!hist && tlOpen, btn = document.getElementById("histBtn");
+  document.body.classList.toggle("has-timeline", show);
+  document.getElementById("timeline").hidden = !show;
+  btn.hidden = !hist; btn.setAttribute("aria-expanded", show); btn.textContent = show ? "Hide history" : "Play history";
+  if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
+  if (typeof renderViewer === "function" && panes.length) renderViewer();
+}
+try { if (localStorage.getItem("codecity.hintClosed") === "1") document.body.classList.add("hint-closed"); } catch (e) { /* storage blocked */ }
+document.getElementById("hintClose").onclick = () => { document.body.classList.add("hint-closed"); try { localStorage.setItem("codecity.hintClosed", "1"); } catch (e) { /* storage blocked */ } };
+document.getElementById("histBtn").onclick = () => { tlOpen = !tlOpen; syncTimeline(); if (tlOpen) document.getElementById("playBtn").focus(); };
+document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); document.getElementById("histBtn").focus(); };
 const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
 const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into about 40 seconds
 let speedIdx = 0, playAcc = 0;
@@ -1617,7 +1644,7 @@ async function renderOutline(path) {
   const items = outlineItems(path, c.text);
   box.innerHTML = (items.length
     ? `<div><h3>Outline <span class="count">${fmt(items.length)}</span></h3><ul class="todos parts outline">${items.map(i =>
-        `<li class="${i.nested ? "nested" : ""}" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></li>`).join("")}</ul>` +
+        `<li class="${i.nested ? "nested" : ""}"><button type="button" class="oline" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></button></li>`).join("")}</ul>` +
       (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</div>`
     : "") + `<div><h3>First lines</h3><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></div>`;
 }
@@ -1700,7 +1727,7 @@ const qInput = document.getElementById("q"), qInfo = document.getElementById("qI
 // Matches light up in their own colour (mint, unlike the orange of imports and answers), and a dropdown lists
 // them, best first: file names that start with the search, then names that contain it, then paths.
 const qList = document.getElementById("qList");
-let qHits = [], qActive = -1;
+let qHits = [], qActive = -1, qShown = 12;
 function applySearch() {
   query = qInput.value.trim().toLowerCase();
   let n = 0;
@@ -1712,16 +1739,16 @@ function applySearch() {
   const score = b => { const p = b.userData.f.path.toLowerCase(), name = p.split("/").pop(); return name.startsWith(query) ? 0 : name.includes(query) ? 1 : 2; };
   qHits.sort((a, b) => score(a) - score(b) || a.userData.f.path.length - b.userData.f.path.length);
   qInfo.textContent = query ? (n ? `${n} building${n === 1 ? "" : "s"} lit up` : "No files match") : "";
-  qActive = -1;
+  qActive = -1; qShown = 12;
   renderQList();
 }
 function renderQList() {
   const show = !!query && qHits.length > 0 && document.activeElement === qInput;
   qList.hidden = !show; qInput.setAttribute("aria-expanded", show);
   if (!show) return;
-  qList.innerHTML = qHits.slice(0, 12).map((b, i) => `<li role="option" id="qOpt${i}" aria-selected="${i === qActive}" data-file="${esc(b.userData.f.path)}">
+  qList.innerHTML = qHits.slice(0, qShown).map((b, i) => `<li role="option" id="qOpt${i}" aria-selected="${i === qActive}" data-file="${esc(b.userData.f.path)}">
     <span class="path">${pathHtml(b.userData.f.path)}</span><span class="meta">${fmt(b.userData.lines)} lines</span></li>`).join("") +
-    (qHits.length > 12 ? `<li class="more" aria-disabled="true">and ${fmt(qHits.length - 12)} more lit up in the city</li>` : "");
+    (qHits.length > qShown ? `<li class="more" data-more role="option" aria-selected="false">Show ${fmt(Math.min(qHits.length - qShown, 50))} more of ${fmt(qHits.length - qShown)}</li>` : "");
   if (qActive >= 0) qInput.setAttribute("aria-activedescendant", "qOpt" + qActive); else qInput.removeAttribute("aria-activedescendant");
 }
 function pickHit(i) { const b = qHits[i]; if (!b) return; qList.hidden = true; qInput.setAttribute("aria-expanded", "false"); openDrawer(b); }
@@ -1729,15 +1756,19 @@ qInput.addEventListener("input", applySearch);
 qInput.addEventListener("focus", renderQList);
 qInput.addEventListener("blur", () => setTimeout(renderQList, 150));   // let a click on the list land first
 qInput.addEventListener("keydown", e => {
-  const max = Math.min(qHits.length, 12);
+  const max = Math.min(qHits.length, qShown);
   if (e.key === "ArrowDown" && max) { e.preventDefault(); qActive = (qActive + 1) % max; renderQList(); }
   else if (e.key === "ArrowUp" && max) { e.preventDefault(); qActive = (qActive - 1 + max) % max; renderQList(); }
   else if (e.key === "Enter" && max) { e.preventDefault(); pickHit(qActive < 0 ? 0 : qActive); }
 });
-qList.addEventListener("mousedown", e => { const li = e.target.closest("[data-file]"); if (li) { e.preventDefault(); pickHit(qHits.findIndex(b => b.userData.f.path === li.dataset.file)); } });
+qList.addEventListener("mousedown", e => {
+  if (e.target.closest("[data-more]")) { e.preventDefault(); qShown += 50; return renderQList(); }
+  const li = e.target.closest("[data-file]"); if (li) { e.preventDefault(); pickHit(qHits.findIndex(b => b.userData.f.path === li.dataset.file)); } });
 
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
+  const inPane = e.target.closest && e.target.closest(".pane");
+  if (inPane) { const p = panes.find(q => q.el === inPane); if (p) { p.collapsed = true; renderViewer(); return; } }
   if (e.target.matches && e.target.matches("input, textarea")) { e.target.blur(); return; }
   if (!drawer.hidden) closeDrawer();
   else if (!sidePanel.hidden) closeSide();
@@ -2037,7 +2068,7 @@ hp("hpLoad").onclick = async () => {
   currentRange = rangeCode(plan());
   const signal = newLoad();
   busy.hidden = false;
-  try { await loadHistory(plan(), signal); }
+  try { await loadHistory(plan(), signal); if (hist) { tlOpen = true; syncTimeline(); } }   // history was asked for: show its bar
   catch (e) { if (!isAbort(e)) setRepoStatus(e.message); }
   finally { doneLoading(signal); }
 };
@@ -2393,7 +2424,7 @@ function stepToJSON(st) {
     real: st.real ? [...st.real].map(([k, v]) => [k, [...v]]) : null,
     errorHtml: st.loading ? "This explanation was interrupted. Press Explain again." : st.errorHtml };
 }
-function stepFromJSON(j) { return { ...j, loading: false, partial: new Set(j.partial || []), real: j.real ? new Map(j.real.map(([k, v]) => [k, new Set(v)])) : null }; }
+function stepFromJSON(j) { return { ...j, errorHtml: j.errorHtml ? esc(String(j.errorHtml).replace(/<[^>]*>/g, "")) : j.errorHtml, loading: false, partial: new Set(j.partial || []), real: j.real ? new Map(j.real.map(([k, v]) => [k, new Set(v)])) : null }; }
 function saveSession() {
   if (!currentRepo) return;
   const geo = p => ({ x: p.x, y: p.y, w: p.w, h: p.h, collapsed: !!p.collapsed });
@@ -2414,12 +2445,13 @@ function restoreSession() {
       const st = stepFromJSON(w.st);
       explainState.chain.push(st);
       if (addPane({ kind: "explain", st, path: st.paths[0], ...geo })) renderViewer();
-    } else pullCode(w.path).then(c => {
+    } else { const gen = cityGen; pullCode(w.path).then(c => {
+      if (gen !== cityGen) return;
       const st = w.st ? stepFromJSON(w.st) : null;
       if (!(geo.w > 150 && geo.h > 100)) Object.assign(geo, { x: undefined, y: undefined, w: undefined, h: undefined });   // a bad saved size: place it afresh
       if (st) explainState.chain.push(st);
       if (c && !codePane(w.path) && addPane({ kind: "code", path: w.path, text: c.text, partial: c.partial, line: w.line, link: null, st, ...geo })) { renderViewer(); drawLinks(); }
-    });
+    }); }
   }
   if (snap.ask) { askState = { ...snap.ask, files: new Map(snap.ask.order.map(f => [f.path, f.why])) }; openSide("ask"); }
   drawLinks();
@@ -2578,6 +2610,10 @@ function mapRole(path) {   // for the city's colours while the panel is open
 }
 
 function renderHotspots() {
+  const focused = document.activeElement && sideBody.contains(document.activeElement) && document.activeElement.dataset.path;
+  try { renderHotspotRows(); } finally { if (focused) { const el = sideBody.querySelector(`[data-path="${CSS.escape(focused)}"]`); if (el) el.focus(); } }
+}
+function renderHotspotRows() {
   $("sideTitle").textContent = "Hotspots";
   if (!hist) {
     $("sideSub").textContent = "";
@@ -2720,9 +2756,9 @@ async function initAsk() {
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 new ResizeObserver(() => document.body.style.setProperty("--ask-h", $("askForm").offsetHeight + "px")).observe($("askForm"));   // the panels below it move with it
 // The card's blur would pin a fixed box to the card, so on wider screens Ask moves out to the page itself; on
-// phones it goes back into the card, before GitHub access.
+// narrower ones (where it would cover the card) it stays in the card, before GitHub access.
 {
-  const wide = matchMedia("(min-width: 641px)"), form = $("askForm"), home = form.nextElementSibling;
+  const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = form.nextElementSibling;
   const placeAsk = () => { if (wide.matches) document.body.appendChild(form); else home.parentNode.insertBefore(form, home); };
   wide.addEventListener("change", placeAsk); placeAsk();
 }
@@ -2730,8 +2766,10 @@ async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
   if (!oauthToken) { status.innerHTML = needSignin("ask questions"); return; }
+  const gen = cityGen;
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
+  if (gen !== cityGen) { status.textContent = ""; return; }
   status.textContent = "Asking Gemini… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
@@ -2741,6 +2779,7 @@ async function askCity(question) {
       body: JSON.stringify({ question: q, repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
+    if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
     if (!r.ok) {
       status.innerHTML = esc(data.error || `Couldn't get an answer (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
@@ -2749,7 +2788,6 @@ async function askCity(question) {
     askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])) };
     status.textContent = "";
     openSide("ask");
-    if (data.files.length) explainCode(explainState, data.files.map(f => f.path), q);
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function renderAsk() {
@@ -2761,7 +2799,8 @@ function renderAsk() {
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    `<p class="side-note">${askState.order.length ? "Gemini read the code of the top files: its explanation opens in its own window." : ""}</p>`;
+    (askState.order.length ? `<div class="side-actions"><button type="button" class="primary" data-explain-answer>Explain the code of the top ${Math.min(MAX_EXPLAIN, askState.order.length)} files</button></div>
+      <p class="side-note">Gemini picked these from the repo's structure; explaining reads their code and opens it in its own window.</p>` : "");
 }
 function explainHtml(x) {
   const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
@@ -2778,7 +2817,7 @@ function explainHtml(x) {
       <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
       <p class="explain-text">${rich(f.explanation)}</p>
-      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code viewer">L${pt.line}</em><b>${esc(pt.name)}</b>${rich(pt.note)}</li>`).join("")}</ul></div>` : ""}
+      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><b>${esc(pt.name)}</b>${rich(pt.note)}</li>`).join("")}</ul></div>` : ""}
       ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how)).join("")}</ol></div>` : ""}
     </section>`).join("");
 }
@@ -2792,7 +2831,10 @@ function explainClicks(e) {
   else return false;
   return true;
 }
-sideBody.addEventListener("click", e => { if (explainClicks(e)) e.stopPropagation(); }, true);
+sideBody.addEventListener("click", e => {
+  if (sideMode === "ask" && askState && e.target.closest("[data-explain-answer]")) { e.stopPropagation(); return explainCode(explainState, askState.order.map(f => f.path), askState.question); }
+  if (explainClicks(e)) e.stopPropagation();
+}, true);
 
 // ---------- reading and explaining code ----------
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
@@ -2809,7 +2851,8 @@ async function pullCode(path) {
   const gh = codeRepo();
   if (gh) {
     const url = `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${encodeURIComponent(gh.branch)}/${path.split("/").map(encodeURIComponent).join("/")}`;
-    if (!codeCache.has(url)) codeCache.set(url, fetch(url).then(r => r.ok ? r.text() : null).catch(() => null));
+    if (!codeCache.has(url)) codeCache.set(url, fetch(url).then(r => r.ok ? r.text() : null).catch(() => null)
+      .then(t => { if (t == null) codeCache.delete(url); return t; }));   // a failed download is tried again next time
     const text = await codeCache.get(url);
     if (text != null) return { path, text: NB_RE.test(path) ? notebookCode(text) : text, partial: false };
   }
@@ -2818,14 +2861,17 @@ async function pullCode(path) {
 // Each explanation opens in its own window and is a step in a chain: Follow on a connected file explains it next.
 let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
 async function explainCode(state, paths, question, from) {
+  if (!oauthToken) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
+  const gen = cityGen;
+  paths = paths.slice(0, MAX_EXPLAIN);   // the files actually read, so the window's title is true
   const st = { paths, from: from || null, loading: true };
   state.chain.push(st);
-  // One file: the explanation joins its code window, on the right. Several files: a window of their own.
-  let win = paths.length === 1 ? (codePane(paths[0]) || await viewFile(paths[0])) : null;
+  // The explanation opens on its own, with a View code button; if the file's code is already open, it joins that
+  // window on the right instead.
+  let win = paths.length === 1 ? codePane(paths[0]) : null;
   if (win) { win.st = st; widenForExplain(win); win.dirty = true; win.collapsed = false; toFront(win); renderViewer(); }
   else { win = { kind: "explain", st, path: paths[0] }; if (!addPane(win)) return; }
   const redraw = () => { if (win.st === st || win.kind === "explain") { win.dirty = true; renderViewer(); } drawLinks(); };
-  if (!oauthToken) { Object.assign(st, { loading: false, errorHtml: needSignin("have the code explained") }); return redraw(); }
   redraw();
   const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
     .map(c => c.text.length > MAX_CODE_CHARS ? { path: c.path, text: c.text.slice(0, MAX_CODE_CHARS), partial: true } : c);
@@ -2842,6 +2888,7 @@ async function explainCode(state, paths, question, from) {
       body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
     });
     const data = await r.json().catch(() => ({}));
+    if (gen !== cityGen) return;
     if (r.ok) Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
     else st.errorHtml = esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
       (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
@@ -2858,7 +2905,7 @@ async function followLink(from, path) {
   await viewConnection(from, path);   // the two files side by side, with the lines that connect them marked
   const open = explainWindowFor(path);
   if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
-  if (explainState.chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Close some explanations to follow more.`); return; }
+  if (panes.filter(p => p.st).length >= MAX_CHAIN) { toast(`${MAX_CHAIN} explanations are open. Close some to follow more.`); return; }
   explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
 }
 function explainFile(path) {
@@ -2883,7 +2930,8 @@ function addPane(p) {
 async function viewFile(path, line, link) {   // resolves with the file's window, or null
   const have = codePane(path);
   if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; have.collapsed = false; toFront(have); renderViewer(); return have; }
-  const c = await pullCode(path);
+  const gen = cityGen, c = await pullCode(path);
+  if (gen !== cityGen) return null;   // the city changed while it loaded
   if (!c) { toast("The source of that file isn't available here."); return null; }
   if (codePane(path)) return viewFile(path, line, link);   // added while this one was loading
   const p = { kind: "code", path, text: c.text, partial: c.partial, line: line || 0, link: link || null };
@@ -2896,9 +2944,20 @@ async function viewFiles(paths) {   // several at once, in order; the new ones a
   for (const p of paths.slice(0, 6)) await viewFile(p);   // six side by side at most
   tileWindows(paths, since);
 }
+// View code on a one-file explanation: the code joins the same window, on the left, at the same width. If the
+// file's code already has a window, the explanation moves into that one instead.
+async function addCodeTo(p) {
+  const path = p.st.paths[0], other = codePane(path);
+  if (other) { other.st = p.st; other.dirty = true; other.collapsed = false; panes.splice(panes.indexOf(p), 1); widenForExplain(other); toFront(other); renderViewer(); drawLinks(); return; }
+  const gen = cityGen, c = await pullCode(path);
+  if (gen !== cityGen || !panes.includes(p)) return;
+  if (!c) { toast("The source of that file isn't available here."); return; }
+  Object.assign(p, { kind: "code", path, text: c.text, partial: c.partial, line: (p.st.files && p.st.files[0] && p.st.files[0].parts[0] && p.st.files[0].parts[0].line) || 0, link: null, dirty: true });   // opens at its first key part
+  widenForExplain(p); toFront(p); renderViewer();
+}
 // Gives a file's window room for its explanation: twice as wide, kept on screen.
 function widenForExplain(p) {
-  const a = freeArea(), want = Math.min(Math.max(600, a.w - 96), Math.max(p.w || 0, 2 * Math.min(p.w || 560, 560)));   // room left to stagger windows
+  const a = freeArea(), want = Math.min(a.w, Math.max(Math.min(600, a.w), a.w - 96), Math.max(p.w || 0, 2 * Math.min(p.w || 560, 560)));   // room left to stagger windows, never wider than the screen
   if (p.x == null) placeNew(p);
   p.w = want; p.x = Math.max(a.x, Math.min(p.x, a.x + a.w - p.w));
 }
@@ -2987,7 +3046,8 @@ function placeNew(p) {
 function tileWindows(paths, since) {   // lines up the code windows for these files opened since then
   const list = panes.filter(p => p.kind === "code" && paths.includes(p.path) && p.created >= since);
   if (list.length < 2) return;   // a single new window keeps its staggered place, clear of the ones already open
-  const a = freeArea(), n = list.length, cols = n <= 3 ? n : Math.ceil(n / 2), rows = Math.ceil(n / cols), gap = 8;
+  const a = freeArea(), n = list.length, gap = 8;
+  const cols = Math.max(1, Math.min(n <= 3 ? n : Math.ceil(n / 2), Math.floor((a.w + gap) / (260 + gap)))), rows = Math.ceil(n / cols);
   const w = (a.w - gap * (cols - 1)) / cols, h = (a.h - gap * (rows - 1)) / rows;
   list.forEach((p, i) => { Object.assign(p, { x: a.x + (i % cols) * (w + gap), y: a.y + Math.floor(i / cols) * (h + gap), w, h }); });
   renderViewer();
@@ -3002,14 +3062,14 @@ function paneHtml(p) {
     const st = p.st, name = st.paths.length > 1 ? `${st.paths.length} files` : st.paths[0].split("/").pop();
     return `<div class="pane-head"><span class="pane-kind">Explain</span><button type="button" class="explain-path" data-path="${esc(st.paths[0])}">${esc(name)}</button>
         <button type="button" class="mini" data-pane-code>View code</button>
-        <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its title bar" title="Collapse">–</button>
+        <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
         <button type="button" class="mini" data-pane-close aria-label="Close this explanation" title="Close">✕</button></div>
       <div class="explain-col solo">${explainCol(st)}</div>`;
   }
   const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
-  return `<div class="pane-head"><button type="button" class="explain-path" data-path="${key}">${pathHtml(p.path)}</button>
+  return `<div class="pane-head"><button type="button" class="explain-path" data-path="${key}" title="Show it in the city">${pathHtml(p.path)}</button>
       ${askEnabled && !p.st ? `<button type="button" class="mini" data-pane-explain>Explain</button>` : ""}
-      <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its title bar" title="Collapse">–</button>
+      <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
       <button type="button" class="mini" data-pane-close aria-label="Close ${key}" title="Close">✕</button></div>
     <div class="pane-split">
       <div class="code-col">
@@ -3022,7 +3082,7 @@ function paneHtml(p) {
       ${p.st ? `<div class="explain-col"><div class="explain-col-head"><span class="pane-kind">Explanation</span><button type="button" class="mini" data-hide-explain aria-label="Close the explanation">✕</button></div>${explainCol(p.st)}</div>` : ""}
     </div>`;
 }
-// Remembers a window's size after it is resized; a collapsed window is only its title bar, so it's skipped.
+// Remembers a window's size after it is resized; a collapsed (hidden) window reports no size, so it's skipped.
 const paneSize = new ResizeObserver(entries => { for (const e of entries) { const p = panes.find(q => q.el === e.target); if (p && !p.collapsed && !e.target.hidden && e.target.offsetWidth) { p.w = e.target.offsetWidth; p.h = e.target.offsetHeight; } } });
 function renderViewer() {
   const layer = $("viewerPanes");
@@ -3038,11 +3098,10 @@ function renderViewer() {
     p.el.setAttribute("aria-label", p.kind === "explain" ? "Explanation of " + p.st.paths.join(", ") : p.path);
     p.el.classList.toggle("explain-pane", p.kind === "explain" || !!p.st);
     if (p.dirty) { p.el.innerHTML = paneHtml(p); p.dirty = false; p.scroll = true; }
-    // collapsed: rolled up to its title bar, where it stays; the – button becomes + to roll it back down
-    p.el.classList.toggle("rolled", !!p.collapsed);
-    const roll = p.el.querySelector("[data-pane-collapse]");
-    if (roll) { roll.textContent = p.collapsed ? "+" : "–"; roll.setAttribute("aria-label", p.collapsed ? "Expand this window" : "Collapse this window to its title bar"); roll.title = p.collapsed ? "Expand" : "Collapse"; }
-    Object.assign(p.el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.collapsed ? "" : p.h + "px", zIndex: p.z });
+    fitOnScreen(p);
+    p.el.hidden = !!p.collapsed;   // collapsed: put away in its tab, which brings it back
+    p.el.classList.toggle("narrow", p.w < 640);   // too narrow for code and explanation side by side: stacked
+    Object.assign(p.el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px", zIndex: p.z });
     if (p.scroll) {   // bring the marked line to the middle of this window only, not the page
       p.scroll = false;
       const body = p.el.querySelector(".pane-body"), row = p.line && body.querySelector(`[data-l="${p.line}"]`);
@@ -3051,18 +3110,40 @@ function renderViewer() {
   }
   renderTabs();
 }
-// One tab per window: click to bring it to the front, expanded; click the front one to collapse it to its title bar.
-function paneTitle(p) { return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${p.st.paths[0].split("/").pop()}`) : p.path.split("/").pop(); }
+// One tab per window: click to bring it to the front (back from collapsed); click the front one to collapse it.
+// Short names for files: just the name, or with as many of its folders as it takes to tell apart files that
+// share a name (services/filters.py, api/filters.py).
+function shortNames(paths) {
+  const out = new Map(), depth = new Map(paths.map(p => [p, 1]));
+  const label = p => p.split("/").slice(-depth.get(p)).join("/");
+  for (let round = 0; round < 12; round++) {
+    const groups = new Map();
+    for (const p of paths) { const l = label(p); if (!groups.has(l)) groups.set(l, []); groups.get(l).push(p); }
+    let clash = false;
+    for (const [, g] of groups) if (g.length > 1 && new Set(g).size > 1) { clash = true; for (const p of g) if (depth.get(p) < p.split("/").length) depth.set(p, depth.get(p) + 1); }
+    if (!clash) break;
+  }
+  for (const p of paths) out.set(p, label(p));
+  return out;
+}
+function paneTitle(p, names) {
+  const nm = path => (names && names.get(path)) || path.split("/").pop();
+  return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${nm(p.st.paths[0])}`) : nm(p.path);
+}
 let tabsFolded = false;   // the tab strip folded down to one button
 try { tabsFolded = localStorage.getItem("codecity.tabsFolded") === "1"; } catch (e) { /* storage blocked */ }
 function renderTabs() {
   const front = panes.filter(p => !p.collapsed).sort((a, b) => b.z - a.z)[0], el = $("winTabs");
+  const names = shortNames([...new Set(panes.flatMap(p => p.kind === "explain" ? p.st.paths.slice(0, 1) : [p.path]))]);
+  const had = document.activeElement && el.contains(document.activeElement) ? (document.activeElement.dataset.tab != null ? `[data-tab="${document.activeElement.dataset.tab}"]` : document.activeElement.dataset.tabClose != null ? `[data-tab-close="${document.activeElement.dataset.tabClose}"]` : "[data-tabs-fold]") : null;
   el.hidden = !panes.length;
   el.classList.toggle("folded", tabsFolded);
   const fold = `<button type="button" class="tabs-fold" data-tabs-fold aria-expanded="${!tabsFolded}" title="${tabsFolded ? "Show" : "Hide"} the window tabs">${tabsFolded ? `▴ ${panes.length} window${panes.length === 1 ? "" : "s"}` : "▾"}</button>`;
   el.innerHTML = fold + (tabsFolded ? "" : panes.map((p, i) => `<div class="win-tab${p.collapsed ? " collapsed" : ""}${p === front ? " front" : ""}">
-      <button type="button" data-tab="${i}" title="${esc(p.kind === "explain" ? p.st.paths.join(", ") : p.path)}" aria-pressed="${!p.collapsed}">${p.st && p.kind !== "explain" ? `<span class="tab-dot" aria-label="explained"></span>` : ""}${esc(paneTitle(p))}</button>
-      <button type="button" class="tab-x" data-tab-close="${i}" aria-label="Close ${esc(paneTitle(p))}">✕</button></div>`).join(""));
+      <button type="button" data-tab="${i}" title="${esc(p.kind === "explain" ? p.st.paths.join(", ") : p.path)}" aria-pressed="${!p.collapsed}">${p.st && p.kind !== "explain" ? `<span class="tab-dot" aria-label="explained"></span>` : ""}${esc(paneTitle(p, names))}</button>
+      <button type="button" class="tab-x" data-tab-close="${i}" aria-label="Close ${esc(paneTitle(p, names))}">✕</button></div>`).join(""));
+  if (had) { const back = el.querySelector(had) || el.querySelector("[data-tab]"); if (back) back.focus(); }   // keyboard focus survives the redraw
+  document.body.classList.toggle("tabs-open", panes.length > 0);
 }
 $("winTabs").addEventListener("click", e => {
   if (e.target.closest("[data-tabs-fold]")) {
@@ -3077,6 +3158,16 @@ $("winTabs").addEventListener("click", e => {
   if (p === front) p.collapsed = true; else { p.collapsed = false; toFront(p); }
   renderViewer();
 });
+// Keeps a window on screen and no bigger than it (after a restore, a rotate, or a narrower browser window).
+function fitOnScreen(p) {
+  const maxW = innerWidth - 32, maxH = innerHeight - 32;
+  if (p.w > maxW) p.w = Math.max(200, maxW);
+  if (p.h > maxH) p.h = Math.max(140, maxH);
+  p.x = Math.min(Math.max(p.x, 16 - p.w + 120), innerWidth - 120);   // at least its title bar's start stays reachable
+  p.x = Math.max(Math.min(p.x, innerWidth - p.w - 16), 16);
+  p.y = Math.min(Math.max(p.y, 0), innerHeight - 60);
+}
+addEventListener("resize", () => { if (panes.length) renderViewer(); });
 const paneOf = el => panes.find(p => p.el === el.closest(".pane"));
 $("viewerPanes").addEventListener("pointerdown", e => {
   const p = paneOf(e.target);
@@ -3100,12 +3191,12 @@ $("viewerPanes").addEventListener("click", e => {
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
-  if (e.target.closest("[data-pane-collapse]")) { p.collapsed = !p.collapsed; renderViewer(); return; }
+  if (e.target.closest("[data-pane-collapse]")) { p.collapsed = true; renderViewer(); return; }
   if (e.target.closest("[data-hide-explain]")) { p.st = null; p.dirty = true; renderViewer(); drawLinks(); return; }
-  if (e.target.closest("[data-pane-code]")) { if (p.st.paths.length > 1) viewFiles(p.st.paths); else viewFile(p.st.paths[0]); return; }
+  if (e.target.closest("[data-pane-code]")) { if (p.st.paths.length > 1) viewFiles(p.st.paths); else addCodeTo(p); return; }
   if (explainClicks(e)) return;
   const go = e.target.closest("[data-path]");
-  if (go) { const b = bmap.get(go.dataset.path); if (b && b.userData.lines > 0) openDrawer(b); }
+  if (go) { const b = bmap.get(go.dataset.path); if (b && b.userData.lines > 0) { if (go.closest(".pane-head")) flyToBuilding(b); else openDrawer(b); } }
 });
 
 // ---------- connections ----------
@@ -3417,10 +3508,12 @@ const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
 let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
 $("tourBtn").onclick = () => startTour($("askInput").value);
 async function startTour(topic) {
+  const gen = cityGen;
   const status = $("askStatus");
   if (!oauthToken) { status.innerHTML = needSignin("take a tour"); return; }
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
+  if (gen !== cityGen) { status.textContent = ""; return; }
   status.textContent = "Planning a tour… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
@@ -3430,6 +3523,7 @@ async function startTour(topic) {
       body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
+    if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
     if (!r.ok || !Array.isArray(data.workflows)) {
       status.innerHTML = esc(data.error || `Couldn't plan a tour (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
@@ -3498,7 +3592,7 @@ function handoffLines(path, text, next) {   // the lines where a file imports th
 }
 async function loadKeyLines(w) {
   const t = tourState, wf = t.workflows[w];
-  if (wf.lines) return;
+  if (wf.lines && !wf.lines.error) return;   // a failed reading is tried again next time
   wf.lines = { loading: true };
   const redraw = () => { if (tourState === t && t.w === w && sideMode === "tour") renderTour(); };
   const paths = [...new Set(wf.steps.map(st => st.path))];
@@ -3558,10 +3652,10 @@ function renderTour() {
           <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
           <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
-          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><em data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${l.line}</em>${rich(l.note)}</li>`).join("")}</ul></div>`
+          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
           ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
-          ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><em data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${h.line}</em><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
+          ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
         </li>`; }).join("")}</ol>
       <div class="side-actions">
         <button type="button" data-tour="back" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
