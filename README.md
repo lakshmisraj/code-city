@@ -6,7 +6,7 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 
 ### Try it
 
-The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder), **Understand** (how it's built, the workflows tour), **Find** (a file or a pull request), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
+The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (how it's built, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
@@ -55,7 +55,7 @@ The history bar opens when you load history from the history panel (▾ hides it
 - **Folders**: click a district (or its name) to open the folder. Everything outside it dims, and the panel shows its size, the folders inside and its biggest files. The path at the top of a file's or folder's panel links to each parent folder.
 
 - **Hotspots** ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
-- **Show a pull request**: enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
+- **Show a pull request** (under Repo): enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
 - **Copy link** copies a link that reopens the same view, for example
   `https://code-city-view.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
   `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.

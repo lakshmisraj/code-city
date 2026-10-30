@@ -482,11 +482,11 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 <div id="stage" aria-label="3D city where each building is a file"></div>
 
 <nav id="rail" aria-label="Tools">
-  <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder">
+  <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder, show a pull request">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span class="rail-label" aria-hidden="true">Repo</span></button>
   <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built and its workflows">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
-  <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file or a pull request">
+  <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
   <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections and hotspots">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
@@ -522,6 +522,14 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       </div>
       <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
       <small id="repoStatus" aria-live="polite"></small>
+    </form>
+    <form class="field" id="prForm" autocomplete="off" hidden>
+      <label for="prInput">Show a pull request</label>
+      <div class="inline">
+        <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
+        <button type="submit">Show</button>
+      </div>
+      <small id="prStatus" aria-live="polite"></small>
     </form>
     <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
       <div class="label" id="hpTitle">How much history?</div>
@@ -567,14 +575,6 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       </div>
       <small id="qInfo" aria-live="polite"></small>
     </div>
-    <form class="field" id="prForm" autocomplete="off" hidden>
-      <label for="prInput">Show a pull request</label>
-      <div class="inline">
-        <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
-        <button type="submit">Show</button>
-      </div>
-      <small id="prStatus" aria-live="polite"></small>
-    </form>
   </section>
 
   <section class="segment" data-seg="display">
@@ -621,7 +621,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
       <li><b>Understand</b>: how it's built, and the workflows tour.</li>
-      <li><b>Find</b>: a file by name, or a pull request's changes.</li>
+      <li><b>Find</b>: a file by name.</li>
+      <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
       <li><b>Display</b>: colour by language, change heat or imports; show or hide connections; hotspots.</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
