@@ -160,7 +160,9 @@ details.more[open] summary { margin-bottom: 8px; }
   border: 1px solid var(--line); border-radius: 10px;
   display: flex; flex-direction: column; overflow: hidden;
 }
-#drawer { z-index: 7; }
+#drawer { z-index: 7; bottom: auto; max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }   /* as tall as its content */
+.d-stack { display: flex; flex-direction: column; gap: 14px; }
+#dActions:empty, #dLinks:empty, #dTodos:empty, #dCode:empty { display: none; }
 /* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
 @media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 392px); } }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -256,30 +258,52 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .chain-step + .chain-step { border-top: 2px solid color-mix(in srgb, var(--sodium) 45%, transparent); padding-top: 14px; }
 .chain-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ink-dim); }
 .chain-head b { font: 700 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
-.chain-trail { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font: 11px var(--f-mono); color: var(--ink-dim); }
-.chain-trail button { all: unset; cursor: pointer; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
-.chain-trail button:hover, .chain-trail button:focus-visible { color: var(--sodium); }
 .explain-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .todos.parts li em[data-line] { cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .todos.parts li em[data-line]:hover { color: var(--sodium); }
 
 /* Code windows: each file in its own window, moved by its title bar and resized from its corner */
 #viewer { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
-.viewer-head {
+.viewer-panes { position: absolute; inset: 0; }
+.win-tabs {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
-  pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; font-size: 12px; color: var(--ink-dim);
-  background: color-mix(in srgb, var(--street) 94%, transparent); border: 1px solid var(--line); border-radius: 999px; white-space: nowrap;
+  max-width: min(900px, calc(100vw - 32px)); overflow-x: auto; pointer-events: auto; display: flex; gap: 4px; padding: 4px;
+  background: color-mix(in srgb, var(--street) 94%, transparent); border: 1px solid var(--line); border-radius: 10px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,.35);
 }
-.viewer-head b { font: 700 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
-.viewer-panes { position: absolute; inset: 0; }
+.win-tabs[hidden] { display: none; }
+.tabs-fold { all: unset; cursor: pointer; flex-shrink: 0; padding: 4px 8px; font: 12px var(--f-mono); color: var(--ink-dim); border-radius: 6px; }
+.tabs-fold:hover { color: var(--sodium); }
+.tabs-fold:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
+.win-tab { display: flex; align-items: center; flex-shrink: 0; border: 1px solid transparent; border-radius: 6px; }
+.win-tab.front { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); background: var(--street-2); }
+.win-tab.collapsed { opacity: .65; }
+.win-tab button { all: unset; cursor: pointer; padding: 4px 8px; font: 12px var(--f-mono); color: var(--ink); white-space: nowrap; }
+.win-tab button:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; border-radius: 5px; }
+.win-tab .tab-x { padding: 4px 6px 4px 2px; color: var(--ink-dim); }
+.win-tab .tab-x:hover { color: var(--fire); }
+.tab-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--sodium); margin-right: 6px; vertical-align: 1px; }
 .pane {
   position: absolute; pointer-events: auto; display: flex; flex-direction: column; min-width: 200px; min-height: 140px;
   resize: both; overflow: hidden; box-sizing: border-box;
   background: color-mix(in srgb, var(--street) 97%, transparent); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 14px 40px rgba(0,0,0,.5);
 }
+.pane.rolled { resize: none; min-height: 0; }
+.pane.rolled > :not(.pane-head) { display: none; }
+.pane.rolled .pane-head { border-bottom: 0; }
 .pane.front { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); }
+.flink { all: unset; cursor: pointer; font-family: var(--f-mono); font-size: .92em; color: var(--sodium); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--sodium) 40%, transparent); text-underline-offset: 2px; }
+.flink:hover, .flink:focus-visible { text-decoration-color: var(--sodium); }
+.ask-answer a, .explain-text a, .parts a { color: var(--sodium); }
+.pane-kind { font: 700 10px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sodium); }
+.pane-split { flex: 1; min-height: 0; display: flex; }
+.code-col { flex: 0 0 50%; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; }
+.explain-col { flex: 0 0 50%; min-width: 0; box-sizing: border-box; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; border-left: 1px solid var(--line); }
+.explain-col.solo { flex: 1 1 auto; border-left: 0; }
+.pane-split > .code-col:only-child { flex: 1 1 auto; }
+.explain-col-head { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 -4px; }
+.explain-pane { border-color: color-mix(in srgb, var(--sodium) 35%, var(--line)); }
 .pane-head { cursor: move; touch-action: none; user-select: none; }
 .pane-head button { cursor: pointer; }
 .pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
@@ -300,7 +324,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 /* File details share the right-hand column with the side panel where the two don't fit side by side. */
 @media (min-width: 641px) and (max-width: 1149px) {
   body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
-  body.side-open.drawer-open #drawer { top: calc(50% + 6px); }
+  body.side-open.drawer-open #drawer { top: calc(50% + 6px); bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; }
 }
 @media (max-width: 640px), (max-height: 500px) and (pointer: coarse) { #viewer { z-index: 8; } }
 
@@ -502,10 +526,11 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <button id="closeBtn" type="button" aria-label="Close details">Close</button>
   </div>
   <div class="drawer-body">
+    <div id="dActions"></div>
     <dl class="stats" id="dStats"></dl>
+    <div id="dCode"></div>
     <div id="dLinks"></div>
     <div id="dTodos"></div>
-    <div id="dCode"></div>
   </div>
 </aside>
 
@@ -518,7 +543,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 </aside>
 <section id="viewer" hidden aria-label="Code viewer">
   <div class="viewer-panes" id="viewerPanes"></div>
-  <div class="viewer-head"><b>Code windows</b><span id="viewerNote">Drag a title bar to move, a corner to resize.</span><button type="button" class="mini" id="viewerTile">Tile</button><button type="button" class="mini" id="viewerClose">Close all</button></div>
+  <nav class="win-tabs" id="winTabs" aria-label="Open windows"></nav>
 </section>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -1113,6 +1138,7 @@ function clearCity() {
   city = new THREE.Group(); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
   for (const p of panes) if (p.el) p.el.remove();
+  explainState = { chain: [], files: new Map() }; nameIndex = null;
   panes = []; document.getElementById("viewer").hidden = true;
   graph = null; hoverFocus = null; if (linkGroup) { scene.remove(linkGroup); linkGroup = null; } sparks = [];   // the viewer shows files of the city on screen
 }
@@ -1496,33 +1522,31 @@ function openDrawer(b) {
     document.getElementById("dCode").innerHTML = `<p class="note">Loading the source from GitHub…</p>`;
     loadSource(b);
   } else if (b.userData.lines > 0 && (f.text != null || codeRepo())) {
-    document.getElementById("dCode").innerHTML = `<div id="dOutline"><p class="note">Reading its outline…</p></div>`;
+    document.getElementById("dCode").innerHTML = `<div id="dOutline" class="d-stack"><p class="note">Reading its outline…</p></div>`;
     renderOutline(f.path);
   } else document.getElementById("dCode").innerHTML = `<p class="note">${!f.nowLines ? "This file was deleted before today."
         : fromGitHub ? "GitHub didn't return this file's source."
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
-  if (askEnabled && b.userData.lines > 0 && (f.text != null || codeRepo()))
-    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" class="primary" data-explain>Explain this code</button><button type="button" data-view>View code</button></div>`);
-  else if (b.userData.lines > 0 && (f.text != null || codeRepo()))
-    document.getElementById("dCode").insertAdjacentHTML("afterbegin", `<div class="side-actions"><button type="button" data-view>View code</button></div>`);
+  const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
+  document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button></div>`;
   drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
-// The drawer's outline: the file's functions and classes with their lines; clicking one opens the code there.
-// Files with nothing to outline (config, docs) show their first lines instead.
+// The drawer's outline (the file's functions and classes with their lines; clicking one opens the code there)
+// and its first lines.
 async function renderOutline(path) {
   const c = await pullCode(path);
   const box = document.getElementById("dOutline");
   if (!box || !picked || picked.userData.f.path !== path) return;
   if (!c) { box.innerHTML = `<p class="note">The source of this file isn't available here.</p>`; return; }
   const items = outlineItems(path, c.text);
-  box.innerHTML = items.length
-    ? `<h3>Outline <span class="count">${fmt(items.length)}</span></h3><ul class="todos parts outline">${items.map(i =>
+  box.innerHTML = (items.length
+    ? `<div><h3>Outline <span class="count">${fmt(items.length)}</span></h3><ul class="todos parts outline">${items.map(i =>
         `<li class="${i.nested ? "nested" : ""}" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></li>`).join("")}</ul>` +
-      (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "")
-    : `<h3>First lines</h3><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre>`;
+      (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</div>`
+    : "") + `<div><h3>First lines</h3><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></div>`;
 }
 function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
 
@@ -1552,7 +1576,7 @@ function setFolder(dir) {
 function openFolder(dir) {
   const st = folderStats(dir);
   if (!st.files.length) return;
-  picked = null; setFolder(dir); $("dLinks").innerHTML = ""; drawLinks();
+  picked = null; setFolder(dir); $("dLinks").innerHTML = ""; $("dActions").innerHTML = ""; drawLinks();
   const parts = dir.split("/"), name = parts.pop();
   document.getElementById("dName").textContent = name + "/";
   document.getElementById("dPath").innerHTML = `${crumbs(parts)} · folder`;
@@ -1567,7 +1591,7 @@ function openFolder(dir) {
   document.getElementById("dCode").innerHTML =
     (askEnabled && codeRepo() || askEnabled && biggest.some(b => b.userData.f.text != null)
       ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
-    `<h3>Biggest files${biggest.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify(biggest.slice(0, MAX_PANES).map(b => b.userData.f.path)))}">View ${Math.min(biggest.length, MAX_PANES)} side by side</button>` : ""}</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
+    `<h3>Biggest files${biggest.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify(biggest.slice(0, 6).map(b => b.userData.f.path)))}">View ${Math.min(biggest.length, 6)} side by side</button>` : ""}</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
     (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
   drawer.hidden = false; document.body.classList.add("drawer-open");
   const p = districts.find(d => d.userData.dir === dir);
@@ -1588,10 +1612,7 @@ drawer.addEventListener("click", e => {
   if (file) { const b = bmap.get(file.dataset.file); if (b) openDrawer(b); return; }
   if (folderSel != null && e.target.closest("[data-explain-dir]")) {
     const dir = folderSel, top = folderStats(dir).files.sort((a, b) => b.userData.lines - a.userData.lines).slice(0, MAX_EXPLAIN).map(b => b.userData.f.path);
-    if (tourState) endTour();
-    askState = { question: dir + "/", answer: "", order: [], files: new Map(top.map(p => [p, ""])) };
-    openSide("ask");
-    explainCode(askState, top, `What does the ${dir}/ folder do, how do its main files work, and how does it connect to the rest of the code?`);
+    explainCode(explainState, top, `What does the ${dir}/ folder do, how do its main files work, and how does it connect to the rest of the code?`);
   }
 });
 document.getElementById("closeBtn").onclick = closeDrawer;
@@ -2283,6 +2304,49 @@ function onCityBuilt() {
   document.getElementById("prForm").hidden = !currentRepo;
   applyPendingView();
   syncUrl();
+  restoreSession();
+}
+
+// ---------- coming back to the page ----------
+// Leaving the page (signing in with GitHub, the back button, a reload) loses what was open, so whenever the page
+// is hidden its windows, explanations and Ask answer are saved for this tab, and reopened when the same repo
+// loads again within half an hour.
+const SESSION_KEY = "codecity.session", SESSION_MS = 30 * 60 * 1000;
+function stepToJSON(st) {
+  return { paths: st.paths, from: st.from, summary: st.summary, files: st.files, partial: [...(st.partial || [])],
+    real: st.real ? [...st.real].map(([k, v]) => [k, [...v]]) : null,
+    errorHtml: st.loading ? "This explanation was interrupted. Press Explain again." : st.errorHtml };
+}
+function stepFromJSON(j) { return { ...j, loading: false, partial: new Set(j.partial || []), real: j.real ? new Map(j.real.map(([k, v]) => [k, new Set(v)])) : null }; }
+function saveSession() {
+  if (!currentRepo) return;
+  const geo = p => ({ x: p.x, y: p.y, w: p.w, h: p.h, collapsed: !!p.collapsed });
+  const snap = { at: Date.now(), repo: currentRepo,
+    windows: panes.map(p => ({ kind: p.kind, path: p.path, line: p.line, st: p.st ? stepToJSON(p.st) : null, ...geo(p) })),
+    ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order } : null };
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) { /* storage blocked: nothing to restore */ }
+}
+addEventListener("pagehide", saveSession);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveSession(); });
+function restoreSession() {
+  let snap = null;
+  try { snap = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); } catch (e) { return; }
+  if (!snap || snap.repo !== currentRepo || Date.now() - snap.at > SESSION_MS || panes.length) return;
+  for (const w of snap.windows || []) {
+    const geo = { x: w.x, y: w.y, w: w.w, h: w.h, collapsed: !!w.collapsed };
+    if (w.kind === "explain") {
+      const st = stepFromJSON(w.st);
+      explainState.chain.push(st);
+      if (addPane({ kind: "explain", st, path: st.paths[0], ...geo })) renderViewer();
+    } else pullCode(w.path).then(c => {
+      const st = w.st ? stepFromJSON(w.st) : null;
+      if (!(geo.w > 150 && geo.h > 100)) Object.assign(geo, { x: undefined, y: undefined, w: undefined, h: undefined });   // a bad saved size: place it afresh
+      if (st) explainState.chain.push(st);
+      if (c && !codePane(w.path) && addPane({ kind: "code", path: w.path, text: c.text, partial: c.partial, line: w.line, link: null, st, ...geo })) { renderViewer(); drawLinks(); }
+    });
+  }
+  if (snap.ask) { askState = { ...snap.ask, files: new Map(snap.ask.order.map(f => [f.path, f.why])) }; openSide("ask"); }
+  drawLinks();
 }
 
 const toastEl = document.getElementById("toast");
@@ -2334,6 +2398,32 @@ $("hotBtn").onclick = () => {
   if (hist && colorMode !== "heat") setColorMode("heat");
   openSide("hot");
 };
+// Descriptions from Gemini name files ("app.py", "src/flask/ctx.py") and sometimes web pages: both become links.
+// A file name that several files share links to the shortest path. Web pages open in a new tab, so this page
+// keeps its state.
+let nameIndex = null;   // file name -> paths, for the city on screen
+function fileByName(token) {
+  const b = bmap.get(token);
+  if (b) return b.userData.lines > 0 ? token : null;
+  if (!nameIndex) {
+    nameIndex = new Map();
+    for (const x of buildings) if (x.userData.lines > 0) { const p = x.userData.f.path, n = p.split("/").pop(); if (!nameIndex.has(n)) nameIndex.set(n, []); nameIndex.get(n).push(p); }
+  }
+  const name = token.split("/").pop(), hits = (nameIndex.get(name) || []).filter(p => p === name || p.endsWith("/" + token) || !token.includes("/"));
+  return hits.length ? hits.slice().sort((a, b) => a.length - b.length)[0] : null;
+}
+function fileLink(path, label) { return `<button type="button" class="flink" data-path="${esc(path)}" title="Open ${esc(path)}">${label != null ? esc(label) : pathHtml(path)}</button>`; }
+function rich(text) {
+  const str = String(text || ""), re = /(https?:\/\/[^\s<>"'`)\]]+[^\s<>"'`)\].,;:!?])|((?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[A-Za-z][\w]{0,7})/g;
+  let out = "", last = 0;
+  for (const m of str.matchAll(re)) {
+    out += esc(str.slice(last, m.index)); last = m.index + m[0].length;
+    if (m[1]) { out += `<a href="${esc(m[1])}" target="_blank" rel="noopener noreferrer">${esc(m[1])}</a>`; continue; }
+    const path = fileByName(m[2]);
+    out += path ? fileLink(path, m[2]) : esc(m[2]);
+  }
+  return out + esc(str.slice(last));
+}
 function pathHtml(path) {
   const i = path.lastIndexOf("/");
   return i < 0 ? esc(path) : `<i>${esc(path.slice(0, i + 1))}</i>${esc(path.slice(i + 1))}`;
@@ -2523,27 +2613,19 @@ async function askCity(question) {
     askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])) };
     status.textContent = "";
     openSide("ask");
-    if (data.files.length) explainCode(askState, data.files.map(f => f.path), q);
+    if (data.files.length) explainCode(explainState, data.files.map(f => f.path), q);
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function renderAsk() {
-  const chain = askState.chain || [];
   $("sideTitle").textContent = askState.answer ? "Ask the city" : "Explain the code";
   $("sideSub").textContent = askState.question;
-  sideBody.innerHTML = (askState.answer ? `<p class="ask-answer">${esc(askState.answer)}</p>` : "") +
+  sideBody.innerHTML = (askState.answer ? `<p class="ask-answer">${rich(askState.answer)}</p>` : "") +
     (askState.order.length ? `<ol class="rank">${askState.order.map((f, i) => {
       const b = bmap.get(f.path), live = b && b.userData.lines > 0;
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    (chain.length > 1 ? `<div class="chain-trail" aria-label="Explanation chain">${chain.map((st, k) =>
-      `${k ? "<span aria-hidden=\"true\">→</span>" : ""}<button type="button" data-step="${k}">${esc(st.paths.length > 1 ? `${st.paths.length} files` : st.paths[0].split("/").pop())}</button>`).join("")}</div>` : "") +
-    chain.map((st, k) => `<section class="chain-step" data-chain="${k}">
-      ${chain.length > 1 || st.from ? `<div class="chain-head"><b>Step ${k + 1}</b>${st.from ? `<span>followed from ${pathHtml(st.from)}</span>` : ""}</div>` : ""}
-      ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : explainHtml(st)}
-    </section>`).join("") +
-    `<p class="side-note">${chain.some(st => st.files) ? "Gemini read the code above; check what it says against the source. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next, as the next step in the chain. <b>View</b> opens files side by side."
-      : "Gemini picks these files from their names and sizes, then reads the code of the top few to explain it."}</p>`;
+    `<p class="side-note">${askState.order.length ? "Gemini read the code of the top files: its explanation opens in its own window." : ""}</p>`;
 }
 function explainHtml(x) {
   const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
@@ -2553,28 +2635,28 @@ function explainHtml(x) {
     return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
       (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
   const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
-  return `<div><h3>How the code works</h3><p class="ask-answer">${esc(x.summary)}</p>` +
-    (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, MAX_PANES)))}">View ${Math.min(every.length, MAX_PANES)} files side by side</button></div>` : "") +
+  return `<div><h3>How the code works</h3><p class="ask-answer">${rich(x.summary)}</p>` +
+    (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, 6)))}">View ${Math.min(every.length, 6)} files side by side</button></div>` : "") +
     `</div>` + x.files.map(f => `
     <section class="explain-file">
       <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
-      <p class="explain-text">${esc(f.explanation)}</p>
-      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code viewer">L${pt.line}</em><b>${esc(pt.name)}</b>${esc(pt.note)}</li>`).join("")}</ul></div>` : ""}
+      <p class="explain-text">${rich(f.explanation)}</p>
+      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><em data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code viewer">L${pt.line}</em><b>${esc(pt.name)}</b>${rich(pt.note)}</li>`).join("")}</ul></div>` : ""}
       ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how)).join("")}</ol></div>` : ""}
     </section>`).join("");
 }
-sideBody.addEventListener("click", e => {
-  const all = e.target.closest("[data-view-all]");
-  if (all) { e.stopPropagation(); return viewFiles(JSON.parse(all.dataset.viewAll)); }
-  const view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]"), step = e.target.closest("[data-step]");
-  if (view) viewFile(view.dataset.view);
+// View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
+function explainClicks(e) {
+  const all = e.target.closest("[data-view-all]"), view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]");
+  if (all) viewFiles(JSON.parse(all.dataset.viewAll));
+  else if (view) viewFile(view.dataset.view);
   else if (line) viewFile(line.dataset.file, +line.dataset.line);
-  else if (follow && askState) followLink(follow.dataset.from, follow.dataset.follow);
-  else if (step) { const el = sideBody.querySelector(`[data-chain="${step.dataset.step}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
-  else return;
-  e.stopPropagation();
-}, true);
+  else if (follow) followLink(follow.dataset.from, follow.dataset.follow);
+  else return false;
+  return true;
+}
+sideBody.addEventListener("click", e => { if (explainClicks(e)) e.stopPropagation(); }, true);
 
 // ---------- reading and explaining code ----------
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
@@ -2597,11 +2679,16 @@ async function pullCode(path) {
   }
   return f.text != null ? { path, text: f.text, partial: b.userData.lines > f.text.split("\n").length } : null;
 }
-// Each explanation is a step in a chain: Follow on a connected file explains it next, below the steps before.
+// Each explanation opens in its own window and is a step in a chain: Follow on a connected file explains it next.
+let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
 async function explainCode(state, paths, question, from) {
-  const redraw = () => { if (askState === state && sideMode === "ask") renderSide(); };
   const st = { paths, from: from || null, loading: true };
-  (state.chain = state.chain || []).push(st);
+  state.chain.push(st);
+  // One file: the explanation joins its code window, on the right. Several files: a window of their own.
+  let win = paths.length === 1 ? (codePane(paths[0]) || await viewFile(paths[0])) : null;
+  if (win) { win.st = st; widenForExplain(win); win.dirty = true; win.collapsed = false; toFront(win); renderViewer(); }
+  else { win = { kind: "explain", st, path: paths[0] }; if (!addPane(win)) return; }
+  const redraw = () => { if (win.st === st || win.kind === "explain") { win.dirty = true; renderViewer(); } drawLinks(); };
   if (!oauthToken) { Object.assign(st, { loading: false, errorHtml: needSignin("have the code explained") }); return redraw(); }
   redraw();
   const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
@@ -2626,50 +2713,58 @@ async function explainCode(state, paths, question, from) {
   for (const p of paths) if (!state.files.has(p)) state.files.set(p, "");
   for (const [, deps] of st.real) for (const d of deps) if (!state.files.has(d)) state.files.set(d, "");   // the files they import light up too
   redraw();
-  if (state.chain.length > 1 && askState === state) { const el = sideBody.querySelector(`[data-chain="${state.chain.indexOf(st)}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); }
 }
-function followLink(from, path) {
-  viewConnection(from, path);   // the two files side by side, with the lines that connect them marked
-  const chain = askState.chain || [], k = chain.findIndex(st => st.paths.includes(path));
-  if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }   // already in the chain
-  if (chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Ask again to start a new one.`); return; }
+// An explanation that's already open comes to the front instead of being asked again.
+function explainWindowFor(path) { return panes.find(p => p.st && p.st.paths.length === 1 && p.st.paths[0] === path); }
+async function followLink(from, path) {
   const b = bmap.get(path);
   if (b) flyToBuilding(b);
-  explainCode(askState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
+  await viewConnection(from, path);   // the two files side by side, with the lines that connect them marked
+  const open = explainWindowFor(path);
+  if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
+  if (explainState.chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Close some explanations to follow more.`); return; }
+  explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
 }
 function explainFile(path) {
-  // With explanations already open, this one is added below them rather than replacing them.
-  if (sideMode === "ask" && askState && askState.chain && askState.chain.length) {
-    const k = askState.chain.findIndex(st => st.paths.includes(path));
-    if (k >= 0) { const el = sideBody.querySelector(`[data-chain="${k}"]`); if (el) el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); return; }
-    if (askState.chain.length >= MAX_CHAIN) { toast(`A chain holds ${MAX_CHAIN} steps. Close the panel to start a new one.`); return; }
-    explainCode(askState, [path], "What does this file do, how does it work, and how does it connect to the files explained above?");
-    return;
-  }
-  if (tourState) endTour();
-  askState = { question: path, answer: "", order: [], files: new Map([[path, ""]]) };
-  openSide("ask");
-  explainCode(askState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?");
+  const open = explainWindowFor(path);
+  if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
+  explainCode(explainState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?");
 }
 
-// ---------- code viewer ----------
-// Several files' full source side by side. Files come from the drawer's View code, the explanations' View
-// buttons and key-part line numbers, or shift-clicking a building. The oldest pane makes room for a new one.
-const MAX_PANES = 6, MAX_VIEW_LINES = 6000;
-async function viewFile(path, line, link) {
-  const have = panes.find(p => p.path === path);
-  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; toFront(have); renderViewer(); return; }
-  const c = await pullCode(path);
-  if (!c) { toast("The source of that file isn't available here."); return; }
-  if (panes.find(p => p.path === path)) return viewFile(path, line, link);   // added while this one was loading
-  panes.push({ path, text: c.text, partial: c.partial, line: line || 0, link: link || null, dirty: true });
-  if (panes.length > MAX_PANES) panes.shift();
-  closeDrawer();
-  renderViewer();
+// ---------- windows: code and explanations ----------
+// Each file opens in its own window: its code on the left and, once explained, the explanation on the right at
+// the same width. Opening a window never closes or moves the others, and the side panels stay open. Code comes
+// from View code, the explanations' View buttons and line numbers, or shift-clicking a building. Explanations of
+// several files at once have a window of their own.
+const MAX_PANES = 16, MAX_VIEW_LINES = 6000;
+const codePane = path => panes.find(p => p.kind === "code" && p.path === path);
+function addPane(p) {
+  if (panes.length >= MAX_PANES) { toast(`${MAX_PANES} windows are open. Close one to open another.`); return false; }
+  p.created = Date.now(); p.dirty = true;
+  panes.push(p);
+  return true;
 }
-async function viewFiles(paths) {   // several at once, in order, up to what the viewer holds, then tiled
-  for (const p of paths.slice(0, MAX_PANES)) await viewFile(p);
-  tileWindows(paths.slice(0, MAX_PANES));
+async function viewFile(path, line, link) {   // resolves with the file's window, or null
+  const have = codePane(path);
+  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; have.collapsed = false; toFront(have); renderViewer(); return have; }
+  const c = await pullCode(path);
+  if (!c) { toast("The source of that file isn't available here."); return null; }
+  if (codePane(path)) return viewFile(path, line, link);   // added while this one was loading
+  const p = { kind: "code", path, text: c.text, partial: c.partial, line: line || 0, link: link || null };
+  if (!addPane(p)) return null;
+  renderViewer();
+  return p;
+}
+async function viewFiles(paths) {   // several at once, in order; the new ones are tiled, the old ones stay put
+  const since = Date.now();
+  for (const p of paths.slice(0, 6)) await viewFile(p);   // six side by side at most
+  tileWindows(paths, since);
+}
+// Gives a file's window room for its explanation: twice as wide, kept on screen.
+function widenForExplain(p) {
+  const a = freeArea(), want = Math.min(Math.max(600, a.w - 96), Math.max(p.w || 0, 2 * Math.min(p.w || 560, 560)));   // room left to stagger windows
+  if (p.x == null) placeNew(p);
+  p.w = want; p.x = Math.max(a.x, Math.min(p.x, a.x + a.w - p.w));
 }
 // ---------- connections in the code viewer ----------
 // Following a connection opens both files and marks where they connect: the import line that brings in the
@@ -2729,49 +2824,71 @@ async function viewConnection(from, to) {
   await getGraph().ready;
   const la = a && connectionMarks(from, a.text, to), lb = b && connectionMarks(to, b.text, from);
   const first = l => l && (l.imports[0] || l.uses[0]) || 0;
+  const since = Date.now();
   await viewFile(from, first(la), la);
   await viewFile(to, first(lb), lb);
-  tileWindows([from, to]);   // the two side by side
+  tileWindows([from, to], since);   // the two side by side, if they've just opened
 }
 // Each file is a window. New ones cascade in the free space between the left card and the side panel; Tile
 // lines them up there again. Windows are only rebuilt when their file or marks change, so their scroll stays.
 let paneZ = 10;
 function freeArea() {
   const wide = innerWidth > 1099, tl = document.body.classList.contains("has-timeline") ? 76 : 0;
-  const left = wide ? 344 : 16, right = innerWidth - (wide && document.body.classList.contains("side-open") ? 408 : 16);
+  // clear of the left card and of whichever right-hand panels are open (they stay open beside the windows)
+  const panelsLeft = [sidePanel, drawer].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
+  const left = wide ? 344 : 16, right = wide && panelsLeft.length ? Math.min(...panelsLeft) - 12 : innerWidth - 16;
   const top = wide ? 16 : Math.min(innerHeight * 0.35, 220), bottom = innerHeight - 16 - tl - 48;
   return { x: left, y: top, w: Math.max(260, right - left), h: Math.max(200, bottom - top) };
 }
-function toFront(p) { p.z = ++paneZ; if (p.el) { p.el.style.zIndex = p.z; panes.forEach(q => q.el && q.el.classList.toggle("front", q === p)); } }
+function toFront(p) { p.z = ++paneZ; if (p.el) { p.el.style.zIndex = p.z; panes.forEach(q => q.el && q.el.classList.toggle("front", q === p)); } if (panes.length) renderTabs(); }
 function placeNew(p) {
   const a = freeArea(), k = panes.indexOf(p);
   p.w = Math.min(620, a.w); p.h = Math.min(520, a.h);
   p.x = a.x + (k * 32) % Math.max(1, a.w - p.w + 1); p.y = a.y + (k * 32) % Math.max(1, a.h - p.h + 1);
 }
-function tileWindows(paths) {
-  const list = paths ? panes.filter(p => paths.includes(p.path)) : panes;
-  if (!list.length) return;
+function tileWindows(paths, since) {   // lines up the code windows for these files opened since then
+  const list = panes.filter(p => p.kind === "code" && paths.includes(p.path) && p.created >= since);
+  if (list.length < 2) return;   // a single new window keeps its staggered place, clear of the ones already open
   const a = freeArea(), n = list.length, cols = n <= 3 ? n : Math.ceil(n / 2), rows = Math.ceil(n / cols), gap = 8;
   const w = (a.w - gap * (cols - 1)) / cols, h = (a.h - gap * (rows - 1)) / rows;
   list.forEach((p, i) => { Object.assign(p, { x: a.x + (i % cols) * (w + gap), y: a.y + Math.floor(i / cols) * (h + gap), w, h }); });
   renderViewer();
 }
+function explainCol(st) {
+  return `${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
+    ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : explainHtml(st)}
+    ${st.files ? `<p class="side-note">Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</p>` : ""}`;
+}
 function paneHtml(p) {
+  if (p.kind === "explain") {   // several files at once, or a file whose code isn't available
+    const st = p.st, name = st.paths.length > 1 ? `${st.paths.length} files` : st.paths[0].split("/").pop();
+    return `<div class="pane-head"><span class="pane-kind">Explain</span><button type="button" class="explain-path" data-path="${esc(st.paths[0])}">${esc(name)}</button>
+        <button type="button" class="mini" data-pane-code>View code</button>
+        <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its title bar" title="Collapse">–</button>
+        <button type="button" class="mini" data-pane-close aria-label="Close this explanation" title="Close">✕</button></div>
+      <div class="explain-col solo">${explainCol(st)}</div>`;
+  }
   const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
   return `<div class="pane-head"><button type="button" class="explain-path" data-path="${key}">${pathHtml(p.path)}</button>
-      ${askEnabled ? `<button type="button" class="mini" data-pane-explain="${key}">Explain</button>` : ""}
-      <button type="button" class="mini" data-pane-close="${key}" aria-label="Close ${key}">✕</button></div>
-    ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
-    ${p.link ? linkBanner(p.link) : ""}
-    <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
-      return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
-    ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}`;
+      ${askEnabled && !p.st ? `<button type="button" class="mini" data-pane-explain>Explain</button>` : ""}
+      <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its title bar" title="Collapse">–</button>
+      <button type="button" class="mini" data-pane-close aria-label="Close ${key}" title="Close">✕</button></div>
+    <div class="pane-split">
+      <div class="code-col">
+        ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
+        ${p.link ? linkBanner(p.link) : ""}
+        <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
+          return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
+        ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}
+      </div>
+      ${p.st ? `<div class="explain-col"><div class="explain-col-head"><span class="pane-kind">Explanation</span><button type="button" class="mini" data-hide-explain aria-label="Close the explanation">✕</button></div>${explainCol(p.st)}</div>` : ""}
+    </div>`;
 }
-const paneSize = new ResizeObserver(entries => { for (const e of entries) { const p = panes.find(q => q.el === e.target); if (p) { p.w = e.target.offsetWidth; p.h = e.target.offsetHeight; } } });
+// Remembers a window's size after it is resized; a collapsed window is only its title bar, so it's skipped.
+const paneSize = new ResizeObserver(entries => { for (const e of entries) { const p = panes.find(q => q.el === e.target); if (p && !p.collapsed && !e.target.hidden && e.target.offsetWidth) { p.w = e.target.offsetWidth; p.h = e.target.offsetHeight; } } });
 function renderViewer() {
   const layer = $("viewerPanes");
   $("viewer").hidden = !panes.length;
-  $("viewerNote").textContent = panes.length >= MAX_PANES ? `${MAX_PANES} windows open; another closes the oldest.` : "Drag a title bar to move, a corner to resize.";
   for (const el of [...layer.children]) if (!panes.some(p => p.el === el)) { paneSize.unobserve(el); el.remove(); }
   for (const p of panes) {
     if (!p.el) {
@@ -2780,16 +2897,48 @@ function renderViewer() {
       if (p.x == null) placeNew(p);
       toFront(p);
     }
-    p.el.setAttribute("aria-label", p.path);
+    p.el.setAttribute("aria-label", p.kind === "explain" ? "Explanation of " + p.st.paths.join(", ") : p.path);
+    p.el.classList.toggle("explain-pane", p.kind === "explain" || !!p.st);
     if (p.dirty) { p.el.innerHTML = paneHtml(p); p.dirty = false; p.scroll = true; }
-    Object.assign(p.el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px", zIndex: p.z });
+    // collapsed: rolled up to its title bar, where it stays; the – button becomes + to roll it back down
+    p.el.classList.toggle("rolled", !!p.collapsed);
+    const roll = p.el.querySelector("[data-pane-collapse]");
+    if (roll) { roll.textContent = p.collapsed ? "+" : "–"; roll.setAttribute("aria-label", p.collapsed ? "Expand this window" : "Collapse this window to its title bar"); roll.title = p.collapsed ? "Expand" : "Collapse"; }
+    Object.assign(p.el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.collapsed ? "" : p.h + "px", zIndex: p.z });
     if (p.scroll) {   // bring the marked line to the middle of this window only, not the page
       p.scroll = false;
       const body = p.el.querySelector(".pane-body"), row = p.line && body.querySelector(`[data-l="${p.line}"]`);
       if (row) body.scrollTop = row.offsetTop - body.clientHeight / 2;
     }
   }
+  renderTabs();
 }
+// One tab per window: click to bring it to the front, expanded; click the front one to collapse it to its title bar.
+function paneTitle(p) { return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${p.st.paths[0].split("/").pop()}`) : p.path.split("/").pop(); }
+let tabsFolded = false;   // the tab strip folded down to one button
+try { tabsFolded = localStorage.getItem("codecity.tabsFolded") === "1"; } catch (e) { /* storage blocked */ }
+function renderTabs() {
+  const front = panes.filter(p => !p.collapsed).sort((a, b) => b.z - a.z)[0], el = $("winTabs");
+  el.hidden = !panes.length;
+  el.classList.toggle("folded", tabsFolded);
+  const fold = `<button type="button" class="tabs-fold" data-tabs-fold aria-expanded="${!tabsFolded}" title="${tabsFolded ? "Show" : "Hide"} the window tabs">${tabsFolded ? `▴ ${panes.length} window${panes.length === 1 ? "" : "s"}` : "▾"}</button>`;
+  el.innerHTML = fold + (tabsFolded ? "" : panes.map((p, i) => `<div class="win-tab${p.collapsed ? " collapsed" : ""}${p === front ? " front" : ""}">
+      <button type="button" data-tab="${i}" title="${esc(p.kind === "explain" ? p.st.paths.join(", ") : p.path)}" aria-pressed="${!p.collapsed}">${p.st && p.kind !== "explain" ? `<span class="tab-dot" aria-label="explained"></span>` : ""}${esc(paneTitle(p))}</button>
+      <button type="button" class="tab-x" data-tab-close="${i}" aria-label="Close ${esc(paneTitle(p))}">✕</button></div>`).join(""));
+}
+$("winTabs").addEventListener("click", e => {
+  if (e.target.closest("[data-tabs-fold]")) {
+    tabsFolded = !tabsFolded;
+    try { localStorage.setItem("codecity.tabsFolded", tabsFolded ? "1" : "0"); } catch (err) { /* storage blocked */ }
+    return renderTabs();
+  }
+  const tab = e.target.closest("[data-tab]"), x = e.target.closest("[data-tab-close]");
+  if (x) { panes.splice(+x.dataset.tabClose, 1); renderViewer(); drawLinks(); return; }
+  if (!tab) return;
+  const p = panes[+tab.dataset.tab], front = panes.filter(q => !q.collapsed).sort((a, b) => b.z - a.z)[0];
+  if (p === front) p.collapsed = true; else { p.collapsed = false; toFront(p); }
+  renderViewer();
+});
 const paneOf = el => panes.find(p => p.el === el.closest(".pane"));
 $("viewerPanes").addEventListener("pointerdown", e => {
   const p = paneOf(e.target);
@@ -2811,12 +2960,15 @@ $("viewerPanes").addEventListener("click", e => {
   if (!p) return;
   const go2 = e.target.closest("[data-goto]");
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
-  if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); }
-  else if (e.target.closest("[data-pane-explain]")) explainFile(p.path);
-  else if (e.target.closest("[data-path]")) { const b = bmap.get(p.path); if (b) flyToBuilding(b); }
+  if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
+  if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
+  if (e.target.closest("[data-pane-collapse]")) { p.collapsed = !p.collapsed; renderViewer(); return; }
+  if (e.target.closest("[data-hide-explain]")) { p.st = null; p.dirty = true; renderViewer(); drawLinks(); return; }
+  if (e.target.closest("[data-pane-code]")) { if (p.st.paths.length > 1) viewFiles(p.st.paths); else viewFile(p.st.paths[0]); return; }
+  if (explainClicks(e)) return;
+  const go = e.target.closest("[data-path]");
+  if (go) { const b = bmap.get(go.dataset.path); if (b && b.userData.lines > 0) openDrawer(b); }
 });
-$("viewerClose").onclick = () => { panes = []; renderViewer(); };
-$("viewerTile").onclick = () => tileWindows();
 
 // ---------- connections ----------
 // Which files import which, read from the source by the import parser above. Arcs over the city show the
@@ -2946,10 +3098,8 @@ function digestProgress(status, label) {
 function focusPaths() {   // whose connections the arcs show
   if (hoverFocus) return [hoverFocus];
   if (picked) return [picked.userData.f.path];
-  if (sideMode === "ask" && askState && askState.chain) {
-    const done = askState.chain.filter(st => st.files), last = done[done.length - 1];
-    return last ? last.paths : [];
-  }
+  const shown = panes.filter(p => p.st && p.st.files).map(p => p.st);   // the newest open explanation
+  if (shown.length) return shown[shown.length - 1].paths;
   if (sideMode === "tour" && tourState) { const st = tourStep(); return st ? [st.path] : []; }
   return [];
 }
@@ -2958,7 +3108,7 @@ function linkPairs() {   // [from, to, kind]: kind "out" (from imports to), "in"
   if (sideMode === "tour" && tourState) {   // the overview draws every workflow; a workflow draws itself
     tourState.workflows.forEach((w, k) => { if (tourState.w < 0 || tourState.w === k) for (let j = 0; j < w.steps.length - 1; j++) pairs.push([w.steps[j].path, w.steps[j + 1].path, "wf" + k]); });
   }
-  if (sideMode === "ask" && askState && askState.chain) for (const st of askState.chain) if (st.from) pairs.push([st.from, st.paths[0], "chain"]);
+  for (const p of panes) if (p.st && p.st.from) pairs.push([p.st.from, p.st.paths[0], "chain"]);   // the path the open explanations followed
   if (!showLinks) return pairs;
   const g = graph;
   for (const f of focusPaths()) {
@@ -3020,7 +3170,7 @@ $("linksToggle").onchange = e => setShowLinks(e.target.checked);
 async function renderFileLinks(path) {
   const box = $("dLinks");
   if (!canImport(path)) { box.innerHTML = ""; return; }
-  const list = (title, paths, cls) => `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, MAX_PANES)))}">View with this file</button>` : ""}</h3>${paths.length
+  const list = (title, paths, cls) => `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, 6)))}">View with this file</button>` : ""}</h3>${paths.length
     ? `<ol class="rank links ${cls}">${paths.map(p => `<li><button type="button" data-file="${esc(p)}"><span class="n">${cls === "in" ? "←" : "→"}</span><span class="path">${pathHtml(p)}</span></button></li>`).join("")}</ol>`
     : `<p class="note">${cls === "in" ? "No other file imports this one." : "It doesn't import other files in this repo."}</p>`}</div>`;
   box.innerHTML = `<p class="note">Reading its imports…</p>`;
@@ -3163,7 +3313,7 @@ function renderTour() {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
-      <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${esc(t.overview)}</p></div>
+      <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
@@ -3181,7 +3331,7 @@ function renderTour() {
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
         ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
         ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3><p class="ask-answer">${esc(w.summary)}</p>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3><p class="ask-answer">${rich(w.summary)}</p>
         ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
       ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
       <ol class="wf-steps">${w.steps.map((st, k) => {
@@ -3189,8 +3339,8 @@ function renderTour() {
         return `<li class="wf-step${k === t.i ? " current" : ""}" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
           <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
-          <p class="explain-text">${esc(st.narration)}</p>
-          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><em data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${l.line}</em>${esc(l.note)}</li>`).join("")}</ul></div>`
+          <p class="explain-text">${rich(st.narration)}</p>
+          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><em data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${l.line}</em>${rich(l.note)}</li>`).join("")}</ul></div>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
           ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
           ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><em data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code viewer">L${h.line}</em><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
