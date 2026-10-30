@@ -127,6 +127,8 @@ body.seg-closed .card { display: none; }
 .tr-go { align-self: center; }
 .tr-out { padding: 2px 4px 2px 24px; font-size: 11.5px; color: var(--ink-dim); }
 .tr-head { display: flex; flex-direction: column; gap: 6px; }
+.tr-back { align-self: flex-start; font: 600 12px var(--f-mono); color: var(--ink-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-back:hover, .tr-back:focus-visible { color: var(--sodium); }
 .tr-head > b { font: 600 14px var(--f-mono); color: var(--sodium); word-break: break-all; }
 .tr-key .chip { margin: 0 2px; }
 .fnlist li { display: flex; align-items: center; gap: 6px; }
@@ -4232,12 +4234,23 @@ const HOW = {
 const howChip = how => `<span class="chip ${how === "sure" || how === "self" ? "real" : "guess"}" title="${esc(HOW[how][1])}">${HOW[how][0]}</span>`;
 
 // ---------- Trace: what a function calls, file to file, and what calls it ----------
-let traceState = null;   // { path, i, open: Set(node keys), files: Set, edges: [[from, to]] }
+let traceState = null;   // { path, i, open: Set(node keys), files: Set, edges: [[from, to]], city }
+// Back: the traces before this one (with the branches you had open), and the panel the first one came from.
+let traceBack = [], traceFrom = null;
 function openTrace(path, i) {
-  traceState = { path, i, open: new Set(), seeded: false, files: new Set([path]), edges: [] };
+  if (sideMode === "trace" && traceState && traceState.city === buildings) { if (traceState.path === path && traceState.i === i) return; traceBack.push(traceState); }
+  else { traceBack = []; traceFrom = sideMode && sideMode !== "trace" ? sideMode : null; }
+  traceState = { path, i, open: new Set(), seeded: false, files: new Set([path]), edges: [], city: buildings };
   openSide("trace");
   loadCalls();
 }
+function traceGoBack() {
+  const prev = traceBack.pop();
+  if (prev && prev.city === buildings) { traceState = prev; return openSide("trace"); }
+  traceBack = [];
+  if (traceFrom) openSide(traceFrom); else closeSide();
+}
+const TRACE_FROM = { map: "How it's built", system: "System map", hot: "Hotspots", ask: "the answer", tour: "the tour", pr: "the pull request" };
 function renderTrace() {
   const st = traceState, idx = callsReady();
   $("sideTitle").textContent = "Trace";
@@ -4280,7 +4293,7 @@ function renderTrace() {
   const chain = [];   // the first path down, for "Explain this path"
   for (let p = st.path, i = st.i, seen = new Set([st.path + ":" + st.i]); chain.length < 4;) { const next = idx.callees(p, i).find(x => x.path && !seen.has(x.path + ":" + x.i)); if (!next) break; seen.add(next.path + ":" + next.i); chain.push(next); p = next.path; i = next.i; }
   sideBody.innerHTML =
-    `<div class="tr-head"><b>${esc(fnName(idx, st.path, st.i))}</b>${d && d.deco && d.deco.length ? `<span class="side-note">${esc(d.deco[0])}</span>` : ""}` +
+    `<div class="tr-head">${traceBack.length || traceFrom ? `<button type="button" class="linkish tr-back" data-trace-back title="Back to ${esc(traceBack.length ? fnName(idx, traceBack[traceBack.length - 1].path, traceBack[traceBack.length - 1].i) : TRACE_FROM[traceFrom] || "the last panel")}">← ${esc(traceBack.length ? fnName(idx, traceBack[traceBack.length - 1].path, traceBack[traceBack.length - 1].i) : TRACE_FROM[traceFrom] || "Back")}</button>` : ""}<b>${esc(fnName(idx, st.path, st.i))}</b>${d && d.deco && d.deco.length ? `<span class="side-note">${esc(d.deco[0])}</span>` : ""}` +
     `<div class="side-actions"><button type="button" data-fn-at="${esc(st.path)}" data-fn-line="${d ? d.line : 1}">View code</button>` +
     (chain.length ? `<button type="button" data-trace-open title="The code of each step of the first path down, side by side">Side by side</button>` : "") +
     (askEnabled && chain.length ? `<button type="button" class="primary" data-trace-explain>Explain this path</button>` : "") + `</div></div>` +
@@ -4292,6 +4305,7 @@ function renderTrace() {
 document.addEventListener("click", e => {
   const tog = e.target.closest("[data-tr-toggle]");
   if (tog && traceState) { const k = tog.dataset.trToggle; if (traceState.open.has(k)) traceState.open.delete(k); else traceState.open.add(k); renderTrace(); const again = sideBody.querySelector(`[data-tr-toggle="${CSS.escape(k)}"]`); if (again) again.focus(); return; }
+  if (e.target.closest("[data-trace-back]")) return traceGoBack();
   const tr = e.target.closest("[data-fn-trace]");
   if (tr) { e.stopPropagation(); return openTrace(tr.dataset.fnTrace, +tr.dataset.fnI); }
   const view = e.target.closest("[data-fn-view]"), idx = callsReady();
