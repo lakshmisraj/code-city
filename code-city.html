@@ -34,7 +34,7 @@ body.has-timeline { --tl-h: 76px; }
 #stage canvas { display: block; touch-action: none; }
 
 /* Left: an icon rail; each icon opens its segment in the panel beside it (collapsible, resizable). */
-:root { --rail-w: 52px; --seg-w: 300px; }
+:root { --rail-w: 60px; --seg-w: 300px; --top-h: 54px; }   /* --top-h: the top bar and the gap under it */
 #rail {
   position: fixed; z-index: 6; top: calc(16px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
   bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); width: var(--rail-w); box-sizing: border-box;
@@ -44,26 +44,60 @@ body.has-timeline { --tl-h: 76px; }
 }
 .rail-logo { font: 700 15px var(--f-display); letter-spacing: .02em; color: var(--ink); margin-bottom: 6px; }
 .rail-logo span { color: var(--sodium); }
-.rail-btn { all: unset; box-sizing: border-box; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 9px; color: var(--ink-dim); cursor: pointer; position: relative; }
-.rail-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rail-btn { all: unset; box-sizing: border-box; width: 52px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 9px; color: var(--ink-dim); cursor: pointer; position: relative; }
+.rail-label { font-size: 9.5px; line-height: 1; letter-spacing: .01em; }
+.rail-btn svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .rail-btn:hover { color: var(--ink); background: var(--street-2); }
 .rail-btn[aria-pressed="true"] { color: var(--sodium); background: color-mix(in srgb, var(--sodium) 14%, transparent); }
-.rail-btn[aria-pressed="true"]::before { content: ""; position: absolute; left: -7px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--sodium); }
+.rail-btn[aria-pressed="true"]::before { content: ""; position: absolute; left: -4px; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--sodium); }
 .rail-btn:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
 .rail-btn[hidden] { display: none; }
 .rail-spacer { flex: 1; }
 .card {
   position: fixed; z-index: 5;
-  top: calc(16px + env(safe-area-inset-top, 0px));
+  top: calc(16px + var(--top-h) + env(safe-area-inset-top, 0px));
   left: calc(max(12px, env(safe-area-inset-left, 0px)) + var(--rail-w) + 8px);
   width: var(--seg-w); max-width: calc(100vw - var(--rail-w) - 40px);
-  max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100% - 32px - var(--top-h) - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   box-sizing: border-box; display: flex; flex-direction: column;
   background: color-mix(in srgb, var(--street) 92%, transparent);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: 10px;
 }
 body.seg-closed .card { display: none; }
+/* Top: which repo this is, its size, and Ask in the middle. */
+#topbar {
+  position: fixed; z-index: 8; top: calc(16px + env(safe-area-inset-top, 0px)); height: calc(var(--top-h) - 8px); box-sizing: border-box;
+  left: calc(max(12px, env(safe-area-inset-left, 0px)) + var(--rail-w) + 8px); right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; align-items: center; gap: 16px; padding: 0 8px 0 14px;
+  background: color-mix(in srgb, var(--street) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.tb-repo { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; max-width: 30%; }
+.tb-repo b { font: 600 14px var(--f-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tb-stats { display: flex; gap: 14px; margin: 0 0 0 auto; flex: none; }
+.tb-stats div { display: flex; align-items: baseline; gap: 5px; }
+.tb-stats dt { order: 2; font-size: 11px; color: var(--ink-dim); }
+.tb-stats dd { margin: 0; font: 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.tb-stats dd.fire { color: var(--fire); }
+#askSlot { flex: 1 1 520px; max-width: 560px; min-width: 0; position: relative; }
+#askSlot:empty { display: none; }
+#askSlot #askForm { border: 0; padding: 0; margin: 0; gap: 0; }
+#askSlot #askForm .group-title, #askSlot #askForm label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#askSlot #askForm input { height: 32px; }
+#askSlot #askStatus { position: absolute; top: calc(100% + 10px); left: 0; right: 0; z-index: 9; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--street-2); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+@media (max-width: 1100px) { .tb-stats div:nth-child(n+3) { display: none; } }
+.guide { display: flex; flex-direction: column; gap: 12px; font-size: 12.5px; color: var(--ink-dim); }
+.guide h3 { margin: 0 0 4px; font-size: 12px; color: var(--ink); }
+.guide p, .guide ul { margin: 0; }
+.guide ul { padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.guide b { color: var(--ink); font-weight: 600; }
+.guide .gk { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+#dRole { margin: 0; font-size: 12px; color: var(--ink-dim); }
+#dRole b { color: var(--sodium); font-weight: 600; }
+#dRole:empty { display: none; }
+.map-key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--ink-dim); margin: 0; }
+.map-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
 .seg-head h2 { margin: 0; font: 700 12px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sodium); }
 .seg-body { overflow: auto; padding: 14px 16px 16px; min-height: 0; }
@@ -82,15 +116,7 @@ body.seg-closed .card { display: none; }
 .group { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .group[hidden] { display: none; }
 .group-title { margin: 0; font: 700 12px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sodium); }
-.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.brand h1 {
-  margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 26px;
-  letter-spacing: .04em; text-transform: uppercase; line-height: 1;
-}
-.brand h1 span { color: var(--sodium); }
 .intro { margin: -4px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
-.repo { font-family: var(--f-mono); font-size: 12px; color: var(--sodium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-top: -6px; }
-.repo::before { content: "Showing "; color: var(--ink-dim); font-family: var(--f-body); }
 @media (max-width: 640px) { .intro { font-size: 12px; } }
 .tag { font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--sodium); border: 1px solid color-mix(in srgb, var(--sodium) 50%, transparent); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
 
@@ -186,7 +212,7 @@ details.more[open] summary { margin-bottom: 8px; }
 
 #drawer, #side {
   position: fixed; z-index: 6;
-  top: calc(16px + env(safe-area-inset-top, 0px));
+  top: calc(16px + var(--top-h) + env(safe-area-inset-top, 0px));
   right: max(16px, env(safe-area-inset-right, 0px));
   bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
   width: 380px; max-width: calc(100vw - 32px);
@@ -205,7 +231,7 @@ details.more[open] summary { margin-bottom: 8px; }
 .folded .drawer-head { flex-direction: column; align-items: center; padding: 10px 6px; border-bottom: 0; gap: 10px; }
 .folded .drawer-head > div { order: 2; }
 .folded .drawer-head h2 { cursor: pointer; writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 55vh; font-size: 12px; }
-#drawer { z-index: 7; bottom: auto; max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }   /* as tall as its content */
+#drawer { z-index: 7; bottom: auto; max-height: calc(100% - 32px - var(--top-h) - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }   /* as tall as its content */
 .d-stack { display: flex; flex-direction: column; gap: 14px; }
 #dActions:empty, #dLinks:empty, #dTodos:empty, #dCode:empty { display: none; }
 /* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
@@ -370,18 +396,6 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .pane-link b { color: var(--ink); font-family: var(--f-mono); }
 .pane-link .linkish { font-size: 11px; }
 .pane-note { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--ink-dim); }
-/* Ask sits in the top-right corner (except on phones, where it stays in the card); the right-hand panels start
-   below it. --ask-h is its height, kept up to date from the page. */
-@media (min-width: 760px) {
-  #askForm {
-    position: fixed; z-index: 8; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
-    width: max(300px, var(--side-w, 380px)); max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 14px; gap: 8px;
-    border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--street) 94%, transparent);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,.35);
-  }
-  body.ask-on #side, body.ask-on #drawer { top: calc(24px + var(--ask-h, 96px) + env(safe-area-inset-top, 0px)); }
-  body.ask-on #drawer { max-height: calc(100% - 40px - var(--ask-h, 96px) - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
-}
 /* File details share the right-hand column with the side panel where the two don't fit side by side. */
 @media (min-width: 641px) and (max-width: 1149px) {
   body.side-open.drawer-open #side { bottom: calc(50% + 6px); }
@@ -417,16 +431,6 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 #tip b { color: var(--sodium); font-weight: 600; }
 #tip b.f { color: var(--fire); }
 
-#hint {
-  position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
-  bottom: calc(14px + var(--tl-h) + env(safe-area-inset-bottom, 0px));
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--ink-dim); background: color-mix(in srgb, var(--street) 80%, transparent);
-  border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; white-space: nowrap;
-}
-#hint button { all: unset; cursor: pointer; padding: 2px 6px; border-radius: 999px; color: var(--ink-dim); }
-#hint button:hover, #hint button:focus-visible { color: var(--ink); background: var(--street-2); }
-body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window tabs take its place */
 #drop {
   position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
   background: color-mix(in srgb, var(--night) 80%, transparent); border: 3px dashed var(--sodium);
@@ -436,22 +440,27 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 
 @media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
   body.has-timeline { --tl-h: 92px; }
-  #rail { bottom: auto; right: max(12px, env(safe-area-inset-right, 0px)); width: auto; height: 50px; flex-direction: row; padding: 0 8px; justify-content: flex-start; }
+  :root { --top-h: 46px; }
+  #rail { bottom: auto; right: max(12px, env(safe-area-inset-right, 0px)); width: auto; height: 56px; flex-direction: row; padding: 0 6px; gap: 2px; justify-content: flex-start; }
+  .rail-btn { width: auto; min-width: 48px; flex: 1; max-width: 72px; }
+  #topbar { top: calc(80px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); padding: 0 12px; }
+  .tb-repo { max-width: none; flex: 1; }
+  .tb-stats div:nth-child(n+2) { display: none; }   /* the repo name needs the room */
   .rail-logo { margin: 0 6px 0 0; }
   .rail-btn[aria-pressed="true"]::before { left: 9px; right: 9px; top: auto; bottom: -6px; width: auto; height: 3px; }
-  .card { top: calc(74px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto; max-width: none; max-height: calc(50dvh - 96px - env(safe-area-inset-top, 0px)); }   /* ends above the side panel's bottom half */
+  .card { top: calc(80px + var(--top-h) + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto; max-width: none; max-height: calc(100dvh - 96px - var(--top-h) - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  /* one panel at a time: the open segment hides the bottom sheets, and file details hide the list under them */
+  body:not(.seg-closed) #side, body:not(.seg-closed) #drawer, body.drawer-open #side { display: none; }
   .seg-resize { display: none; }
-  .brand h1 { font-size: 22px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats dd { font-size: 14px; }
-  #drawer, #side { top: auto; height: 50vh; height: 50dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #drawer, #side { top: auto; bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; height: 55vh; height: 55dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   #side.folded, #drawer.folded { width: auto; height: auto; }
   .folded .drawer-head { flex-direction: row; padding: 10px 14px; }
   .folded .drawer-head > div { order: 0; }
   .folded .drawer-head h2 { writing-mode: horizontal-tb; }
   .panel-edge { display: none; }
   input[type=text], input[type=search], input[type=password], input:not([type]) { font-size: 16px; }   /* iOS zooms into anything smaller when it gets focus */
-  #hint { display: none; }
   #timeline { flex-wrap: wrap; gap: 8px; }
   .tl-main { order: 3; flex-basis: 100%; }
   #playBtn { flex: 1; }
@@ -461,39 +470,38 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 <div id="stage" aria-label="3D city where each building is a file"></div>
 
 <nav id="rail" aria-label="Tools">
-  <div class="rail-logo" aria-hidden="true">C<span>C</span></div>
   <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg></button>
-  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built, workflows, hotspots">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></button>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span class="rail-label" aria-hidden="true">Repo</span></button>
+  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built, workflows, hotspots, history">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
   <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file or a pull request">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
-  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections, how to read the city">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
-  <button type="button" class="rail-btn" id="railHist" aria-pressed="false" aria-label="History bar" title="Show or hide the history bar" hidden>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></button>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
+  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours and connections">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
   <span class="rail-spacer"></span>
+  <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how Code City works">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.5"/><path d="M12 17h.01"/></svg><span class="rail-label" aria-hidden="true">Guide</span></button>
   <button type="button" class="rail-btn" data-seg="account" aria-pressed="false" aria-label="GitHub account" title="GitHub account and request limits">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg></button>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg><span class="rail-label" aria-hidden="true">Account</span></button>
 </nav>
+
+<header id="topbar" aria-label="Repository on screen">
+  <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag" id="mode">Sample</span></div>
+  <div id="askSlot"></div>
+  <dl class="tb-stats">
+    <div><dt>files</dt><dd id="sFiles">0</dd></div>
+    <div><dt>lines</dt><dd id="sLines">0</dd></div>
+    <div><dt>commits</dt><dd id="sCommits">0</dd></div>
+    <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
+  </dl>
+</header>
 
 <section class="card" id="segPanel" aria-labelledby="segTitle">
   <div class="seg-head"><h2 id="segTitle">Repository</h2><button type="button" id="segClose" class="mini" aria-label="Collapse the panel" title="Collapse">«</button></div>
   <div class="seg-body">
 
   <section class="segment" data-seg="repo">
-    <div class="brand">
-      <h1>Code <span>City</span></h1>
-      <span class="tag" id="mode">Sample</span>
-    </div>
     <p class="intro">Understand a codebase at a glance: where it starts, what it depends on, how its workflows run, and how it grew. Each file is a building, each folder a district.</p>
-    <div class="repo" id="repoName">harbor (example repo)</div>
-    <dl class="stats">
-      <div><dt>Files</dt><dd id="sFiles">0</dd></div>
-      <div><dt>Lines</dt><dd id="sLines">0</dd></div>
-      <div><dt>Commits</dt><dd id="sCommits">0</dd></div>
-      <div><dt>Fires</dt><dd id="sFires" class="fire">0</dd></div>
-    </dl>
     <form class="field" id="repoForm" autocomplete="off">
       <label for="repoInput">Open a public repo</label>
       <div class="inline">
@@ -534,7 +542,7 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
     <p class="seg-note">Start with how the repo is built, then follow its workflows. Hotspots shows the big files that keep changing.</p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>How it's built</b><span>Entry points and core files, read from the code</span></button>
-      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>The main workflows and where they meet (AI, signed in)</span></button>
+      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>The main workflows and where they meet. Type a topic in Ask first to focus it (AI, signed in)</span></button>
       <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
       <button id="histBtn" type="button" class="seg-action" aria-expanded="false" hidden><b>Play history</b><span>Watch the city grow, commit by commit</span></button>
     </div>
@@ -569,17 +577,45 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
-    <details class="more" id="howTo" open>
-      <summary>How to read the city</summary>
+    <div class="field" id="howTo">
+      <span class="label">Colours</span>
       <div class="legend" id="legend"></div>
-      <div class="key">
-        <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
-      </div>
-    </details>
+    </div>
     <div class="actions">
       <button id="shareBtn" type="button">Copy link</button>
       <button id="resetBtn" type="button">Reset view</button>
     </div>
+  </section>
+
+  <section class="segment guide" data-seg="guide">
+    <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
+    <div><h3>Start here</h3><ul>
+      <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
+      <li><b>Understand &rsaquo; How it's built</b> opens by itself: the entry points, the core files, and what the project says it is.</li>
+      <li>Click any file to see its role, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
+    </ul></div>
+    <div><h3>Reading the city</h3><ul>
+      <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
+      <li><b>Districts</b> = folders, raised one step per level.</li>
+      <li><b>Fire</b> on a roof = TODO, FIXME or HACK comments.</li>
+      <li><b>Lit buildings</b> show what the open panel is about: <span class="gk" style="background:#f2a541"></span>entry points and the file you picked, <span class="gk" style="background:#ffc46b"></span>core files, answers and tour steps, <span class="gk" style="background:#8ff5d2"></span>search matches. Everything else dims.</li>
+      <li><b>Lines between buildings</b> are imports: which file brings in which.</li>
+      <li><b>Change heat</b> = how many commits touched a file. <b>Hotspots</b> are big files that keep changing, where bugs tend to live.</li>
+    </ul></div>
+    <div><h3>The tools</h3><ul>
+      <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
+      <li><b>Understand</b>: how it's built, the workflows tour, hotspots, and Play history.</li>
+      <li><b>Find</b>: a file by name, or a pull request's changes.</li>
+      <li><b>Display</b>: colour by language, change heat or imports; show or hide connections.</li>
+      <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
+    </ul></div>
+    <div><h3>Moving around</h3><ul>
+      <li>Drag to orbit, scroll (or pinch) to zoom, right-drag (or two fingers) to pan.</li>
+      <li>Click a building or a folder for details; shift-click a building to view its code.</li>
+      <li>Esc folds the front window, then closes the file panel, then the side panel.</li>
+      <li>Panels: click a rail icon again (or &laquo;) to fold the left panel; &raquo; folds a right panel. Drag a panel's edge to resize it.</li>
+    </ul></div>
+    <div><h3>Limits</h3><p>Without signing in, GitHub allows 60 requests an hour. Signing in raises it to 5,000 and unlocks Ask, tours and explanations, which have a daily limit per person.</p></div>
   </section>
 
   <section class="segment" data-seg="account">
@@ -611,9 +647,8 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
   <div class="field">
     <label for="askInput">Ask the city, or take a tour</label>
     <div class="inline">
-      <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
+      <input id="askInput" type="text" maxlength="300" placeholder="Ask about the code, e.g. where is authentication handled?" spellcheck="false">
       <button class="primary" type="submit">Ask</button>
-      <button type="button" id="tourBtn" title="A walk through what the software does, one feature at a time. Type a topic to focus it.">Tour</button>
     </div>
     <small id="askStatus" aria-live="polite"></small>
   </div>
@@ -628,9 +663,10 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
   </div>
   <div class="drawer-body">
     <div id="dActions"></div>
+    <p id="dRole"></p>
     <dl class="stats" id="dStats"></dl>
-    <div id="dCode"></div>
     <div id="dLinks"></div>
+    <div id="dCode"></div>
     <div id="dTodos"></div>
   </div>
 </aside>
@@ -663,7 +699,6 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 
 
 <div id="tip" hidden></div>
-<div id="hint"><span>Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click a building or folder &middot; shift-click to view code</span><button type="button" id="hintClose" aria-label="Close the guide" title="Close the guide">✕</button></div>
 <div id="drop" hidden>Drop a folder or city.json</div>
 <div id="busy" hidden role="status" aria-live="polite"><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
 
@@ -1478,10 +1513,29 @@ function flyTo(target, pos, dur = 1.1) {
   flight = { t0: performance.now(), dur: dur * 1000, fromT: controls.target.clone(), fromP: camera.position.clone(), toT: target, toP: pos };
 }
 function flyToBuilding(b) {
-  const u = b.userData, target = new THREE.Vector3(b.position.x, u.base + u.target * 0.5, b.position.z);
+  const u = b.userData, at = new THREE.Vector3(b.position.x, u.base + u.target * 0.5, b.position.z);
   const dir = camera.position.clone().sub(controls.target).normalize();
-  const dist = Math.max(14, u.target * 2.4 + u.side * 4);
+  const dist = Math.max(36, citySize * 0.6, u.target * 2.6 + u.side * 7);   // far enough to see the neighbours (the full view is ~1.6x the city)
+  // Aim off-centre so the building lands in the middle of the part of the screen no panel covers.
+  let clear = clearView();
+  if (segOpen && !phoneMQ.matches && (!clear || clear.w < 320)) { openSeg(null, false, true); clear = clearView(); }   // too little city showing: fold the left panel
+  const target = at.clone();
+  if (clear) {
+    const per = 2 * dist * Math.tan(camera.fov * Math.PI / 360) / innerHeight;   // world units per pixel at that distance
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    target.addScaledVector(right, -(clear.x - innerWidth / 2) * per).addScaledVector(up, (clear.y - innerHeight / 2) * per);
+  }
   flyTo(target, target.clone().add(dir.multiplyScalar(dist)));
+}
+function clearView() {   // the centre of the screen area no panel covers, or null when there's hardly any
+  let l = 0, r = innerWidth, t = 0, btm = innerHeight;
+  for (const id of ["rail", "topbar", "segPanel", "side", "drawer", "timeline"]) {
+    const box = document.getElementById(id).getBoundingClientRect();
+    if (!box.width || !box.height) continue;
+    if (box.width > innerWidth * 0.6) { if (box.top < innerHeight / 2) t = Math.max(t, box.bottom); else btm = Math.min(btm, box.top); }
+    else if (box.left + box.width / 2 < innerWidth / 2) l = Math.max(l, box.right); else r = Math.min(r, box.left);
+  }
+  return r - l < 160 || btm - t < 160 ? null : { x: (l + r) / 2, y: (t + btm) / 2, w: r - l };
 }
 function stepFlight() {
   if (!flight) return;
@@ -1542,31 +1596,30 @@ function colorByImports() {
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
-document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
-document.getElementById("cImp").onclick = () => { setColorMode("imports"); document.getElementById("howTo").open = true; };
+document.getElementById("cHeat").onclick = () => setColorMode("heat");
+document.getElementById("cImp").onclick = () => setColorMode("imports");
 
 // ---------- left rail and its segments ----------
 // Each rail icon opens its segment in the panel beside the rail; clicking the open one (or «) collapses the
 // panel. The panel's edge drags to resize it. Which segment, and the width, are remembered.
-const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", account: "GitHub account" };
-let segOpen = "repo";
+const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", guide: "Guide", account: "GitHub account" };
+let segOpen = "guide";   // a first visit opens the guide
 try { const saved = localStorage.getItem("codecity.seg"); if (saved !== null) segOpen = saved === "" ? null : saved;
   const w = +localStorage.getItem("codecity.segW"); if (w) document.body.style.setProperty("--seg-w", w + "px"); } catch (e) { /* storage blocked */ }
-function openSeg(name, focus) {
+function openSeg(name, focus, keep) {   // keep: don't remember this (the phone layout closing it for another panel)
   if (name && !SEG_TITLES[name]) name = "repo";
   segOpen = name;
   document.body.classList.toggle("seg-closed", !name);
   document.querySelectorAll("#segPanel .segment").forEach(el => el.classList.toggle("active", el.dataset.seg === name));
   document.querySelectorAll("#rail [data-seg]").forEach(b => b.setAttribute("aria-pressed", b.dataset.seg === name));
   if (name) document.getElementById("segTitle").textContent = SEG_TITLES[name];
-  try { localStorage.setItem("codecity.seg", name || ""); } catch (e) { /* storage blocked */ }
+  if (!keep) try { localStorage.setItem("codecity.seg", name || ""); } catch (e) { /* storage blocked */ }
   if (focus && name) { const first = document.querySelector(`#segPanel .segment[data-seg="${name}"] input, #segPanel .segment[data-seg="${name}"] button`); if (first) first.focus(); }
   if (typeof renderViewer === "function" && panes.length) renderViewer();   // windows keep clear of the panel
 }
 document.getElementById("rail").addEventListener("click", e => {
   const b = e.target.closest("[data-seg]");
-  if (b) return openSeg(segOpen === b.dataset.seg ? null : b.dataset.seg, true);
-  if (e.target.closest("#railHist")) document.getElementById("histBtn").click();
+  if (b) openSeg(segOpen === b.dataset.seg ? null : b.dataset.seg, true);
 });
 document.getElementById("segClose").onclick = () => openSeg(null);
 {
@@ -1580,23 +1633,24 @@ document.getElementById("segClose").onclick = () => openSeg(null);
   });
   edge.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); setW(panel.offsetWidth + (e.key === "ArrowRight" ? 24 : -24)); } });
 }
-document.getElementById("tourBtn2").onclick = () => startTour("");
+// Phones have room for one panel: opening a list or file details folds the left segment (and the CSS hides the
+// lists while a segment is open).
+const phoneMQ = matchMedia("(max-width: 640px), (max-height: 500px) and (pointer: coarse)");
+function roomFor() { if (phoneMQ.matches && segOpen) openSeg(null, false, true); }
 
 // ---------- timeline ----------
-// The history bar stays out of the way until "Play history" (in the left card) opens it; ▾ hides it again.
+// The history bar stays out of the way until "Play history" (under Understand) opens it; ▾ hides it again.
 let tlOpen = false;
 function syncTimeline() {
   const show = !!hist && tlOpen, btn = document.getElementById("histBtn");
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
   btn.hidden = !hist; btn.setAttribute("aria-expanded", show); btn.querySelector("b").textContent = show ? "Hide the history bar" : "Play history";
-  const railBtn = document.getElementById("railHist"); railBtn.hidden = !hist; railBtn.setAttribute("aria-pressed", show);
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
 }
-try { if (localStorage.getItem("codecity.hintClosed") === "1") document.body.classList.add("hint-closed"); } catch (e) { /* storage blocked */ }
-document.getElementById("hintClose").onclick = () => { document.body.classList.add("hint-closed"); try { localStorage.setItem("codecity.hintClosed", "1"); } catch (e) { /* storage blocked */ } };
-document.getElementById("histBtn").onclick = () => { tlOpen = !tlOpen; syncTimeline(); if (tlOpen) document.getElementById("playBtn").focus(); };
+// Play history opens the bar and starts playing; the bar isn't shown otherwise.
+document.getElementById("histBtn").onclick = () => { tlOpen = !tlOpen; syncTimeline(); if (tlOpen) { roomFor(); if (!playing) playBtn.click(); playBtn.focus(); } };
 document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); document.getElementById("histBtn").focus(); };
 const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
 const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into about 40 seconds
@@ -1725,6 +1779,7 @@ function openDrawer(b) {
   const parts = f.path.split("/");
   document.getElementById("dName").textContent = parts.pop();
   document.getElementById("dPath").innerHTML = crumbs(parts) + " · " + esc(LANGS[f.lang].name);
+  document.getElementById("dRole").innerHTML = fileRole(f.path);
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   document.getElementById("dStats").innerHTML =
     `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${ghRepo && f.text == null ? "–" : fmt(f.funcs)}</dd></div>` +
@@ -1748,12 +1803,23 @@ function openDrawer(b) {
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
   document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button></div>`;
-  drawer.hidden = false; document.body.classList.add("drawer-open");
+  roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
+// Where a file stands in the system, in one line: an entry point or core file (from "How it's built") and how
+// many files use it (once the imports have been read).
+function fileRole(path) {
+  const f = mapState && mapState.city === buildings && mapState.facts;
+  const n = graph && graph.usedBy ? (graph.usedBy.get(path) || new Set()).size : null;
+  const used = n == null ? "" : n ? `used by ${fmt(n)} file${n === 1 ? "" : "s"}` : "no other file imports it";
+  const entry = f && f.entries.find(e => e.path === path), core = f ? f.core.findIndex(c => c.path === path) : -1;
+  if (entry) return `<b>Entry point</b> · ${esc(entry.reason)}${used ? " · " + used : ""}`;
+  if (core >= 0) return `<b>Core file #${core + 1}</b>${used ? " · " + used : ""}`;
+  return used ? used[0].toUpperCase() + used.slice(1) + "." : "";
+}
 // The drawer's outline (the file's functions and classes with their lines; clicking one opens the code there)
-// and its first lines.
+// and its first lines, folded under the connections.
 async function renderOutline(path) {
   const c = await pullCode(path);
   const box = document.getElementById("dOutline");
@@ -1761,10 +1827,10 @@ async function renderOutline(path) {
   if (!c) { box.innerHTML = `<p class="note">The source of this file isn't available here.</p>`; return; }
   const items = outlineItems(path, c.text);
   box.innerHTML = (items.length
-    ? `<div><h3>Outline <span class="count">${fmt(items.length)}</span></h3><ul class="todos parts outline">${items.map(i =>
+    ? `<details class="more"${items.length <= 12 ? " open" : ""}><summary>Outline · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
         `<li class="${i.nested ? "nested" : ""}"><button type="button" class="oline" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></button></li>`).join("")}</ul>` +
-      (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</div>`
-    : "") + `<div><h3>First lines</h3><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></div>`;
+      (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</details>`
+    : "") + `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
 }
 function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
 
@@ -1794,7 +1860,7 @@ function setFolder(dir) {
 function openFolder(dir) {
   const st = folderStats(dir);
   if (!st.files.length) return;
-  picked = null; setFolder(dir); $("dLinks").innerHTML = ""; $("dActions").innerHTML = ""; drawLinks();
+  picked = null; setFolder(dir); $("dLinks").innerHTML = ""; $("dActions").innerHTML = ""; $("dRole").innerHTML = ""; drawLinks();
   const parts = dir.split("/"), name = parts.pop();
   document.getElementById("dName").textContent = name + "/";
   document.getElementById("dPath").innerHTML = `${crumbs(parts)} · folder`;
@@ -1811,7 +1877,7 @@ function openFolder(dir) {
       ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
     `<h3>Biggest files${biggest.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify(biggest.slice(0, 6).map(b => b.userData.f.path)))}">View ${Math.min(biggest.length, 6)} side by side</button>` : ""}</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
     (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
-  drawer.hidden = false; document.body.classList.add("drawer-open");
+  roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   const p = districts.find(d => d.userData.dir === dir);
   if (p) {
     const target = p.getWorldPosition(new THREE.Vector3()), size = Math.max(p.scale.x, p.scale.z);
@@ -2180,7 +2246,7 @@ const raiseNearer = e => {
 };
 hp("hpDual").addEventListener("pointermove", raiseNearer);
 hp("hpDual").addEventListener("pointerdown", raiseNearer, true);
-hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); };
+hp("hpSkip").onclick = () => { const k = ghProbe && ghProbe.key; closeHistoryPanel(); setRepoStatus(`Showing ${k}'s current files without history.`); currentRange = null; applyPendingView(); if (segOpen === "repo" && !phoneMQ.matches) openSeg("understand"); };
 hp("hpLoad").onclick = async () => {
   if (!ghProbe) return;
   currentRange = rangeCode(plan());
@@ -2530,6 +2596,7 @@ function onCityBuilt() {
   mapState = null;
   if (sideMode === "map") openSide("map");   // the new city's facts
   else if (!sideMode && citySource !== "sample") openSide("map");   // first look: how the repo is built
+  if (citySource !== "sample" && segOpen && !phoneMQ.matches && !(citySource === "github" && !hist && ghProbe)) openSeg("understand");
 }
 
 // ---------- coming back to the page ----------
@@ -2629,7 +2696,7 @@ function openSide(mode) {
     if (sideMode === "ask") askState = null;
     if (sideMode === "tour") endTour();
   }
-  sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
+  roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
   if (mode === "map") loadMap();
@@ -2724,7 +2791,7 @@ function loadMap() {
   const redraw = () => { if (mapState === st && sideMode === "map") renderSide(); };
   let last = 0;
   systemFacts((n, total) => { st.n = n; st.total = total; if (Date.now() - last > 300) { last = Date.now(); redraw(); } })
-    .then(f => { st.facts = f; redraw(); }, () => { st.error = true; redraw(); });
+    .then(f => { st.facts = f; redraw(); if (picked) $("dRole").innerHTML = fileRole(picked.userData.f.path); }, () => { st.error = true; redraw(); });
 }
 function langSummary() {
   const count = {}, lines = {};
@@ -2744,6 +2811,7 @@ function renderMap() {
   else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
     : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
   if (f && f.scanned) {
+    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Lit brightest: where it starts</span><span><i style="background:#${MATCH.color.getHexString()}"></i>Lit: the core</span></p>`;
     html += f.entries.length ? `<div><h3>Starts here</h3><ol class="rank">${f.entries.map((e, i) => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
       : `<p class="side-note">No clear entry point: this looks like a library others import.</p>`;
     html += f.core.length ? `<div><h3>The core</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
@@ -2901,15 +2969,12 @@ async function initAsk() {
   catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
   $("askForm").hidden = !askEnabled;
   $("tourBtn2").hidden = !askEnabled;
-  document.body.classList.toggle("ask-on", askEnabled);
 }
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
-new ResizeObserver(() => document.body.style.setProperty("--ask-h", $("askForm").offsetHeight + "px")).observe($("askForm"));   // the panels below it move with it
-// The card's blur would pin a fixed box to the card, so on wider screens Ask moves out to the page itself; on
-// narrower ones (where it would cover the panel) it sits in the Understand segment.
+// Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
 {
   const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = document.querySelector('#segPanel .segment[data-seg="understand"]');
-  const placeAsk = () => { if (wide.matches) document.body.appendChild(form); else home.appendChild(form); };
+  const placeAsk = () => { if (wide.matches) $("askSlot").appendChild(form); else home.appendChild(form); };
   wide.addEventListener("change", placeAsk); placeAsk();
 }
 async function askCity(question) {
@@ -3074,6 +3139,7 @@ const codePane = path => panes.find(p => p.kind === "code" && p.path === path);
 function addPane(p) {
   if (panes.length >= MAX_PANES) { toast(`${MAX_PANES} windows are open. Close one to open another.`); return false; }
   p.created = Date.now(); p.dirty = true;
+  if (segOpen && !phoneMQ.matches && freeArea().w < 560) openSeg(null, false, true);   // no room for a window beside the left panel
   panes.push(p);
   return true;
 }
@@ -3181,13 +3247,12 @@ let paneZ = 10;
 function freeArea() {
   const wide = innerWidth > 1099, tl = document.body.classList.contains("has-timeline") ? 76 : 0;
   // clear of the rail and its open panel on the left, and of whichever right-hand panels are open
-  const ask = document.getElementById("askForm"), askFloats = !ask.hidden && getComputedStyle(ask).position === "fixed";
-  const panelsLeft = [sidePanel, drawer, ...(askFloats ? [ask] : [])].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
+  const panelsLeft = [sidePanel, drawer].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
   const seg = document.getElementById("segPanel"), rail = document.getElementById("rail"), railUp = innerWidth <= 640;
   const leftEdge = (document.body.classList.contains("seg-closed") ? rail : seg).getBoundingClientRect().right + 12;
   const left = wide ? leftEdge : railUp ? 16 : rail.getBoundingClientRect().right + 12;
   const right = wide && panelsLeft.length ? Math.min(...panelsLeft) - 12 : innerWidth - 16;
-  const top = railUp ? Math.min(innerHeight * 0.35, 220) : 16, bottom = innerHeight - 16 - tl - 48;
+  const top = railUp ? Math.min(innerHeight * 0.35, 220) : document.getElementById("topbar").getBoundingClientRect().bottom + 8, bottom = innerHeight - 16 - tl - 48;
   return { x: left, y: top, w: Math.max(260, right - left), h: Math.max(200, bottom - top) };
 }
 function toFront(p) { p.z = ++paneZ; if (p.el) { p.el.style.zIndex = p.z; panes.forEach(q => q.el && q.el.classList.toggle("front", q === p)); } if (panes.length) renderTabs(); }
@@ -3642,6 +3707,7 @@ async function renderFileLinks(path) {
   box.innerHTML = list("Imports", out, "out") + (g && g.usedBy ? list("Used by", [...(g.usedBy.get(path) || [])].sort(), "in")
     : `<div><h3>Used by</h3><button type="button" class="mini" data-scan>Find the files that use this</button></div>`) +
     `<p class="note links-key"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>`;
+  $("dRole").innerHTML = fileRole(path);
 }
 document.getElementById("dLinks").addEventListener("click", async e => {
   if (!e.target.closest("[data-scan]") || !picked) return;
@@ -3659,7 +3725,7 @@ document.getElementById("dLinks").addEventListener("click", async e => {
 const TOUR_STEP_MS = 7000;   // auto-play pace
 const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
 let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
-$("tourBtn").onclick = () => startTour($("askInput").value);
+$("tourBtn2").onclick = () => startTour($("askInput").value);   // a topic typed in Ask focuses the tour
 async function startTour(topic) {
   const gen = cityGen;
   const status = $("askStatus");

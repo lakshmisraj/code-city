@@ -6,13 +6,13 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 
 ### Try it
 
-The icons down the left open the tools: **Repository** (open a repo or folder), **Understand** (how it's built, the workflows tour, hotspots, history), **Find** (a file or a pull request), **Display** (colours, connections, how to read the city), the history bar, and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way.
+The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder), **Understand** (how it's built, the workflows tour, hotspots, Play history), **Find** (a file or a pull request), **Display** (colours and connections), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
 3. Click a building to see its outline, imports and the files that use it; **View code** and **Explain this code** go deeper.
-4. Signed in with GitHub, press **Tour** for the main workflows and where they meet, or ask a question.
-5. Press **Play history** (Understand, or the clock icon) to watch the city grow, commit by commit.
+4. Signed in with GitHub, press **Workflows tour** (under Understand) for the main workflows and where they meet, or ask a question in the top bar.
+5. Press **Play history** (under Understand) to watch the city grow, commit by commit.
 
 ### Words used on the site
 
@@ -46,7 +46,7 @@ Opens by itself when a repo loads (and from **How it's built** under Understand)
 
 ### History
 
-**Play history** (under Understand, or the clock icon in the rail) opens the history bar (▾ hides it again): play the city's growth, scrub to any commit, change the speed, or record a video. Loading history from the history panel opens it for you.
+**Play history** (under Understand) opens the history bar and starts playing (▾ hides it again; the bar isn't shown otherwise): play the city's growth, scrub to any commit, change the speed, or record a video. Loading history from the history panel opens it for you.
 
 ### Folders, hotspots, pull requests and links
 
@@ -85,7 +85,7 @@ If you leave the page (signing in with GitHub, the back button, a reload), its w
 
 ### Guided tours
 
-Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Tour** next to the Ask box (or type a topic first, such as "how checkout works"). Using the same reading of the repo, Gemini splits the software into its main workflows ("Starting the app", "Handling a request"), each an ordered walk through files that follows real imports where it can.
+Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Workflows tour** under Understand (or type a topic in Ask first, such as "how checkout works"). Using the same reading of the repo, Gemini splits the software into its main workflows ("Starting the app", "Handling a request"), each an ordered walk through files that follows real imports where it can.
 
 - **Overview: how the workflows merge.** The map draws every workflow at once, one colour each, and lights brightest the files workflows share. The panel explains how they fit together, lists each workflow with the ones it leads to, and lists the files where workflows meet.
 - **One workflow.** Open a workflow to step through it. Each step has its clickable file name (opens the file's panel; **View** opens its code), what happens there, its **important lines** (Gemini reads the code of the workflow's first four files when you open it), and the **hand-off** line where it imports the next step's file, found from the code. A hand-off with no import line behind it is marked *inferred*. Click any line number to see it in the code viewer.
