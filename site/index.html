@@ -470,6 +470,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
     <div class="actions">
+      <button id="mapBtn" type="button" aria-pressed="false">How it's built</button>
       <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
     </div>
     <form class="field" id="prForm" autocomplete="off" hidden>
@@ -738,8 +739,11 @@ function makeResolver(paths) {
         mod = spec.slice(dots);
       }
       const rel = mod.replace(/\./g, "/");
-      // Like Python's own search: the importing file's folder and its parents, then src/, then the repo root
-      const roots = base != null ? [base] : [...dir.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/")), "src", "lib", ""];
+      // Like Python's own search: the importing file's folder and its parents, then src/, then the repo root. A
+      // package folder (one with __init__.py) is never searched for an absolute import, so "import typing" inside
+      // a package means the standard library, not the package's own typing.py.
+      const roots = base != null ? [base] : [...dir.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/")), "src", "lib", ""]
+        .filter(r => !all.has(join(r, "__init__.py")));
       const pick = p => first(roots.map(r => join(r, p)));
       const mainFile = rel ? pick(rel + ".py") || pick(rel + "/__init__.py") : (base != null ? first([join(base, "__init__.py")]) : null);
       // "from pkg import mod" names submodules as often as functions
@@ -1354,6 +1358,7 @@ function matFor(b) {
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
+  if (sideMode === "map") { const r = mapRole(b.userData.f.path); if (r) return r === "entry" ? PICKED : MATCH; }
   if (query) return b.userData.match ? SEARCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
   if (colorMode === "imports") {   // how many files import this one: the core modules glow
@@ -1389,6 +1394,7 @@ function colorByImports() {
     .then(() => { if (graph !== g) return; impMax = Math.max(1, ...[...g.usedBy.values()].map(s => s.size)); if (colorMode === "imports") renderLegend(); });
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
+document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
 document.getElementById("cImp").onclick = () => { setColorMode("imports"); document.getElementById("howTo").open = true; };
 
@@ -2318,6 +2324,9 @@ function onCityBuilt() {
   applyPendingView();
   syncUrl();
   restoreSession();
+  mapState = null;
+  if (sideMode === "map") openSide("map");   // the new city's facts
+  else if (!sideMode && citySource !== "sample") openSide("map");   // first look: how the repo is built
 }
 
 // ---------- coming back to the page ----------
@@ -2387,6 +2396,8 @@ function openSide(mode) {
   }
   sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
+  $("mapBtn").setAttribute("aria-pressed", mode === "map");
+  if (mode === "map") loadMap();
   renderSide(); syncUrl();
 }
 function closeSide(quiet) {
@@ -2396,9 +2407,10 @@ function closeSide(quiet) {
   sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
   drawLinks();
   $("hotBtn").setAttribute("aria-pressed", "false");
+  $("mapBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -2464,6 +2476,50 @@ function hotspotRows(limit) {
   }
   return rows.sort((a, z) => z.score - a.score).slice(0, limit);
 }
+// ---------- "How this repo is built" ----------
+// Opens by itself when a repo loads: what the project says it is, where execution starts and its core files,
+// all read from the code (no AI, no sign-in). Pointing at a row shows that file's connections over the city.
+let mapState = null;   // { facts, n, total, error } for the city on screen
+function loadMap() {
+  if (mapState && mapState.city === buildings) return;
+  const st = mapState = { city: buildings, facts: null, n: 0, total: 0 };
+  const redraw = () => { if (mapState === st && sideMode === "map") renderSide(); };
+  let last = 0;
+  systemFacts((n, total) => { st.n = n; st.total = total; if (Date.now() - last > 300) { last = Date.now(); redraw(); } })
+    .then(f => { st.facts = f; redraw(); }, () => { st.error = true; redraw(); });
+}
+function langSummary() {
+  const count = {}, lines = {};
+  for (const b of buildings) if (b.userData.lines > 0) { const l = b.userData.f.lang; count[l] = (count[l] || 0) + 1; lines[l] = (lines[l] || 0) + b.userData.lines; }
+  return Object.keys(lines).filter(l => !["md", "cfg", "other"].includes(l)).sort((a, b) => lines[b] - lines[a]).slice(0, 3).map(l => LANGS[l].name).join(", ");
+}
+function renderMap() {
+  const st = mapState, f = st && st.facts, live = buildings.filter(b => b.userData.lines > 0);
+  $("sideTitle").textContent = "How this repo is built";
+  $("sideSub").textContent = `${currentRepo || cityName} · ${fmt(live.length)} files · ${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines`;
+  const row = (path, n, meta) => `<li><button type="button" data-path="${esc(path)}"><span class="n">${n}</span><span class="path">${pathHtml(path)}</span><span class="meta">${meta}</span></button></li>`;
+  const langs = langSummary();
+  let html = "";
+  if (f && (f.intro || f.description)) html += `<div><p class="ask-answer">${rich(f.intro || f.description)}</p><p class="side-note">From ${f.intro ? `the ${fileLink(f.readme.path, "README")}` : "the project's manifest"}${langs ? ` · written in ${esc(langs)}` : ""}</p></div>`;
+  else if (langs) html += `<p class="side-note">Written in ${esc(langs)}.</p>`;
+  if (citySource === "sample") html += `<p class="side-note">This is the example city, which has no code to read. Build a repo to see how it's built.</p>`;
+  else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
+    : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
+  if (f && f.scanned) {
+    html += f.entries.length ? `<div><h3>Starts here</h3><ol class="rank">${f.entries.map((e, i) => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
+      : `<p class="side-note">No clear entry point: this looks like a library others import.</p>`;
+    html += f.core.length ? `<div><h3>The core</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
+    html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
+    if (askEnabled) html += `<div class="side-actions"><button type="button" class="primary" data-map-tour>Show the workflows (tour)</button></div>`;
+  }
+  sideBody.innerHTML = html;
+}
+sideBody.addEventListener("click", e => { if (sideMode === "map" && e.target.closest("[data-map-tour]")) { e.stopPropagation(); startTour(""); } }, true);
+function mapRole(path) {   // for the city's colours while the panel is open
+  const f = mapState && mapState.city === buildings && mapState.facts;
+  return !f ? null : f.entries.some(e => e.path === path) ? "entry" : f.core.some(c => c.path === path) ? "core" : null;
+}
+
 function renderHotspots() {
   $("sideTitle").textContent = "Hotspots";
   if (!hist) {
@@ -3079,29 +3135,97 @@ function outlineItems(path, text, max = 80) {
   return items.slice(0, max);
 }
 function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
+// ---------- what the system is: facts read from the code, no AI ----------
+// The README's opening, the manifests, where execution starts (entry points) and the files most of the product
+// depends on (the core). Shown in the "How this repo is built" panel and sent to Gemini in the digest, so the
+// two always agree. Built once per city.
+const ASIDE_RE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?)\//i;   // around the product, not the product
+const aside = f => ASIDE_RE.test(f) || /_test\.go$|\.(test|spec)\.[jt]sx?$/.test(f);
+function readmeIntro(text) {   // the first plain sentence of a README, skipping badges, headings and HTML
+  for (const para of text.replace(/<!--[\s\S]*?-->/g, "").split(/\n\s*\n/)) {
+    const t = para.split("\n").filter(l => !/^\s*(#|!\[|\[!\[|<|>|\||```|---|===|\s*$)/.test(l)).join(" ")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\[([^\]]+)\](?:\[[^\]]*\])?/g, "$1").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim();
+    if (t.length > 25) { const m = /^.{20,240}?[.!?](\s|$)/.exec(t); return (m ? m[0] : t.slice(0, 240)).trim(); }
+  }
+  return "";
+}
+// Entry points a project declares: package.json main/bin/scripts, pyproject/setup scripts, Cargo [[bin]].
+function declaredEntries(manifests, live) {
+  const out = new Map(), has = p => live.has(p), dir = m => m.includes("/") ? m.slice(0, m.lastIndexOf("/") + 1) : "";
+  const add = (p, why) => { p = p.replace(/^\.\//, ""); if (has(p) && !out.has(p)) out.set(p, why); };
+  const pyModule = (base, mod, why) => { const rel = mod.replace(/\./g, "/"); for (const r of ["", "src/"]) { add(base + r + rel + ".py", why); add(base + r + rel + "/__init__.py", why); add(base + r + rel + "/__main__.py", why); } };
+  for (const { path, text } of manifests) {
+    const name = path.split("/").pop().toLowerCase(), base = dir(path);
+    if (name === "package.json") {
+      let pkg = null; try { pkg = JSON.parse(text); } catch (e) { continue; }
+      if (typeof pkg.main === "string") add(base + pkg.main, "package.json main");
+      if (typeof pkg.bin === "string") add(base + pkg.bin, "package.json bin");
+      else if (pkg.bin && typeof pkg.bin === "object") for (const [k, v] of Object.entries(pkg.bin)) if (typeof v === "string") add(base + v, `command "${k}"`);
+      for (const [k, v] of Object.entries(pkg.scripts || {})) for (const m of String(v).matchAll(/(?:^|\s)(?:node|ts-node|tsx|bun|deno run)\s+([\w./-]+\.[cm]?[jt]sx?)/g)) add(base + m[1], `npm run ${k}`);
+    } else if (name === "pyproject.toml" || name === "setup.cfg" || name === "setup.py") {
+      for (const m of text.matchAll(/["']?([\w.-]+)["']?\s*=\s*["']?([\w.]+):\w+["']?/g)) pyModule(base, m[2], `command "${m[1]}"`);
+    } else if (name === "cargo.toml") {
+      for (const m of text.matchAll(/\[\[bin\]\][^[]*?path\s*=\s*"([^"]+)"/g)) add(base + m[1], "Cargo [[bin]]");
+    }
+  }
+  return out;
+}
+function systemFacts(progress) {
+  const g = getGraph();
+  if (g.facts) return g.facts;
+  g.facts = (async () => {
+    const livePaths = buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path), live = new Set(livePaths);
+    const code = livePaths.filter(canImport), byDepth = (a, b) => a.split("/").length - b.split("/").length;
+    const facts = { readme: null, intro: "", description: "", manifests: [], code, entries: [], core: [], scanned: false, partial: code.length > MAX_SCAN };
+    const readme = livePaths.filter(p => /(^|\/)readme(\.\w+)?$/i.test(p)).sort(byDepth)[0];
+    if (readme) { const c = await pullCode(readme); if (c) { facts.readme = { path: readme, text: c.text }; facts.intro = readmeIntro(c.text); } }
+    for (const m of livePaths.filter(p => MANIFESTS.test(p.split("/").pop()) && !aside(p)).sort(byDepth).slice(0, 4)) {
+      const c = await pullCode(m); if (c) facts.manifests.push({ path: m, text: c.text });
+    }
+    for (const { text } of facts.manifests) {
+      const d = /"description"\s*:\s*"([^"]{8,240})"/.exec(text) || /^\s*description\s*=\s*["']([^"']{8,240})["']/m.exec(text);
+      if (d && !facts.description) facts.description = d[1];
+    }
+    if (!code.length) return facts;
+    const usedBy = await scanUsedBy(progress);
+    facts.scanned = true;
+    const out = new Map(code.map(f => [f, knownDeps(f) || []]));
+    const users = f => [...(usedBy.get(f) || [])].filter(u => !aside(u)).length;   // product files that import it
+    facts.out = out; facts.users = users;
+    // where execution starts: declared by the project, named like an entry point, or imported by nothing
+    const why = declaredEntries(facts.manifests, live);
+    const named = /(^|\/)(__main__\.py|manage\.py|main\.(py|go|rs|c|cc|cpp|kt|java|swift)|(index|main|server|app|cli)\.([cm]?[jt]sx?|py|rb|php))$/i;
+    for (const f of code) {
+      if (aside(f) || why.has(f)) continue;
+      if (/(^|\/)cmd\/[^/]+\/main\.go$/.test(f) || (named.test(f) && f.split("/").length <= 3)) why.set(f, "named like an entry point");
+    }
+    for (const f of code) if (!aside(f) && !why.has(f) && !users(f) && out.get(f).length >= 2) why.set(f, "imported by no other file");
+    const order = w => w.startsWith("named") ? 1 : w.startsWith("imported by no") ? 2 : 0;
+    facts.entries = [...why].map(([path, reason]) => ({ path, reason }))
+      .sort((a, b) => order(a.reason) - order(b.reason) || out.get(b.path)?.length - out.get(a.path)?.length || byDepth(a.path, b.path)).slice(0, 8);
+    // the files most product files import; a small repo whose files are each used once still gets a list
+    const ranked = code.filter(f => !aside(f) && users(f) > 0).sort((a, b) => users(b) - users(a) || out.get(b).length - out.get(a).length);
+    facts.core = (ranked.filter(f => users(f) > 1).length >= 5 ? ranked.filter(f => users(f) > 1) : ranked).slice(0, 10).map(path => ({ path, users: users(path) }));
+    return facts;
+  })();
+  return g.facts;
+}
 function repoDigest(progress) {
   const g = getGraph();
   if (g.digest) return g.digest;
   g.digest = (async () => {
-    const live = buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path);
-    const code = live.filter(canImport), parts = [];
-    const readme = live.filter(p => /(^|\/)readme(\.\w+)?$/i.test(p)).sort((a, b) => a.split("/").length - b.split("/").length)[0];
-    if (readme) { const c = await pullCode(readme); if (c) parts.push(`README (${readme}, opening):\n${c.text.slice(0, 1800)}`); }
-    for (const m of live.filter(p => MANIFESTS.test(p.split("/").pop())).sort((a, b) => a.split("/").length - b.split("/").length).slice(0, 2)) {
-      const c = await pullCode(m); if (c) parts.push(`${m}:\n${c.text.slice(0, 900)}`);
-    }
-    if (code.length && code.length <= DIGEST_MAX_FILES) {
-      const usedBy = await scanUsedBy(progress), out = new Map();
-      for (const f of code) out.set(f, knownDeps(f) || []);
-      const aside = f => /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?)\//i.test(f);   // not the product itself
-      const rank = f => [...(usedBy.get(f) || [])].filter(u => !aside(u)).length;
-      const core = code.filter(f => !aside(f) && rank(f) > 0).sort((a, b) => rank(b) - rank(a)).slice(0, 15);
-      if (core.length) parts.push(`Most-imported files (the core):\n${core.map(f => `${f} (used by ${rank(f)})`).join("\n")}`);
-      const entry = code.filter(f => !rank(f) && out.get(f).length && !aside(f))
-        .sort((a, b) => out.get(b).length - out.get(a).length).slice(0, 10);
-      if (entry.length) parts.push(`Likely entry points (import others, imported by none):\n${entry.join("\n")}`);
-      const key = [...new Set([...core, ...entry, ...code.filter(f => !aside(f))
-        .sort((a, b) => (bmap.get(b).userData.lines + rank(b) * 200) - (bmap.get(a).userData.lines + rank(a) * 200))])].slice(0, OUTLINE_FILES);
+    const parts = [], live = buildings.filter(b => b.userData.lines > 0).map(b => b.userData.f.path);
+    const code = live.filter(canImport), small = code.length <= DIGEST_MAX_FILES;
+    const facts = small ? await systemFacts(progress) : null;
+    const readme = facts ? facts.readme : null;
+    if (readme) parts.push(`README (${readme.path}, opening):\n${readme.text.slice(0, 1800)}`);
+    for (const m of (facts ? facts.manifests : []).slice(0, 2)) parts.push(`${m.path}:\n${m.text.slice(0, 900)}`);
+    if (facts && facts.scanned) {
+      const { out, users } = facts;
+      if (facts.core.length) parts.push(`Most-imported files (the core):\n${facts.core.map(c => `${c.path} (used by ${c.users})`).join("\n")}`);
+      if (facts.entries.length) parts.push(`Where execution starts (entry points):\n${facts.entries.map(e => `${e.path} (${e.reason})`).join("\n")}`);
+      const key = [...new Set([...facts.core.map(c => c.path), ...facts.entries.map(e => e.path), ...code.filter(f => !aside(f))
+        .sort((a, b) => (bmap.get(b).userData.lines + users(b) * 200) - (bmap.get(a).userData.lines + users(a) * 200))])].slice(0, OUTLINE_FILES);
       const outlines = [];
       for (const f of key) { const c = await pullCode(f); const names = c ? outline(f, c.text) : []; if (names.length) outlines.push(`${f}: ${names.join(", ")}`); }
       if (outlines.length) parts.push(`Top-level functions and classes:\n${outlines.join("\n")}`);
