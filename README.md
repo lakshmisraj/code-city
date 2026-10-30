@@ -6,11 +6,13 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 
 ### Try it
 
+The icons down the left open the tools: **Repository** (open a repo or folder), **Understand** (how it's built, the workflows tour, hotspots, history), **Find** (a file or a pull request), **Display** (colours, connections, how to read the city), the history bar, and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way.
+
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
 3. Click a building to see its outline, imports and the files that use it; **View code** and **Explain this code** go deeper.
 4. Signed in with GitHub, press **Tour** for the main workflows and where they meet, or ask a question.
-5. Press **Play history** to watch the city grow, commit by commit.
+5. Press **Play history** (Understand, or the clock icon) to watch the city grow, commit by commit.
 
 ### Words used on the site
 
@@ -40,11 +42,11 @@ Building heights are estimated from file size until you click a building, which 
 
 ### How this repo is built
 
-Opens by itself when a repo loads (and from **How it's built** in the left card). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). It needs no AI and no sign-in: it's read from the code's import lines, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour.
+Opens by itself when a repo loads (and from **How it's built** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). It needs no AI and no sign-in: it's read from the code's import lines, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour.
 
 ### History
 
-**Play history** in the left card opens the history bar (▾ hides it again): play the city's growth, scrub to any commit, change the speed, or record a video. Loading history from the history panel opens it for you.
+**Play history** (under Understand, or the clock icon in the rail) opens the history bar (▾ hides it again): play the city's growth, scrub to any commit, change the speed, or record a video. Loading history from the history panel opens it for you.
 
 ### Folders, hotspots, pull requests and links
 

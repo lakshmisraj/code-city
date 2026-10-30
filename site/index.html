@@ -33,18 +33,52 @@ body.has-timeline { --tl-h: 76px; }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; touch-action: none; }
 
+/* Left: an icon rail; each icon opens its segment in the panel beside it (collapsible, resizable). */
+:root { --rail-w: 52px; --seg-w: 300px; }
+#rail {
+  position: fixed; z-index: 6; top: calc(16px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); width: var(--rail-w); box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0;
+  background: color-mix(in srgb, var(--street) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 12px;
+}
+.rail-logo { font: 700 15px var(--f-display); letter-spacing: .02em; color: var(--ink); margin-bottom: 6px; }
+.rail-logo span { color: var(--sodium); }
+.rail-btn { all: unset; box-sizing: border-box; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 9px; color: var(--ink-dim); cursor: pointer; position: relative; }
+.rail-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rail-btn:hover { color: var(--ink); background: var(--street-2); }
+.rail-btn[aria-pressed="true"] { color: var(--sodium); background: color-mix(in srgb, var(--sodium) 14%, transparent); }
+.rail-btn[aria-pressed="true"]::before { content: ""; position: absolute; left: -7px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--sodium); }
+.rail-btn:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+.rail-btn[hidden] { display: none; }
+.rail-spacer { flex: 1; }
 .card {
   position: fixed; z-index: 5;
   top: calc(16px + env(safe-area-inset-top, 0px));
-  left: max(16px, env(safe-area-inset-left, 0px));
-  width: 312px; max-width: calc(100vw - 32px);
+  left: calc(max(12px, env(safe-area-inset-left, 0px)) + var(--rail-w) + 8px);
+  width: var(--seg-w); max-width: calc(100vw - var(--rail-w) - 40px);
   max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  overflow: auto; box-sizing: border-box;
-  background: color-mix(in srgb, var(--street) 90%, transparent);
+  box-sizing: border-box; display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--street) 92%, transparent);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: 10px;
-  padding: 16px; display: flex; flex-direction: column; gap: 14px;
 }
+body.seg-closed .card { display: none; }
+.seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
+.seg-head h2 { margin: 0; font: 700 12px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sodium); }
+.seg-body { overflow: auto; padding: 14px 16px 16px; min-height: 0; }
+.segment { display: none; flex-direction: column; gap: 14px; }
+.segment.active { display: flex; }
+.seg-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
+.seg-actions { display: flex; flex-direction: column; gap: 8px; }
+.seg-action { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; }
+.seg-action b { font: 600 14px var(--f-body); }
+.seg-action span { font-size: 12px; font-weight: 400; color: var(--ink-dim); }
+.seg-action.primary span { color: color-mix(in srgb, #1a1205 75%, transparent); }
+.seg-action[aria-pressed="true"] { border-color: var(--sodium); }
+.seg-action[hidden] { display: none; }
+.seg-resize { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; cursor: ew-resize; touch-action: none; }
+.seg-resize:hover, .seg-resize:focus-visible { background: linear-gradient(90deg, transparent 4px, var(--sodium) 4px 6px, transparent 6px); outline: none; }
 .group { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .group[hidden] { display: none; }
 .group-title { margin: 0; font: 700 12px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sodium); }
@@ -161,11 +195,21 @@ details.more[open] summary { margin-bottom: 8px; }
   border: 1px solid var(--line); border-radius: 10px;
   display: flex; flex-direction: column; overflow: hidden;
 }
+#side { width: var(--side-w, 380px); }
+#drawer { width: var(--drawer-w, 380px); }
+/* Right panels: » folds one to a thin strip (its title runs down it), « opens it; the left edge drags to resize. */
+.panel-edge { position: absolute; top: 0; bottom: 0; left: -5px; width: 10px; cursor: ew-resize; touch-action: none; z-index: 2; }
+.panel-edge:hover, .panel-edge:focus-visible { background: linear-gradient(90deg, transparent 4px, var(--sodium) 4px 6px, transparent 6px); outline: none; }
+#side.folded, #drawer.folded { width: 44px; bottom: auto; max-height: 70vh; }
+.folded .drawer-body, .folded .panel-edge, .folded .drawer-head > div > p, .folded #closeBtn, .folded #sideClose { display: none; }
+.folded .drawer-head { flex-direction: column; align-items: center; padding: 10px 6px; border-bottom: 0; gap: 10px; }
+.folded .drawer-head > div { order: 2; }
+.folded .drawer-head h2 { cursor: pointer; writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 55vh; font-size: 12px; }
 #drawer { z-index: 7; bottom: auto; max-height: calc(100% - 32px - var(--tl-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }   /* as tall as its content */
 .d-stack { display: flex; flex-direction: column; gap: 14px; }
 #dActions:empty, #dLinks:empty, #dTodos:empty, #dCode:empty { display: none; }
 /* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
-@media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 392px); } }
+@media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + var(--side-occ, 380px) + 12px); } }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rank button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
 .rank button:hover, .rank button:focus-visible { background: var(--street-2); }
@@ -331,7 +375,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 @media (min-width: 760px) {
   #askForm {
     position: fixed; z-index: 8; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
-    width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 14px; gap: 8px;
+    width: max(300px, var(--side-w, 380px)); max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 14px; gap: 8px;
     border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--street) 94%, transparent);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,.35);
   }
@@ -392,11 +436,20 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 
 @media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
   body.has-timeline { --tl-h: 92px; }
-  .card { width: auto; right: max(16px, env(safe-area-inset-right, 0px)); padding: 12px; gap: 10px; max-height: 46vh; }
+  #rail { bottom: auto; right: max(12px, env(safe-area-inset-right, 0px)); width: auto; height: 50px; flex-direction: row; padding: 0 8px; justify-content: flex-start; }
+  .rail-logo { margin: 0 6px 0 0; }
+  .rail-btn[aria-pressed="true"]::before { left: 9px; right: 9px; top: auto; bottom: -6px; width: auto; height: 3px; }
+  .card { top: calc(74px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto; max-width: none; max-height: calc(50dvh - 96px - env(safe-area-inset-top, 0px)); }   /* ends above the side panel's bottom half */
+  .seg-resize { display: none; }
   .brand h1 { font-size: 22px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats dd { font-size: 14px; }
   #drawer, #side { top: auto; height: 50vh; height: 50dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #side.folded, #drawer.folded { width: auto; height: auto; }
+  .folded .drawer-head { flex-direction: row; padding: 10px 14px; }
+  .folded .drawer-head > div { order: 0; }
+  .folded .drawer-head h2 { writing-mode: horizontal-tb; }
+  .panel-edge { display: none; }
   input[type=text], input[type=search], input[type=password], input:not([type]) { font-size: 16px; }   /* iOS zooms into anything smaller when it gets focus */
   #hint { display: none; }
   #timeline { flex-wrap: wrap; gap: 8px; }
@@ -407,24 +460,42 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 
 <div id="stage" aria-label="3D city where each building is a file"></div>
 
-<section class="card" aria-label="Controls">
-  <div class="brand">
-    <h1>Code <span>City</span></h1>
-    <span class="tag" id="mode">Sample</span>
-  </div>
-  <p class="intro">See a codebase as a city. Each file is a building, each folder a district. Play the git history to watch it grow, or switch to heat to find the files that change most.</p>
-  <div class="repo" id="repoName">harbor (example repo)</div>
-  <dl class="stats">
-    <div><dt>Files</dt><dd id="sFiles">0</dd></div>
-    <div><dt>Lines</dt><dd id="sLines">0</dd></div>
-    <div><dt>Commits</dt><dd id="sCommits">0</dd></div>
-    <div><dt>Fires</dt><dd id="sFires" class="fire">0</dd></div>
-  </dl>
+<nav id="rail" aria-label="Tools">
+  <div class="rail-logo" aria-hidden="true">C<span>C</span></div>
+  <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg></button>
+  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built, workflows, hotspots">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></button>
+  <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file or a pull request">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections, how to read the city">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
+  <button type="button" class="rail-btn" id="railHist" aria-pressed="false" aria-label="History bar" title="Show or hide the history bar" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></button>
+  <span class="rail-spacer"></span>
+  <button type="button" class="rail-btn" data-seg="account" aria-pressed="false" aria-label="GitHub account" title="GitHub account and request limits">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg></button>
+</nav>
 
-  <section class="group" aria-labelledby="gLoad">
-    <h2 class="group-title" id="gLoad">Load a codebase</h2>
+<section class="card" id="segPanel" aria-labelledby="segTitle">
+  <div class="seg-head"><h2 id="segTitle">Repository</h2><button type="button" id="segClose" class="mini" aria-label="Collapse the panel" title="Collapse">«</button></div>
+  <div class="seg-body">
+
+  <section class="segment" data-seg="repo">
+    <div class="brand">
+      <h1>Code <span>City</span></h1>
+      <span class="tag" id="mode">Sample</span>
+    </div>
+    <p class="intro">Understand a codebase at a glance: where it starts, what it depends on, how its workflows run, and how it grew. Each file is a building, each folder a district.</p>
+    <div class="repo" id="repoName">harbor (example repo)</div>
+    <dl class="stats">
+      <div><dt>Files</dt><dd id="sFiles">0</dd></div>
+      <div><dt>Lines</dt><dd id="sLines">0</dd></div>
+      <div><dt>Commits</dt><dd id="sCommits">0</dd></div>
+      <div><dt>Fires</dt><dd id="sFires" class="fire">0</dd></div>
+    </dl>
     <form class="field" id="repoForm" autocomplete="off">
-      <label for="repoInput">Public repo</label>
+      <label for="repoInput">Open a public repo</label>
       <div class="inline">
         <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
         <button class="primary" type="submit">Build</button>
@@ -459,8 +530,17 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
     <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
   </section>
 
-  <section class="group" aria-labelledby="gExplore">
-    <h2 class="group-title" id="gExplore">Explore</h2>
+  <section class="segment" data-seg="understand">
+    <p class="seg-note">Start with how the repo is built, then follow its workflows. Hotspots shows the big files that keep changing.</p>
+    <div class="seg-actions">
+      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>How it's built</b><span>Entry points and core files, read from the code</span></button>
+      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>The main workflows and where they meet (AI, signed in)</span></button>
+      <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
+      <button id="histBtn" type="button" class="seg-action" aria-expanded="false" hidden><b>Play history</b><span>Watch the city grow, commit by commit</span></button>
+    </div>
+  </section>
+
+  <section class="segment" data-seg="find">
     <div class="field">
       <label for="q">Find a file</label>
       <div class="q-wrap">
@@ -468,20 +548,6 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
         <ul id="qList" role="listbox" aria-label="Matching files" hidden></ul>
       </div>
       <small id="qInfo" aria-live="polite"></small>
-    </div>
-    <div class="row">
-      <span class="label">Color by</span>
-      <div class="seg" role="group" aria-label="Color buildings by">
-        <button type="button" id="cLang" aria-pressed="true">Language</button>
-        <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
-        <button type="button" id="cImp" aria-pressed="false">Imports</button>
-      </div>
-    </div>
-    <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
-    <div class="actions">
-      <button id="histBtn" type="button" aria-expanded="false" hidden>Play history</button>
-      <button id="mapBtn" type="button" aria-pressed="false">How it's built</button>
-      <button id="hotBtn" type="button" aria-pressed="false">Hotspots</button>
     </div>
     <form class="field" id="prForm" autocomplete="off" hidden>
       <label for="prInput">Show a pull request</label>
@@ -493,24 +559,33 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
     </form>
   </section>
 
-  <form class="group" id="askForm" autocomplete="off" hidden aria-labelledby="gAsk">
-    <h2 class="group-title" id="gAsk">Ask</h2>
+  <section class="segment" data-seg="display">
     <div class="field">
-      <label for="askInput">Ask the city, or take a tour</label>
-      <div class="inline">
-        <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
-        <button class="primary" type="submit">Ask</button>
-        <button type="button" id="tourBtn" title="A walk through what the software does, one feature at a time. Type a topic to focus it.">Tour</button>
+      <span class="label">Color buildings by</span>
+      <div class="seg" role="group" aria-label="Color buildings by">
+        <button type="button" id="cLang" aria-pressed="true">Language</button>
+        <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
+        <button type="button" id="cImp" aria-pressed="false">Imports</button>
       </div>
-      <small id="askStatus" aria-live="polite"></small>
     </div>
-  </form>
+    <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
+    <details class="more" id="howTo" open>
+      <summary>How to read the city</summary>
+      <div class="legend" id="legend"></div>
+      <div class="key">
+        <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
+      </div>
+    </details>
+    <div class="actions">
+      <button id="shareBtn" type="button">Copy link</button>
+      <button id="resetBtn" type="button">Reset view</button>
+    </div>
+  </section>
 
-  <section class="group" aria-labelledby="gAccount">
-    <h2 class="group-title" id="gAccount">GitHub access</h2>
+  <section class="segment" data-seg="account">
     <div class="signin" id="signinRow" hidden>
       <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
-      <span>Signing in with GitHub raises your limit from 60 to 5,000 GitHub requests an hour</span>
+      <span>Signing in raises GitHub's limit from 60 to 5,000 requests an hour, and unlocks Ask, tours and explanations.</span>
     </div>
     <div class="signin" id="signedinRow" hidden>
       <span>Signed in as <b id="ghLogin">GitHub</b></span>
@@ -527,26 +602,29 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
     </details>
   </section>
 
-  <section class="group" aria-labelledby="gView">
-    <h2 class="group-title" id="gView">View</h2>
-    <div class="actions">
-      <button id="shareBtn" type="button">Copy link</button>
-      <button id="resetBtn" type="button">Reset view</button>
-    </div>
-    <details class="more" id="howTo">
-      <summary>How to read the city</summary>
-      <div class="legend" id="legend"></div>
-      <div class="key">
-        <b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions. <b>Districts</b> = folders, raised one step per level. <b>Fire</b> on the roof = TODO / FIXME / HACK comments. <b>Change heat</b> = how many commits touched the file; hot files are where bugs tend to live. <b>Hotspot</b> = a file in the top tenth for changes; the Hotspots list ranks by commits &times; lines.
-      </div>
-    </details>
-  </section>
+  </div>
+  <div class="seg-resize" id="segResize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0"></div>
 </section>
 
+<form class="group" id="askForm" autocomplete="off" hidden aria-labelledby="gAsk">
+  <h2 class="group-title" id="gAsk">Ask</h2>
+  <div class="field">
+    <label for="askInput">Ask the city, or take a tour</label>
+    <div class="inline">
+      <input id="askInput" type="text" maxlength="300" placeholder="e.g. where is authentication handled?" spellcheck="false">
+      <button class="primary" type="submit">Ask</button>
+      <button type="button" id="tourBtn" title="A walk through what the software does, one feature at a time. Type a topic to focus it.">Tour</button>
+    </div>
+    <small id="askStatus" aria-live="polite"></small>
+  </div>
+</form>
+
 <aside id="drawer" hidden aria-label="File details">
+  <div class="panel-edge" role="separator" aria-orientation="vertical" aria-label="Resize the file panel" tabindex="0"></div>
   <div class="drawer-head">
     <div><h2 id="dName"></h2><p id="dPath"></p></div>
-    <button id="closeBtn" type="button" aria-label="Close details">Close</button>
+    <button type="button" class="mini panel-fold" data-fold aria-label="Collapse the file panel" title="Collapse">»</button>
+    <button id="closeBtn" type="button" class="mini" aria-label="Close the file panel" title="Close">✕</button>
   </div>
   <div class="drawer-body">
     <div id="dActions"></div>
@@ -558,9 +636,11 @@ body.tabs-open #hint, body.hint-closed #hint { display: none; }   /* the window 
 </aside>
 
 <aside id="side" hidden aria-labelledby="sideTitle">
+  <div class="panel-edge" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabindex="0"></div>
   <div class="drawer-head">
     <div><h2 id="sideTitle"></h2><p id="sideSub"></p></div>
-    <button id="sideClose" type="button">Close</button>
+    <button type="button" class="mini panel-fold" data-fold aria-label="Collapse the side panel" title="Collapse">»</button>
+    <button id="sideClose" type="button" class="mini" aria-label="Close the side panel" title="Close">✕</button>
   </div>
   <div class="drawer-body" id="sideBody"></div>
 </aside>
@@ -1465,6 +1545,43 @@ document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide
 document.getElementById("cHeat").onclick = () => { setColorMode("heat"); document.getElementById("howTo").open = true; };
 document.getElementById("cImp").onclick = () => { setColorMode("imports"); document.getElementById("howTo").open = true; };
 
+// ---------- left rail and its segments ----------
+// Each rail icon opens its segment in the panel beside the rail; clicking the open one (or «) collapses the
+// panel. The panel's edge drags to resize it. Which segment, and the width, are remembered.
+const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", account: "GitHub account" };
+let segOpen = "repo";
+try { const saved = localStorage.getItem("codecity.seg"); if (saved !== null) segOpen = saved === "" ? null : saved;
+  const w = +localStorage.getItem("codecity.segW"); if (w) document.body.style.setProperty("--seg-w", w + "px"); } catch (e) { /* storage blocked */ }
+function openSeg(name, focus) {
+  if (name && !SEG_TITLES[name]) name = "repo";
+  segOpen = name;
+  document.body.classList.toggle("seg-closed", !name);
+  document.querySelectorAll("#segPanel .segment").forEach(el => el.classList.toggle("active", el.dataset.seg === name));
+  document.querySelectorAll("#rail [data-seg]").forEach(b => b.setAttribute("aria-pressed", b.dataset.seg === name));
+  if (name) document.getElementById("segTitle").textContent = SEG_TITLES[name];
+  try { localStorage.setItem("codecity.seg", name || ""); } catch (e) { /* storage blocked */ }
+  if (focus && name) { const first = document.querySelector(`#segPanel .segment[data-seg="${name}"] input, #segPanel .segment[data-seg="${name}"] button`); if (first) first.focus(); }
+  if (typeof renderViewer === "function" && panes.length) renderViewer();   // windows keep clear of the panel
+}
+document.getElementById("rail").addEventListener("click", e => {
+  const b = e.target.closest("[data-seg]");
+  if (b) return openSeg(segOpen === b.dataset.seg ? null : b.dataset.seg, true);
+  if (e.target.closest("#railHist")) document.getElementById("histBtn").click();
+});
+document.getElementById("segClose").onclick = () => openSeg(null);
+{
+  const edge = document.getElementById("segResize"), panel = document.getElementById("segPanel");
+  const setW = w => { w = Math.round(Math.max(240, Math.min(560, innerWidth - 200, w))); document.body.style.setProperty("--seg-w", w + "px"); try { localStorage.setItem("codecity.segW", w); } catch (e) { /* storage blocked */ } if (panes.length) renderViewer(); };
+  edge.addEventListener("pointerdown", e => {
+    e.preventDefault(); try { edge.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+    const left = panel.getBoundingClientRect().left, move = ev => setW(ev.clientX - left);
+    const up = () => { edge.removeEventListener("pointermove", move); edge.removeEventListener("pointerup", up); };
+    edge.addEventListener("pointermove", move); edge.addEventListener("pointerup", up);
+  });
+  edge.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); setW(panel.offsetWidth + (e.key === "ArrowRight" ? 24 : -24)); } });
+}
+document.getElementById("tourBtn2").onclick = () => startTour("");
+
 // ---------- timeline ----------
 // The history bar stays out of the way until "Play history" (in the left card) opens it; ▾ hides it again.
 let tlOpen = false;
@@ -1472,7 +1589,8 @@ function syncTimeline() {
   const show = !!hist && tlOpen, btn = document.getElementById("histBtn");
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
-  btn.hidden = !hist; btn.setAttribute("aria-expanded", show); btn.textContent = show ? "Hide history" : "Play history";
+  btn.hidden = !hist; btn.setAttribute("aria-expanded", show); btn.querySelector("b").textContent = show ? "Hide the history bar" : "Play history";
+  const railBtn = document.getElementById("railHist"); railBtn.hidden = !hist; railBtn.setAttribute("aria-pressed", show);
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
 }
@@ -2473,6 +2591,37 @@ document.getElementById("shareBtn").onclick = async () => {
 // ---------- side panel: hotspots and pull requests ----------
 let sideMode = null;   // "hot" | "pr" | null
 const sidePanel = document.getElementById("side"), sideBody = document.getElementById("sideBody");
+// The right panels: folded or open, and their widths, remembered. The file panel sits beside the side panel,
+// so it follows the side panel's width (--side-occ).
+const panelUi = { side: { w: 380, folded: false }, drawer: { w: 380, folded: false } };
+try { const saved = JSON.parse(localStorage.getItem("codecity.panels") || "null"); if (saved) for (const k of ["side", "drawer"]) Object.assign(panelUi[k], saved[k] || {}); } catch (e) { /* storage blocked */ }
+function applyPanels(save) {
+  const st = document.body.style;
+  st.setProperty("--side-w", panelUi.side.w + "px"); st.setProperty("--drawer-w", panelUi.drawer.w + "px");
+  st.setProperty("--side-occ", (panelUi.side.folded ? 44 : panelUi.side.w) + "px");
+  for (const [k, el] of [["side", sidePanel], ["drawer", drawer]]) {
+    el.classList.toggle("folded", panelUi[k].folded);
+    const b = el.querySelector("[data-fold]"), what = k === "side" ? "side panel" : "file panel";
+    b.textContent = panelUi[k].folded ? "«" : "»"; b.title = panelUi[k].folded ? "Open" : "Collapse";
+    b.setAttribute("aria-label", (panelUi[k].folded ? "Open the " : "Collapse the ") + what); b.setAttribute("aria-expanded", !panelUi[k].folded);
+  }
+  if (save) try { localStorage.setItem("codecity.panels", JSON.stringify(panelUi)); } catch (e) { /* storage blocked */ }
+  if (panes.length) renderViewer();
+}
+for (const [k, el] of [["side", sidePanel], ["drawer", drawer]]) {
+  el.querySelector("[data-fold]").addEventListener("click", e => { e.stopPropagation(); panelUi[k].folded = !panelUi[k].folded; applyPanels(true); });
+  el.querySelector(".drawer-head h2").addEventListener("click", () => { if (panelUi[k].folded) { panelUi[k].folded = false; applyPanels(true); } });   // a folded strip opens from its title too
+  const edge = el.querySelector(".panel-edge");
+  const setW = w => { panelUi[k].w = Math.round(Math.max(300, Math.min(720, innerWidth - 200, w))); applyPanels(true); };
+  edge.addEventListener("pointerdown", e => {
+    e.preventDefault(); try { edge.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+    const right = el.getBoundingClientRect().right, move = ev => setW(right - ev.clientX);
+    const up = () => { edge.removeEventListener("pointermove", move); edge.removeEventListener("pointerup", up); };
+    edge.addEventListener("pointermove", move); edge.addEventListener("pointerup", up);
+  });
+  edge.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); setW(el.offsetWidth + (e.key === "ArrowLeft" ? 24 : -24)); } });
+}
+applyPanels(false);
 const $ = id => document.getElementById(id);
 function openSide(mode) {
   if (sideMode && sideMode !== mode) {   // one list at a time, so its highlights aren't hidden by another's
@@ -2751,15 +2900,16 @@ async function initAsk() {
   try { const r = await fetch(ASK_URL, { cache: "no-store" }); askEnabled = r.ok && !!(await r.json()).enabled; }
   catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
   $("askForm").hidden = !askEnabled;
+  $("tourBtn2").hidden = !askEnabled;
   document.body.classList.toggle("ask-on", askEnabled);
 }
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 new ResizeObserver(() => document.body.style.setProperty("--ask-h", $("askForm").offsetHeight + "px")).observe($("askForm"));   // the panels below it move with it
 // The card's blur would pin a fixed box to the card, so on wider screens Ask moves out to the page itself; on
-// narrower ones (where it would cover the card) it stays in the card, before GitHub access.
+// narrower ones (where it would cover the panel) it sits in the Understand segment.
 {
-  const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = form.nextElementSibling;
-  const placeAsk = () => { if (wide.matches) document.body.appendChild(form); else home.parentNode.insertBefore(form, home); };
+  const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = document.querySelector('#segPanel .segment[data-seg="understand"]');
+  const placeAsk = () => { if (wide.matches) document.body.appendChild(form); else home.appendChild(form); };
   wide.addEventListener("change", placeAsk); placeAsk();
 }
 async function askCity(question) {
@@ -3030,11 +3180,14 @@ async function viewConnection(from, to) {
 let paneZ = 10;
 function freeArea() {
   const wide = innerWidth > 1099, tl = document.body.classList.contains("has-timeline") ? 76 : 0;
-  // clear of the left card and of whichever right-hand panels are open (they stay open beside the windows)
+  // clear of the rail and its open panel on the left, and of whichever right-hand panels are open
   const ask = document.getElementById("askForm"), askFloats = !ask.hidden && getComputedStyle(ask).position === "fixed";
   const panelsLeft = [sidePanel, drawer, ...(askFloats ? [ask] : [])].filter(el => !el.hidden).map(el => el.getBoundingClientRect().left);
-  const left = wide ? 344 : 16, right = wide && panelsLeft.length ? Math.min(...panelsLeft) - 12 : innerWidth - 16;
-  const top = wide ? 16 : Math.min(innerHeight * 0.35, 220), bottom = innerHeight - 16 - tl - 48;
+  const seg = document.getElementById("segPanel"), rail = document.getElementById("rail"), railUp = innerWidth <= 640;
+  const leftEdge = (document.body.classList.contains("seg-closed") ? rail : seg).getBoundingClientRect().right + 12;
+  const left = wide ? leftEdge : railUp ? 16 : rail.getBoundingClientRect().right + 12;
+  const right = wide && panelsLeft.length ? Math.min(...panelsLeft) - 12 : innerWidth - 16;
+  const top = railUp ? Math.min(innerHeight * 0.35, 220) : 16, bottom = innerHeight - 16 - tl - 48;
   return { x: left, y: top, w: Math.max(260, right - left), h: Math.max(200, bottom - top) };
 }
 function toFront(p) { p.z = ++paneZ; if (p.el) { p.el.style.zIndex = p.z; panes.forEach(q => q.el && q.el.classList.toggle("front", q === p)); } if (panes.length) renderTabs(); }
@@ -3823,6 +3976,7 @@ function frame() {
 
 const start = () => {
   const link = readLink();
+  openSeg(segOpen);
   buildCity(sampleCity()); frame();
   initSignin();
   initAsk();
