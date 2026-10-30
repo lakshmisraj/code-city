@@ -610,14 +610,15 @@ const LANGS = {
   cfg:  { name: "Config",     color: "#5f6884" },
   other:{ name: "Other",      color: "#7d8597" },
 };
-// Keep in sync with CODE_EXT / SPECIAL / SKIP_DIRS in codecity.py.
+// Keep in sync with CODE_EXT / SPECIAL / SKIP_DIRS in codecity.py. Never add "env": .env files hold secrets
+// (keys, passwords), and anything in the city can be sent to Gemini by Ask or written into an exported city.
 const EXT = {
   ts:"ts", tsx:"ts", mts:"ts", cts:"ts", js:"js", jsx:"js", mjs:"js", cjs:"js", vue:"js", svelte:"js",
   py:"py", ipynb:"nb", go:"go", rs:"rs", java:"java", scala:"java", kt:"kt", kts:"kt",
   c:"c", h:"c", cc:"c", cpp:"c", hpp:"c", cxx:"c", cs:"cs", rb:"rb", php:"php", swift:"swift",
   css:"css", scss:"css", sass:"css", less:"css", html:"html", htm:"html",
   sql:"sql", sh:"sh", bash:"sh", zsh:"sh", ps1:"sh", md:"md", mdx:"md", rst:"md", txt:"md",
-  json:"cfg", yml:"cfg", yaml:"cfg", toml:"cfg", ini:"cfg", xml:"cfg", gradle:"cfg", lock:"cfg", env:"cfg",
+  json:"cfg", yml:"cfg", yaml:"cfg", toml:"cfg", ini:"cfg", xml:"cfg", gradle:"cfg", lock:"cfg",
   dart:"other", lua:"other", ex:"other", exs:"other", hs:"other", ml:"other", r:"other", jl:"other", zig:"other", elm:"other", clj:"other"
 };
 const SPECIAL = { dockerfile:"cfg", makefile:"cfg", gemfile:"rb", rakefile:"rb", procfile:"cfg" };

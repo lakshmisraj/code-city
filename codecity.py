@@ -21,9 +21,10 @@ from urllib.parse import parse_qs, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "code-city")
 
-# Keep in sync with EXT / SPECIAL / SKIP_DIRS in code-city.html.
+# Keep in sync with EXT / SPECIAL / SKIP_DIRS in code-city.html. Never add "env": .env files hold secrets, and
+# exported cities carry each file's first lines (and get shared); the page can also send them to Gemini.
 CODE_EXT = set("""ts tsx mts cts js jsx mjs cjs vue svelte py ipynb go rs java scala kt kts c h cc cpp hpp cxx cs rb php
-swift css scss sass less html htm sql sh bash zsh ps1 md mdx rst txt json yml yaml toml ini xml gradle lock env
+swift css scss sass less html htm sql sh bash zsh ps1 md mdx rst txt json yml yaml toml ini xml gradle lock
 dart lua ex exs hs ml r jl zig elm clj""".split())
 SPECIAL = {"dockerfile", "makefile", "gemfile", "rakefile", "procfile"}
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", "out", "coverage", "venv", ".venv", "env",
