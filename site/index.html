@@ -4295,7 +4295,7 @@ function renderTrace() {
   sideBody.innerHTML =
     `<div class="tr-head">${traceBack.length || traceFrom ? `<button type="button" class="linkish tr-back" data-trace-back title="Back to ${esc(traceBack.length ? fnName(idx, traceBack[traceBack.length - 1].path, traceBack[traceBack.length - 1].i) : TRACE_FROM[traceFrom] || "the last panel")}">← ${esc(traceBack.length ? fnName(idx, traceBack[traceBack.length - 1].path, traceBack[traceBack.length - 1].i) : TRACE_FROM[traceFrom] || "Back")}</button>` : ""}<b>${esc(fnName(idx, st.path, st.i))}</b>${d && d.deco && d.deco.length ? `<span class="side-note">${esc(d.deco[0])}</span>` : ""}` +
     `<div class="side-actions"><button type="button" data-fn-at="${esc(st.path)}" data-fn-line="${d ? d.line : 1}">View code</button>` +
-    (chain.length ? `<button type="button" data-trace-open title="The code of each step of the first path down, side by side">Side by side</button>` : "") +
+
     (askEnabled && chain.length ? `<button type="button" class="primary" data-trace-explain>Explain this path</button>` : "") + `</div></div>` +
     `<div><h3>Calls <span class="count">${fmt(calls.filter(e => e.path).length)}</span></h3>${calls.length ? `<ul class="tr">${calls.map(e => row(e, "0", 1, new Set([rootId]), st.path)).join("")}</ul>` : `<p class="side-note">It doesn't call other functions in this repo.</p>`}</div>` +
     `<div><h3>Called by <span class="count">${fmt(callers.length)}</span></h3>${callers.length ? `<ul class="tr">${callers.map(c => up(c, "0", 1, new Set([rootId]))).join("")}</ul>` : `<p class="side-note">Nothing in this repo calls it directly${d && d.deco && d.deco.length ? `; ${esc(d.deco[0])} registers it` : ""}.</p>`}</div>` +
@@ -4314,11 +4314,6 @@ document.addEventListener("click", e => {
     return openTrail(idx, steps);
   }
   if (view && idx) { e.stopPropagation(); const d = idx.def(view.dataset.fnView, +view.dataset.fnI); return viewFile(view.dataset.fnView, d ? d.line : 0); }
-  if (e.target.closest("[data-trace-open]") && traceState && idx) {
-    const st = traceState, steps = [{ path: st.path, i: st.i }];
-    for (let p = st.path, i = st.i, seen = new Set([st.path + ":" + st.i]); steps.length < 5;) { const next = idx.callees(p, i).find(x => x.path && !seen.has(x.path + ":" + x.i)); if (!next) break; seen.add(next.path + ":" + next.i); steps.push(next); p = next.path; i = next.i; }
-    return openTrail(idx, steps);
-  }
   const po = e.target.closest("[data-path-open]");
   if (po && idx && mapState && mapState.mp) { const pth = mapState.mp.paths[+po.dataset.pathOpen]; if (pth) return openTrail(idx, pth.steps.slice(0, 6)); }
   const at = e.target.closest("[data-fn-at]");
