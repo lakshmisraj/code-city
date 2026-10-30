@@ -30,15 +30,15 @@ body {
 }
 body.has-timeline { --tl-h: 76px; }
 .tl-close { padding: 6px 9px; color: var(--ink-dim); }
-/* ^ at the bottom brings a hidden history bar back. */
+/* ^ in the bottom-left corner, beside the rail, brings a hidden history bar back; the left panel stops above it. */
 #tlShow {
-  position: fixed; z-index: 6; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  position: fixed; z-index: 6; left: calc(max(12px, env(safe-area-inset-left, 0px)) + var(--rail-w) + 8px); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   padding: 4px 14px; border-radius: 999px; font-size: 16px; line-height: 1; color: var(--ink-dim);
   background: color-mix(in srgb, var(--street) 92%, transparent); border: 1px solid var(--line);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 #tlShow:hover, #tlShow:focus-visible { color: var(--sodium); }
-body.tl-peek .win-tabs { bottom: calc(46px + env(safe-area-inset-bottom, 0px)); }   /* above the ^ */
+body.tl-peek .card { max-height: calc(100% - 68px - var(--top-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; touch-action: none; }
 
@@ -464,6 +464,9 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats dd { font-size: 14px; }
   #drawer, #side { top: auto; bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; height: 55vh; height: 55dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
+  #tlShow { left: max(12px, env(safe-area-inset-left, 0px)); }
+  body.tl-peek #drawer, body.tl-peek #side { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+  body.tl-peek .card { max-height: calc(100dvh - 132px - var(--top-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   #side.folded, #drawer.folded { width: auto; height: auto; }
   .folded .drawer-head { flex-direction: row; padding: 10px 14px; }
   .folded .drawer-head > div { order: 0; }

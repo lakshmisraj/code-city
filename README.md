@@ -46,7 +46,7 @@ Opens by itself when a repo loads (and from **How it's built** under Understand)
 
 ### History
 
-The history bar opens when you load history from the history panel (▾ hides it, ^ at the bottom brings it back). On it, **Play history** plays the city's growth; you can also scrub to any commit, change the speed, or record a video.
+The history bar opens when you load history from the history panel (▾ hides it, ^ in the bottom-left corner brings it back). On it, **Play history** plays the city's growth; you can also scrub to any commit, change the speed, or record a video.
 
 ### Folders, hotspots, pull requests and links
 
