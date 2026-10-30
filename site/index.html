@@ -30,6 +30,15 @@ body {
 }
 body.has-timeline { --tl-h: 76px; }
 .tl-close { padding: 6px 9px; color: var(--ink-dim); }
+/* ^ at the bottom brings a hidden history bar back. */
+#tlShow {
+  position: fixed; z-index: 6; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 4px 14px; border-radius: 999px; font-size: 16px; line-height: 1; color: var(--ink-dim);
+  background: color-mix(in srgb, var(--street) 92%, transparent); border: 1px solid var(--line);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+#tlShow:hover, #tlShow:focus-visible { color: var(--sodium); }
+body.tl-peek .win-tabs { bottom: calc(46px + env(safe-area-inset-bottom, 0px)); }   /* above the ^ */
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; touch-action: none; }
 
@@ -690,6 +699,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 </section>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<button id="tlShow" type="button" hidden aria-label="Show the history bar" title="Show the history bar">^</button>
 <div id="timeline" hidden>
   <button id="tlClose" type="button" class="tl-close" aria-label="Hide the history bar" title="Hide the history bar">▾</button>
   <button id="playBtn" type="button" class="primary">Play history</button>
@@ -1643,16 +1653,19 @@ const phoneMQ = matchMedia("(max-width: 640px), (max-height: 500px) and (pointer
 function roomFor() { if (phoneMQ.matches && segOpen) openSeg(null, false, true); }
 
 // ---------- timeline ----------
-// The history bar opens when history is loaded; ▾ hides it again.
+// The history bar opens when history is loaded; ▾ hides it, and ^ at the bottom brings it back.
 let tlOpen = false;
 function syncTimeline() {
   const show = !!hist && tlOpen;
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
+  document.getElementById("tlShow").hidden = !hist || show;
+  document.body.classList.toggle("tl-peek", !!hist && !show);
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
 }
-document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); };
+document.getElementById("tlClose").onclick = () => { tlOpen = false; syncTimeline(); document.getElementById("tlShow").focus(); };
+document.getElementById("tlShow").onclick = () => { tlOpen = true; roomFor(); syncTimeline(); playBtn.focus(); };
 const scrub = document.getElementById("scrub"), playBtn = document.getElementById("playBtn"), speedBtn = document.getElementById("speedBtn");
 const SPEEDS = [null, 2, 8, 30, 120];   // null = fit the whole history into about 40 seconds
 let speedIdx = 0, playAcc = 0;
