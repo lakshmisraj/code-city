@@ -5362,12 +5362,14 @@ sideBody.addEventListener("click", e => {
   }
 }, true);
 
-// ---------- timelapse video ----------
-// Replays the history from the first commit and records it, with the repo name, date and commit drawn into
-// the video so it still makes sense when shared. Ends on today's city, then offers the file.
+// ---------- video ----------
+// Two kinds. "What I do" records this tab as you use it, panels and windows included (the browser asks which tab
+// to share), until Stop; where a tab can't be shared it records the 3D view instead. "The history replay" replays
+// the history from the first commit with the repo name, date and commit drawn into the video, ends on today's
+// city and stops by itself. Either way the file is offered at the end.
 const recBtn = $("recBtn");
 const REC_W = 1280, REC_H = 720, REC_HOLD_MS = 1800;
-let rec = null;   // { canvas, ctx, recorder, chunks, ending, mime }
+let rec = null;   // { mode: "live" | "history", canvas, ctx (null when the tab itself is recorded), recorder, chunks, ending, mime, stream }
 function recMime() {
   if (typeof MediaRecorder === "undefined") return null;
   return ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || null;
@@ -5377,31 +5379,61 @@ recBtn.hidden = recBtn.dataset.unsupported === "1";   // shown always; without h
 recBtn.onclick = () => {
   if (rec && rec.url) return saveRecording();
   if (rec) return stopRecording();
-  if (!hist) { toast(citySource === "folder" ? "Recording replays a repo's history, and this folder has none." : "Recording replays the repo's history. Load some first: Repo › Load history."); return; }
-  const canvas = Object.assign(document.createElement("canvas"), { width: REC_W, height: REC_H });
+  const r = recBtn.getBoundingClientRect();
+  ctxMenu.innerHTML = `<button type="button" role="menuitem" data-rec="live">Record what I do</button>` +
+    (hist ? `<button type="button" role="menuitem" data-rec="history">Record the history replay</button>` : "");
+  ctxMenu.hidden = false;
+  ctxMenu.style.left = Math.max(8, Math.min(r.right - ctxMenu.offsetWidth, innerWidth - ctxMenu.offsetWidth - 8)) + "px"; ctxMenu.style.top = (r.bottom + 6) + "px";
+  ctxMenu.onclick = ev => { const b = ev.target.closest("[data-rec]"); if (!b) return; closeCtx(); if (b.dataset.rec === "live") recordLive(); else recordHistory(); };
+  ctxMenu.querySelector("button").focus();
+};
+function startRecorder(stream, mode, canvas) {
   const mime = recMime();
-  const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: mime, videoBitsPerSecond: 8e6 });
-  rec = { canvas, ctx: canvas.getContext("2d"), recorder, chunks: [], ending: 0, mime };
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 });
+  rec = { mode, canvas, ctx: canvas ? canvas.getContext("2d") : null, recorder, chunks: [], ending: 0, mime, stream };
   recorder.ondataavailable = e => { if (e.data.size) rec.chunks.push(e.data); };
   recorder.onstop = () => {
     playBtn.disabled = scrub.disabled = false;
+    if (rec.stream) rec.stream.getTracks().forEach(t => t.stop());   // ends the browser's "sharing this tab" bar
     rec.url = URL.createObjectURL(new Blob(rec.chunks, { type: mime.split(";")[0] }));
     recBtn.textContent = "Download video";
     recBtn.classList.add("primary");
     toast("Video ready");
   };
+  recorder.start(1000);
+  recBtn.textContent = "Stop recording";
+}
+async function recordLive() {   // whatever you do from now on, in place
+  let stream = null;
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && !IN_VSCODE) {
+    try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser", frameRate: 30 }, audio: false, preferCurrentTab: true, selfBrowserSurface: "include" }); }
+    catch (e) { if (e && e.name === "NotAllowedError") { toast("Not recording: sharing the tab was cancelled."); return; } stream = null; }
+  }
+  if (stream) {
+    startRecorder(stream, "live", null);
+    stream.getVideoTracks()[0].addEventListener("ended", stopRecording);   // "Stop sharing" in the browser's bar
+    toast("Recording this tab. Press Stop recording when you're done.");
+    return;
+  }
+  const canvas = Object.assign(document.createElement("canvas"), { width: REC_W, height: REC_H });
+  startRecorder(canvas.captureStream(30), "live", canvas);
+  toast("Recording the city view. Press Stop recording when you're done.");
+}
+function recordHistory() {   // the timelapse: from the first commit to today, then it stops
+  if (!hist) return;
+  const canvas = Object.assign(document.createElement("canvas"), { width: REC_W, height: REC_H });
+  startRecorder(canvas.captureStream(30), "history", canvas);
   closeDrawer(); closeSide(true);
   viewAt(-1);
   playBtn.disabled = scrub.disabled = true;   // pausing or scrubbing would end the video early
   playing = true; playAcc = 0; playBtn.textContent = "Pause";
   controls.autoRotate = !reduceMotion;
-  recorder.start(1000);
-  recBtn.textContent = "Stop recording";
-};
+}
 function resetRecording() {   // a new city: the old video (or one being made) belongs to the old repo
   if (!rec) return;
   if (rec.url) URL.revokeObjectURL(rec.url);
   else if (rec.recorder.state === "recording") { rec.recorder.onstop = null; rec.recorder.stop(); }
+  if (rec.stream) rec.stream.getTracks().forEach(t => t.stop());
   rec = null; recBtn.textContent = "Record video"; recBtn.classList.remove("primary");
   playBtn.disabled = scrub.disabled = false;
 }
@@ -5410,13 +5442,13 @@ function stopRecording() {
 }
 function saveRecording() {
   const ext = rec.mime.startsWith("video/mp4") ? "mp4" : "webm";
-  const a = Object.assign(document.createElement("a"), { href: rec.url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-timelapse.${ext}` });
+  const a = Object.assign(document.createElement("a"), { href: rec.url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-${rec.mode === "history" ? "timelapse" : "recording"}.${ext}` });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => { URL.revokeObjectURL(rec.url); rec = null; recBtn.textContent = "Record video"; recBtn.classList.remove("primary"); }, 1000);
 }
 // Called right after each render: copy the 3D view into the video frame and draw the captions on top.
 function recordFrame() {
-  if (!rec || rec.recorder.state !== "recording") return;
+  if (!rec || !rec.ctx || rec.recorder.state !== "recording") return;   // a recorded tab needs no copying
   const { ctx } = rec, src = renderer.domElement;
   const scale = Math.max(REC_W / src.width, REC_H / src.height), w = src.width * scale, h = src.height * scale;
   ctx.drawImage(src, (REC_W - w) / 2, (REC_H - h) / 2, w, h);
@@ -5437,7 +5469,7 @@ function recordFrame() {
   ctx.fillStyle = "rgba(230,233,242,0.75)"; ctx.font = `600 18px "JetBrains Mono", Menlo, monospace`;
   ctx.textAlign = "right"; ctx.fillText("code-city-view.netlify.app", REC_W - 32, 40); ctx.textAlign = "left";
   // The replay ends by returning to today; hold that view briefly, then finish.
-  if (!playing) {
+  if (rec.mode === "history" && !playing) {
     if (!rec.ending) rec.ending = performance.now();
     else if (performance.now() - rec.ending > REC_HOLD_MS) stopRecording();
   }
