@@ -2966,18 +2966,92 @@ function renderMap() {
       if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(e.why)} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
-    if (askEnabled) html += `<div class="side-actions"><button type="button" class="primary" data-map-tour>Show the workflows (tour)</button></div>`;
+    html += `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-map-tour>Show the workflows (tour)</button>` : ""}<button type="button" data-map-md title="How it's built, main paths, modules, important files and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
   sideBody.innerHTML = html;
   drawLinks();
 }
-sideBody.addEventListener("click", e => { if (sideMode === "map" && e.target.closest("[data-map-tour]")) { e.stopPropagation(); startTour(""); } }, true);
+sideBody.addEventListener("click", e => {
+  if (sideMode === "map" && e.target.closest("[data-map-tour]")) { e.stopPropagation(); startTour(""); }
+  if (sideMode === "map" && e.target.closest("[data-map-md]")) { e.stopPropagation(); downloadOverview(); }
+}, true);
 function mapPaths(facts, idx) {
   const st = mapState;
   if (!st || st.city !== buildings) return { paths: [], meet: [] };
   if (!st.mp || st.mpCalls !== !!idx || st.mpRank !== !!importance) { st.mp = mainPaths(facts, idx); st.mpCalls = !!idx; st.mpRank = !!importance; }
   return st.mp;
 }
+// ---------- the overview as Markdown ----------
+// What the panels read from the code (how it's built, main paths, modules, importance, hotspots) and the workflows
+// tour if one was taken, as a page to commit to a repo's docs or paste in a wiki. Files link to GitHub for a GitHub
+// repo, and are relative links otherwise (so the page works from the repo's root).
+async function overviewMarkdown() {
+  const facts = await systemFacts();
+  if (!facts || !facts.scanned) return null;
+  const sys = await loadSystem().catch(() => null), idx = callsReady();
+  const mp = mapState && mapState.city === buildings ? mapPaths(facts, idx) : mainPaths(facts, idx);
+  const name = currentRepo || cityName, live = buildings.filter(b => b.userData.lines > 0);
+  const href = path => currentRepo ? `https://github.com/${currentRepo}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}` : path.split("/").map(encodeURIComponent).join("/");
+  const file = path => `[\`${path}\`](${href(path)})`;
+  const step = (path, i) => idx && i >= 0 ? `\`${fnName(idx, path, i)}\` (${file(path)})` : file(path);
+  const text = s => String(s || "").replace(/\s+/g, " ").trim();
+  const n = (k, word) => `${fmt(k)} ${word}${k === 1 ? "" : "s"}`;
+  const mod = name => name.startsWith("(") ? name : `\`${name}/\``;   // "(top)" is the files at the root
+  const out = [`# ${name}: how it's built`, "",
+    `> Made by [Code City](${SITE_URL}) on ${new Date().toISOString().slice(0, 10)} from ${fmt(live.length)} files (${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines). ` +
+    `Everything except the workflows section is read from the code's import lines and function calls, with no AI.`, ""];
+  const langs = langSummary();
+  if (facts.intro || facts.description) out.push(text(facts.intro || facts.description), "");
+  if (langs) out.push(`Written in ${langs}.`, "");
+  out.push("## Where it starts", "");
+  out.push(...(facts.entries.length ? facts.entries.map(e => `- ${file(e.path)}: ${text(e.reason)}`) : ["No clear entry point: this looks like a library others import."]), "");
+  if (facts.core.length) out.push("## The core", "", "The files most of the product imports.", "", ...facts.core.map((c, i) => `${i + 1}. ${file(c.path)}, used by ${n(c.users, "file")}`), "");
+  if (mp.paths.length) {
+    out.push("## Main paths", "", `From each entry point, the way the code goes${mp.calls ? ", following real function calls" : ", following imports"}.`, "");
+    mp.paths.forEach((pth, k) => out.push(`${k + 1}. ${step(pth.entry.path, pth.entry.i)}: ${text(pth.entry.why)}`, ...pth.steps.slice(1).map(st => `   - then ${step(st.path, st.i)}`)));
+    out.push("");
+  }
+  if (mp.meet.length) out.push("## Where paths meet", "", ...mp.meet.map(m => `- ${step(m.path, m.i)}, reached from ${n(m.n, "entry point")}`), "");
+  if (sys && sys.layers.length) {
+    out.push("## Modules", "", "The product's folders as modules. Each layer uses the ones below it.", "");
+    const top = sys.layers.length;
+    sys.layers.forEach((l, k) => {
+      out.push(`### ${top === 1 ? "One layer: these modules depend on each other" : k === 0 ? "Top: uses the others" : k === top - 1 ? "Foundation: used by the others" : `Layer ${top - k}`}`, "");
+      out.push(...l.map(g => { const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([m]) => mod(m)); return `- ${mod(g.name)} (${n(g.files.length, "file")})${uses.length ? `: uses ${uses.join(", ")}` : ""}`; }), "");
+    });
+    if (sys.cycles.length || sys.fileCycles.length) {
+      out.push("### Import cycles", "", "Modules or files that import each other when they load, so neither can be changed or tested on its own.", "");
+      out.push(...sys.cycles.map(c => `- ${c.map(g => mod(g.name)).join(" ⇄ ")}`), ...sys.fileCycles.map(c => `- ${[...c, c[0]].map(file).join(" → ")}`), "");
+    }
+  }
+  if (importance && importance.city === buildings && importance.top.length) {
+    out.push("## Most important files", "", "Scored out of 100: how much of the product depends on each file, directly or through others, then imports, calls, entry points, churn and size.", "");
+    out.push(...importance.top.map(p => { const sc = importance.scores.get(p); return `- ${file(p)}: ${sc.score}${sc.reasons.length ? `, ${sc.reasons.map(text).join("; ")}` : ""}`; }), "");
+  }
+  if (hist) {
+    const rows = hotspotRows(10);
+    if (rows.length) out.push("## Hotspots", "", "Files that change often and are big (commits × lines) in the history Code City loaded.", "", ...rows.map(r => `- ${file(r.b.userData.f.path)}: ${n(r.c, "commit")}, ${n(r.lines, "line")}`), "");
+  }
+  const tour = takenTour();
+  if (tour) {
+    out.push(`## Workflows: ${text(tour.title)}`, "", `> Written by Gemini from the code's structure, so check it against the code.`, "", text(tour.overview), "");
+    tour.workflows.forEach((w, k) => {
+      out.push(`### ${k + 1}. ${text(w.name)}`, "", text(w.summary), "", ...w.steps.map((st, i) => `${i + 1}. ${bmap.has(st.path) ? file(st.path) : `\`${st.path}\``}: **${text(st.title)}**. ${text(st.narration)}`));
+      if (w.feeds && w.feeds.length) out.push("", `Leads into: ${w.feeds.map(text).join(", ")}.`);
+      out.push("");
+    });
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+async function downloadOverview() {
+  const md = await overviewMarkdown();
+  if (!md) { toast("The code is still being read. Try again in a moment."); return; }
+  const url = URL.createObjectURL(new Blob([md], { type: "text/markdown;charset=utf-8" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-overview.md` });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 function mapRole(path) {   // for the city's colours while the panel is open
   const f = mapState && mapState.city === buildings && mapState.facts;
   return !f ? null : f.entries.some(e => e.path === path) ? "entry" : f.core.some(c => c.path === path) ? "core" : null;
@@ -5090,7 +5164,12 @@ function goToStop(i) {
     t.timer = setTimeout(next, reduceMotion ? TOUR_STEP_MS * 1.5 : TOUR_STEP_MS);
   }
 }
-function endTour() { if (tourState) clearTimeout(tourState.timer); tourState = null; }
+function endTour() {
+  if (tourState) { clearTimeout(tourState.timer); lastTour = { city: buildings, title: tourState.title, overview: tourState.overview, workflows: tourState.workflows }; }
+  tourState = null;
+}
+let lastTour = null;   // the last tour's text, kept for the Markdown overview once the tour panel closes
+const takenTour = () => tourState || (lastTour && lastTour.city === buildings ? lastTour : null);
 // With the workflow's files open as windows, the current step's comes to the front at its key line.
 function focusStepWindow() {
   const t = tourState, st = tourStep();

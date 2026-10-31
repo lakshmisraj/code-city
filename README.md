@@ -47,6 +47,8 @@ Building heights are estimated from file size until you click a building, which 
 
 Opens by itself when a repo loads (and from **How it's built** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). Once functions are read it adds the **Main paths** (from each entry point, the functions the code really calls, drawn over the city in their own colours; **Open side by side** opens each step's code), **Where paths meet** (functions several paths reach), and every place requests and commands come in. It needs no AI and no sign-in: it's read from the code's import lines and functions, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour, which is built on the main paths.
 
+**Download as Markdown** saves all of it as a page for your repo's docs or your team's wiki: what the project is, where it starts, the core, the main paths, the modules and import cycles, the most important files, hotspots (when history is loaded) and, if you took the tour, its workflows, marked as Gemini's reading. Files link to GitHub for a GitHub repo, and are relative links for a folder, so the page works from the repo's root.
+
 A repo's imports and functions are read as soon as it loads, and kept in this browser for that commit (the eight most recent; built-in repos for the day), so coming back reads nothing again.
 
 ### Commits and branches

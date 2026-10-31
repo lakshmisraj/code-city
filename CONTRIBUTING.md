@@ -44,6 +44,7 @@ It runs everything in `tests/`:
 
 - `ask.test.mjs`, `ask-cache.test.mjs`: the Ask function (`netlify/functions/ask.mjs`) with Gemini and Netlify Blobs mocked. No key is needed and nothing is called.
 - `page.test.mjs`: `site/index.html` matches the build, the page's script parses, and the page draws the example city in headless Chromium without errors.
+- `e2e.test.mjs`: `code-city <folder>` opens that city in headless Chromium and Download as Markdown gives its overview (slow without a GPU: about a minute).
 - `cli.test.mjs`: the `code-city` command on a small throwaway repo, including Ask with your own key (with a dummy key, so Gemini is never called).
 
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`).
