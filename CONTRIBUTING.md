@@ -50,6 +50,7 @@ It runs everything in `tests/`:
 - `page.test.mjs`: `site/index.html` matches the build, the page's script parses, and the page draws the example city in headless Chromium without errors.
 - `e2e.test.mjs`: `code-city <folder>` opens that city in headless Chromium and Download as Markdown gives its overview (slow without a GPU: about a minute).
 - `vscode.test.mjs`: the VS Code extension against a stand-in for the `vscode` API (it serves the city, opens only files inside the workspace, and stops its server).
+- `browser/private-repo.test.mjs`: a private repo on the hosted page with a pasted token, against a stand-in GitHub: files come through the API, and the token goes only to api.github.com.
 - `vscode-page.test.mjs`: the page framed like the extension's webview: a reveal message opens the file's building and Open in editor messages the parent.
 - `cli.test.mjs`: the `code-city` command on a small throwaway repo, including Ask with your own key (with a dummy key, so Gemini is never called).
 

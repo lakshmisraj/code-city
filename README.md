@@ -4,6 +4,8 @@
 
 Code City helps you understand a codebase quickly: where it starts, which files the rest depends on, how its workflows run and join, and how it grew. It draws the repo as a 3D city at night. Each file is a building (height is lines of code, width is number of functions), folders are raised districts, and TODO / FIXME comments burn on the rooftops.
 
+**Setting it up for a team?** See [docs/teams.md](docs/teams.md): which pieces to use, private repos, the PR bot, an architecture page for your docs, and what leaves your machines.
+
 ### Try it
 
 The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (how it's built, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
@@ -31,7 +33,7 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 
 ## On the hosted site
 
-Paste any public GitHub repo and press Build. The site reads it straight from GitHub's API:
+Paste any public GitHub repo and press Build (a private one needs a read-only token: see [docs/teams.md](docs/teams.md#on-the-hosted-site)). The site reads it straight from GitHub's API:
 
 1. Today's files show right away (about 4 requests).
 2. You pick which stretch of history to replay by dragging the two ends of a slider, from the first commit to today. If the stretch ends before today, one extra request carries the city on to today, so the timeline always finishes at the current code. The panel shows how many commits that is, the dates, and how many GitHub requests it will cost.
@@ -216,6 +218,7 @@ It rebuilds the page whenever `code-city.html` changes, so a reload shows edits.
 - **"GitHub allows 60 requests an hour…"**: your network has used its unauthenticated GitHub requests. Sign in with GitHub (or paste a token) for 5,000 an hour, or wait for the reset time shown.
 - **No Ask box**: the site owner hasn't set `GEMINI_API_KEY` yet (see Ask the city).
 - **"You've asked 20 questions this hour"**: the per-account limit; it resets on the hour.
+- **"GitHub says that repo doesn't exist or isn't public"** for a private repo: add a fine-grained token with Contents: Read-only for it (under Repo). Signing in alone only reads public repos.
 - **The PR bot didn't comment on a fork's PR**: forks get a read-only token, so the action logs a warning instead. See the [action's README](https://github.com/lakshmisraj/code-city-pr-summary#set-it-up).
 - **A history load is taking too long**: press Cancel, then drag the slider's ends closer together.
 

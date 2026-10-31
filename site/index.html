@@ -583,7 +583,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   <section class="segment" data-seg="repo">
     <p class="intro">Understand a codebase at a glance: where it starts, what it depends on, how its workflows run, and how it grew. Each file is a building, each folder a district.</p>
     <form class="field" id="repoForm" autocomplete="off">
-      <label for="repoInput">Open a public repo</label>
+      <label for="repoInput">Open a GitHub repo</label>
       <div class="inline">
         <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
         <button class="primary" type="submit">Build</button>
@@ -724,7 +724,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
         <label for="ghToken">GitHub token</label>
         <input id="ghToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
         <label class="check" for="rememberToken"><input type="checkbox" id="rememberToken"> Remember on this device</label>
-        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, the same as signing in. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with public repository access only. It is only ever sent to api.github.com.</small>
+        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, and opens private repos. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: <b>Public repositories</b> for more requests, or, for private ones, <b>Only select repositories</b> with <b>Contents: Read-only</b>. It can't change anything, and it is only ever sent to api.github.com. A private repo's files cost one request each.</small>
       </div>
     </details>
   </section>
@@ -2126,7 +2126,17 @@ function normRepo(s) {
 // from raw.githubusercontent.com, which has no such limit.
 const API = "https://api.github.com", MAX_STEPS = 1500, MIN_STEPS = 10, BYTES_PER_LINE = 32;
 const TOKEN_KEY = "codecity.githubToken";
-let ghRepo = null;    // { owner, repo, branch } of a city loaded from GitHub
+let ghRepo = null;    // { owner, repo, branch, private } of a city loaded from GitHub
+// A file's text from GitHub, or null. A public repo's come from raw.githubusercontent.com, which has no request
+// limit; a private repo's come through the API with the token (one request each), since raw files can't be read
+// with a token from a web page. The token still only ever goes to api.github.com.
+async function ghText(g, path) {
+  const enc = path.split("/").map(encodeURIComponent).join("/");
+  const r = g.private
+    ? await fetch(`${API}/repos/${g.owner}/${g.repo}/contents/${enc}?ref=${encodeURIComponent(g.branch)}`, { headers: { ...ghHeaders(), Accept: "application/vnd.github.raw" } })
+    : await fetch(`https://raw.githubusercontent.com/${g.owner}/${g.repo}/${encodeURIComponent(g.branch)}/${enc}`);
+  return r.ok ? r.text() : null;
+}
 let ghProbe = null;   // what step 1 learned about the repo, until history is loaded or skipped
 const tokenInput = document.getElementById("ghToken"), rememberToken = document.getElementById("rememberToken");
 
@@ -2134,7 +2144,7 @@ const tokenInput = document.getElementById("ghToken"), rememberToken = document.
 const OAUTH_KEY = "codecity.githubOAuth";
 let oauthToken = null, signinEnabled = false;
 try { oauthToken = localStorage.getItem(OAUTH_KEY); } catch (e) { /* storage blocked: not signed in */ }
-function ghToken() { return oauthToken || tokenInput.value.trim(); }
+function ghToken() { return tokenInput.value.trim() || oauthToken; }   // a pasted token can read private repos; the sign-in can't
 function ghHeaders() {
   const h = { Accept: "application/vnd.github+json" };
   if (ghToken()) h.Authorization = "Bearer " + ghToken();
@@ -2162,7 +2172,8 @@ async function ghRes(path, signal = loadCtl.signal) {
   const r = await fetch(API + path, { headers: ghHeaders(), signal });
   if (r.status === 401) throw new Error("GitHub rejected that token. Check that it is pasted in full and hasn't expired.");
   if (r.status === 403 || r.status === 429) throw rateLimited(+r.headers.get("x-ratelimit-reset"));
-  if (r.status === 404 || r.status === 451) throw Object.assign(new Error("GitHub says that repo doesn't exist or isn't public."), { status: r.status });
+  if (r.status === 404 || r.status === 451) throw Object.assign(new Error(tokenInput.value.trim() ? "GitHub says that repo doesn't exist, or it's private and your token can't read it."
+    : "GitHub says that repo doesn't exist or isn't public. For a private repo, add a read-only GitHub token (under Repo)."), { status: r.status });
   if (!r.ok) throw Object.assign(new Error(`GitHub returned an error (${r.status}). Try again in a moment.`), { status: r.status });
   return r;
 }
@@ -2233,7 +2244,7 @@ async function loadFromGitHub(key, signal) {
   const limit = await callsLeft();
   if (limit && limit.remaining < 4) throw rateLimited(limit.reset);
 
-  const branch = (await gh(base)).default_branch;
+  const info = await gh(base), branch = info.default_branch, isPrivate = !!info.private;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
   const kept = tree.tree.filter(e => e.type === "blob" && keepPath(e.path));
   const files = kept.filter(e => e.size <= maxBytes(e.path)).slice(0, MAX_FILES)
@@ -2253,8 +2264,8 @@ async function loadFromGitHub(key, signal) {
   if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
   stillCurrent(signal);
-  ghProbe = page1.length ? { key, owner, repo, base, branch, tree: tree.sha, files, leftOut, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
-  buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch, tree: tree.sha }, history: null });
+  ghProbe = page1.length ? { key, owner, repo, base, branch, private: isPrivate, tree: tree.sha, files, leftOut, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
+  buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch, private: isPrivate, tree: tree.sha }, history: null });
   if (!ghProbe) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
   setRepoStatus("");
   await openHistoryPanel();
@@ -2373,7 +2384,7 @@ function renderPlan() {
       : `Without signing in, GitHub allows <b>60 requests an hour</b> for your whole network: about 55 commits. Signing in raises that to <b>5,000 an hour</b>: enough for thousands of commits.`) +
     (hpLeft == null ? "" : ` You have <b>${fmt(hpLeft)}</b> left; the count resets every hour.`) +
     ` If the range ends before today, one more request carries the city on to today.` +
-    ` Signing in only lets Code City read public repositories. It can't see private code or change anything.`;
+    ` Signing in only lets Code City read public repositories; for a private one, add a read-only token. Neither can change anything.`;
   hp("hpWarn").classList.toggle("over", pl.mode !== "every");
   hp("hpLoad").disabled = !pl.mode;
   hp("hpLoad").textContent = pl.mode === "steps" ? `Load as ${fmt(pl.steps)} steps` : "Load history";
@@ -2508,7 +2519,7 @@ async function loadHistory(pl, signal) {
   stillCurrent(signal);
   closeHistoryPanel();
   buildCity({
-    name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch, tree: p.tree },
+    name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch, private: p.private, tree: p.tree },
     history: commits.length ? { base: Object.fromEntries([...lines].filter(([path]) => !p.leftOut.has(path))), baseChurn: {}, commits, total: list.length } : null,
   });
   setRepoStatus(`Loaded ${fmt(list.length)} commit${list.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
@@ -2519,9 +2530,8 @@ async function loadHistory(pl, signal) {
 
 // The token stays in this browser; it is saved only when the visitor asks.
 function syncTokenUi() {
-  document.getElementById("tokenBox").hidden = !!oauthToken;
-  document.getElementById("tokenSummary").textContent = tokenInput.value.trim() ? "GitHub token added: 5,000 requests an hour"
-    : signinEnabled ? "Or paste a GitHub token" : "Get more GitHub requests: add a token";
+  document.getElementById("tokenSummary").textContent = tokenInput.value.trim() ? "GitHub token added"
+    : oauthToken ? "Private repo? Add a read-only token" : signinEnabled ? "Or paste a GitHub token" : "More GitHub requests, or a private repo: add a token";
 }
 try {
   const saved = localStorage.getItem(TOKEN_KEY);
@@ -2540,10 +2550,9 @@ async function loadSource(b) {
   if (f.loading || f.failed) return;
   f.loading = true;
   try {
-    const path = f.path.split("/").map(encodeURIComponent).join("/");
-    const r = await fetch(`https://raw.githubusercontent.com/${ghRepo.owner}/${ghRepo.repo}/${encodeURIComponent(ghRepo.branch)}/${path}`);
-    if (!r.ok) throw new Error(r.status);
-    const a = analyze(f.path, await r.text());
+    const text = await ghText(ghRepo, f.path);
+    if (text == null) throw new Error("not read");
+    const a = analyze(f.path, text);
     Object.assign(f, { text: a.text, funcs: a.funcs, todos: a.todos, nowLines: a.lines, estimated: false });
     if (viewNow) { b.userData.lines = a.lines; b.userData.target = fileHeight(a.lines); updateStats(); }
   } catch (e) { f.failed = true; }
@@ -3219,6 +3228,14 @@ async function initAsk() {
 }
 // The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
 const canAsk = () => !!oauthToken || askOpen;
+// A private repo's code goes to Code City's server and to Gemini when you ask, so say so once per repo first.
+const privateOk = new Set();
+function okToSendPrivate() {
+  if (askOpen || !(ghRepo && ghRepo.private) || privateOk.has(currentRepo)) return true;
+  if (!confirm(`${currentRepo} is private. Asking sends its file names, a digest of the repo and the code you ask about to Code City's server and to Google's Gemini. Continue?`)) return false;
+  privateOk.add(currentRepo);
+  return true;
+}
 const askHeaders = () => ({ "Content-Type": "application/json", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
@@ -3231,6 +3248,7 @@ async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
   if (!canAsk()) { status.innerHTML = needSignin("ask questions"); return; }
+  if (!okToSendPrivate()) return;
   const gen = cityGen;
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
@@ -3310,15 +3328,15 @@ const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, MAX_CHAIN = 8, codeCache = new Ma
 function codeRepo() {   // where to read today's source from, or null
   if (ghRepo) return ghRepo;
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(currentRepo || "");
-  return m && citySource !== "folder" ? { owner: m[1], repo: m[2], branch: "HEAD" } : null;
+  return m && citySource !== "folder" ? { owner: m[1], repo: m[2], branch: "HEAD", private: !!(ghRepo && ghRepo.private) } : null;
 }
 async function pullCode(path) {
   const b = bmap.get(path), f = b && b.userData.f;
   if (!f || !(b.userData.lines > 0)) return null;
   const gh = codeRepo();
   if (gh) {
-    const url = `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${encodeURIComponent(gh.branch)}/${path.split("/").map(encodeURIComponent).join("/")}`;
-    if (!codeCache.has(url)) codeCache.set(url, fetch(url).then(r => r.ok ? r.text() : null).catch(() => null)
+    const url = `${gh.owner}/${gh.repo}/${gh.branch}/${path}`;   // the cache key
+    if (!codeCache.has(url)) codeCache.set(url, ghText(gh, path).catch(() => null)
       .then(t => { if (t == null) codeCache.delete(url); return t; }));   // a failed download is tried again next time
     const text = await codeCache.get(url);
     if (text != null) return { path, text: NB_RE.test(path) ? notebookCode(text) : text, partial: false };
@@ -3329,6 +3347,7 @@ async function pullCode(path) {
 let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
 async function explainCode(state, paths, question, from) {
   if (!canAsk()) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
+  if (!okToSendPrivate()) return;
   const gen = cityGen;
   paths = paths.slice(0, MAX_EXPLAIN);   // the files actually read, so the window's title is true
   const st = { paths, from: from || null, loading: true };
@@ -5030,6 +5049,7 @@ async function explainChange(sha, onlyPath) {
   const c = commitState && commitState.commits.get(sha), files = knownCommitFiles(sha), message = (c && c.m) || looseMsg.get(sha);
   if (!files || !message) return;
   if (!canAsk()) { toast("Sign in with GitHub (under Account) to have changes explained."); return; }
+  if (!okToSendPrivate()) return;
   const gen = cityGen;
   const pick = (onlyPath ? files.filter(f => f.path === onlyPath) : files.filter(f => f.patch && !/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|uv\.lock|poetry\.lock|Cargo\.lock|go\.sum)$/.test(f.path))
     .sort((a, b) => (b.add + b.del) - (a.add + a.del))).slice(0, MAX_CHANGE_FILES);
@@ -5121,6 +5141,7 @@ async function startTour(topic) {
   const gen = cityGen;
   const status = $("askStatus");
   if (!canAsk()) { status.innerHTML = needSignin("take a tour"); return; }
+  if (!okToSendPrivate()) return;
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
   if (gen !== cityGen) { status.textContent = ""; return; }
