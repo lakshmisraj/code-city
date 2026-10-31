@@ -4,6 +4,8 @@
   "description": "Netlify Functions for Code City (sign-in and Ask the city)",
   "scripts": {
     "test": "node --test --experimental-test-module-mocks \"tests/*.test.mjs\"",
+    "test:browser": "node --test --test-concurrency=1 \"tests/browser/*.test.mjs\"",
+    "test:all": "npm test && npm run test:browser",
     "build": "python3 codecity.py build",
     "dev": "node dev-server.mjs",
     "bundle:ask": "esbuild local/ask-server.mjs --bundle --platform=node --format=esm --target=node18 --minify --legal-comments=linked --outfile=build/ask-server.mjs \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""

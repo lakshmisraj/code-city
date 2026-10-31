@@ -1,0 +1,44 @@
+{
+  "name": "code-city",
+  "displayName": "Code City",
+  "description": "See your workspace as a 3D city: where it starts, what it depends on, how its workflows run, and how it grew. Jump between buildings and files.",
+  "version": "0.1.0",
+  "publisher": "lakshmisraj",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/lakshmisraj/code-city" },
+  "homepage": "https://code-city-view.netlify.app",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["codebase", "architecture", "onboarding", "git history", "visualization"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "codeCity.open", "title": "Open the City", "category": "Code City" },
+      { "command": "codeCity.reveal", "title": "Show This File in the City", "category": "Code City" },
+      { "command": "codeCity.setGeminiKey", "title": "Set Gemini API Key (for Ask)", "category": "Code City" },
+      { "command": "codeCity.clearGeminiKey", "title": "Remove Gemini API Key", "category": "Code City" }
+    ],
+    "menus": {
+      "commandPalette": [{ "command": "codeCity.reveal", "when": "codeCity.open" }],
+      "editor/title/context": [{ "command": "codeCity.reveal", "when": "codeCity.open" }],
+      "explorer/context": [{ "command": "codeCity.reveal", "when": "codeCity.open && !explorerResourceIsFolder" }]
+    },
+    "configuration": {
+      "title": "Code City",
+      "properties": {
+        "codeCity.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Python 3.8+ to run Code City with. Leave empty to use `python3` (or `python`) from your PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "prepare-server": "node scripts/prepare-server.mjs",
+    "package": "npm run prepare-server && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "3.9.2"
+  }
+}

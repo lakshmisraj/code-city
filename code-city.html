@@ -1920,7 +1920,7 @@ function openDrawer(b) {
         : citySource === "sample" ? "This is the example city, so there is no source to show."
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
-  document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button></div>`;
+  document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button>${IN_VSCODE ? `<button type="button" data-open-editor>Open in editor</button>` : ""}</div>`;
   roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
@@ -2034,6 +2034,20 @@ document.getElementById("closeBtn").onclick = closeDrawer;
 drawer.addEventListener("click", e => {
   if (picked && e.target.closest("[data-explain]")) explainFile(picked.userData.f.path);
   if (picked && e.target.closest("[data-view]")) viewFile(picked.userData.f.path);
+  if (picked && e.target.closest("[data-open-editor]")) openInEditor(picked.userData.f.path);
+});
+
+// ---------- inside VS Code ----------
+// The Code City extension shows this page in an editor panel, with ?host=vscode. Open in editor hands a file (and
+// line) to the extension, and the extension can ask the page to show a file in the city. Messages carry only
+// paths inside the repo, and only the page's own parent (the extension's panel) is listened to.
+const IN_VSCODE = new URLSearchParams(location.search).get("host") === "vscode" && window.parent !== window;
+function openInEditor(path, line) { window.parent.postMessage({ codeCity: "open", path, line: line || 0 }, "*"); }
+window.addEventListener("message", e => {
+  if (!IN_VSCODE || e.source !== window.parent || !e.data || e.data.codeCity !== "reveal" || typeof e.data.path !== "string") return;
+  const b = bmap.get(e.data.path);
+  if (b && b.userData.lines > 0) { flyToBuilding(b); openDrawer(b); }
+  else toast(`${e.data.path} isn't in the city.`);
 });
 document.getElementById("resetBtn").onclick = () => { closeDrawer(); resetView(true); };
 
@@ -2669,7 +2683,8 @@ function linkQuery() {
 }
 function syncUrl() {
   if (pendingView) return;   // don't overwrite a link before it has been applied
-  const q = linkQuery();
+  const host = new URLSearchParams(location.search).get("host");   // ?host=vscode stays, so a reload in the editor still knows
+  const q = [linkQuery(), host ? "host=" + encodeURIComponent(host) : ""].filter(Boolean).join("&");
   try { history.replaceState(null, "", location.pathname + (q ? "?" + q : "")); } catch (e) { /* some hosts don't allow it */ }
 }
 function shareUrl() {
@@ -3535,6 +3550,7 @@ function paneHtml(p) {
   const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
   return `<div class="pane-head">${p.fn ? `<span class="pane-fn" title="A step of the trace">${p.step ? `<em>${p.step}</em>` : ""}${esc(p.fn)}</span>` : ""}<button type="button" class="explain-path${p.fn ? " short" : ""}" data-path="${key}" title="${p.fn ? esc(p.path) : "Show it in the city"}">${p.fn ? esc(shortFile(p.path)) : pathHtml(p.path)}</button>
       ${askEnabled && !p.st ? `<button type="button" class="mini" data-pane-explain>Explain</button>` : ""}
+      ${IN_VSCODE ? `<button type="button" class="mini" data-pane-editor title="Open this file in the editor${p.line ? `, at line ${p.line}` : ""}">Editor</button>` : ""}
       <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
       <button type="button" class="mini" data-pane-close aria-label="Close ${key}" title="Close">✕</button></div>
     <div class="pane-split">
@@ -3658,6 +3674,7 @@ $("viewerPanes").addEventListener("click", e => {
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
+  if (e.target.closest("[data-pane-editor]")) return openInEditor(p.path, p.line);
   if (e.target.closest("[data-diff-explain]")) return explainChange(p.sha, p.path);
   if (e.target.closest("[data-pane-collapse]")) { p.collapsed = true; renderViewer(); return; }
   if (e.target.closest("[data-hide-explain]")) { p.st = null; p.dirty = true; renderViewer(); drawLinks(); return; }

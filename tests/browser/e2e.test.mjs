@@ -8,9 +8,9 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-test("code-city <folder> opens its city, and the overview downloads as Markdown", { timeout: 240000 }, async t => {
+test("code-city <folder> opens its city, and the overview downloads as Markdown", { timeout: 400000 }, async t => {
   let chromium;
   try { ({ chromium } = await import("playwright")); } catch (e) { return t.skip("playwright isn't installed (npm install)"); }
   const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "code-city-e2e-")));
@@ -31,12 +31,13 @@ test("code-city <folder> opens its city, and the overview downloads as Markdown"
       server.on("exit", code => reject(new Error(`code-city exited (${code}): ${out}`)));
     });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    // Headless Chromium has no GPU and compiles the city's shaders in software, which holds the page up for a while.
+    page.setDefaultTimeout(120000);
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(url);
-    await page.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo), { timeout: 120000 });
-    // Headless Chromium has no GPU and compiles the city's shaders in software, which holds the page up for a while.
-    await page.locator("[data-map-md]").waitFor({ timeout: 120000 });   // shows once the imports are read
+    await page.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo));
+    await page.locator("[data-map-md]").waitFor();   // shows once the imports are read
     const [download] = await Promise.all([page.waitForEvent("download"), page.locator("[data-map-md]").click()]);
     assert.equal(download.suggestedFilename(), `${path.basename(repo)}-overview.md`);
     const md = fs.readFileSync(await download.path(), "utf8");

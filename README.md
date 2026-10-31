@@ -184,6 +184,10 @@ Your browser opens on that folder's city, history included. Your code stays on y
 
 From a checkout of this repo, `python3 codecity.py` takes the same arguments.
 
+### In VS Code
+
+The Code City extension (in [`vscode/`](vscode/)) opens the city for your workspace in an editor panel: **Code City: Open the City**. Click a building and press **Open in editor**, or use **Code City: Show This File in the City** (also in the editor tab's and the Explorer's right-click menus) to fly to the file you're in. **Code City: Set Gemini API Key** turns on Ask, kept in VS Code's secret storage. It needs Python 3.8+ and git. Until it's on the Marketplace, build it with `npm install && npm run package` in `vscode/` and install the `.vsix` with `code --install-extension`.
+
 ### Ask, tours and explanations on your own machine
 
 Set your own [Gemini API key](https://aistudio.google.com/apikey) before running `code-city`, and Ask, the workflows tour, Explain and Explain this commit work locally with no sign-in:
@@ -233,6 +237,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `local/ask-server.mjs` | Runs `ask.mjs` for `code-city` with your own Gemini key; the installed package carries it bundled (`npm run bundle:ask`) |
 | `pyproject.toml`, `hatch_build.py` | The `code-city` package for PyPI: the command, the page, the parser and the bundled ask server |
+| `vscode/` | The VS Code extension: runs `codecity.py` on the workspace and shows the page in a panel, with Open in editor and Show This File in the City |
 | `tests/` | `npm test`: the Ask function, the page, and the `code-city` command |
 | `netlify/functions/` | Server code on Netlify: `ask.mjs` (Ask, tours, explanations, important lines via Gemini), `github-login.js` / `github-callback.js` (Sign in with GitHub) and `github-signout.js` (revokes the token on sign-out) |
 | `site/vendor/tree-sitter/` | The parser behind Trace: web-tree-sitter 0.20.8 and grammars for Python, JavaScript, TypeScript and Go (see its README) |

@@ -36,6 +36,10 @@ Netlify serves `site/`. `site/index.html` is `code-city.html` wrapped in a docum
 
 Bump `__version__` in `codecity.py` for a release.
 
+## The VS Code extension
+
+`vscode/` is the extension: `extension.js`, plain JavaScript with no build step. `npm run package` there copies `codecity.py`, the page, the parser and the bundled ask server into `vscode/server/` and writes a `.vsix`. To try your changes, open `vscode/` in VS Code and press F5 (after `npm run prepare-server` once), or install the `.vsix`.
+
 ## Tests
 
     npm test
@@ -45,6 +49,8 @@ It runs everything in `tests/`:
 - `ask.test.mjs`, `ask-cache.test.mjs`: the Ask function (`netlify/functions/ask.mjs`) with Gemini and Netlify Blobs mocked. No key is needed and nothing is called.
 - `page.test.mjs`: `site/index.html` matches the build, the page's script parses, and the page draws the example city in headless Chromium without errors.
 - `e2e.test.mjs`: `code-city <folder>` opens that city in headless Chromium and Download as Markdown gives its overview (slow without a GPU: about a minute).
+- `vscode.test.mjs`: the VS Code extension against a stand-in for the `vscode` API (it serves the city, opens only files inside the workspace, and stops its server).
+- `vscode-page.test.mjs`: the page framed like the extension's webview: a reveal message opens the file's building and Open in editor messages the parent.
 - `cli.test.mjs`: the `code-city` command on a small throwaway repo, including Ask with your own key (with a dummy key, so Gemini is never called).
 
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`).

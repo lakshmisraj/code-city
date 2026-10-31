@@ -77,3 +77,23 @@ test("with GEMINI_API_KEY set, Ask runs locally with no sign-in", { timeout: 300
     assert.equal(other.status, 403);
   } finally { p.kill(); }
 });
+
+test("new files that aren't committed yet are in the city, ignored ones aren't", async () => {
+  fs.writeFileSync(path.join(repo, "src", "new.py"), "def fresh():\n    pass\n");
+  fs.writeFileSync(path.join(repo, ".gitignore"), "secret.py\n");
+  fs.writeFileSync(path.join(repo, "src", "secret.py"), "KEY = 1\n");
+  const city = await (await api("/api/repo?src=" + encodeURIComponent(repo))).json();
+  const paths = city.files.map(f => f.path);
+  assert.ok(paths.includes("src/new.py"));
+  assert.ok(!paths.includes("src/secret.py"));
+});
+
+test("a repo with no commits yet shows its files, with no history", () => {
+  const fresh = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "code-city-fresh-")));
+  try {
+    fs.writeFileSync(path.join(fresh, "a.py"), "print(1)\n");
+    execFileSync("git", ["-C", fresh, "init", "-q"]);
+    const out = execFileSync("python3", ["-c", "import json, sys, codecity; c = codecity.build_city(sys.argv[1]); print(json.dumps([[f['path'] for f in c['files']], c['history']]))", fresh], { cwd: ROOT, encoding: "utf8" });
+    assert.deepEqual(JSON.parse(out), [["a.py"], null]);
+  } finally { fs.rmSync(fresh, { recursive: true, force: true }); }
+});

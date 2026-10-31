@@ -228,19 +228,28 @@ def squash(commits, k):
     return steps
 
 
+def has_commits(repo):
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", "HEAD")
+        return True
+    except RuntimeError:
+        return False
+
+
 def build_city(src, with_source=True, from_page=False):
     with build_lock:
         repo, name = resolve(src, from_page)
         is_git = os.path.isdir(os.path.join(repo, ".git"))
         if is_git:
-            paths = [p for p in git(repo, "ls-files", "-z").split("\0") if p]
+            # Files git tracks plus new ones it doesn't yet (but not ignored ones), so uncommitted work shows too.
+            paths = sorted({p for p in git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard").split("\0") if p})
         else:
             paths = []
             for root, dirs, names in os.walk(repo):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
                 paths += [os.path.relpath(os.path.join(root, n), repo).replace(os.sep, "/") for n in names]
         files = analyze(repo, sorted(paths), with_source)
-        hist = history(repo) if is_git else None
+        hist = history(repo) if is_git and has_commits(repo) else None   # a brand-new repo: today's files, no history
         if hist:
             # Files that exist today but are left out of the city (too big, binary, past the file limit) are left out
             # of the history too, or their buildings would rise during the replay and vanish at today.
@@ -293,7 +302,8 @@ def start_ask():
     global ASK
     if not os.environ.get("GEMINI_API_KEY"):
         return "Ask is off: " + ASK_NO_KEY
-    node, script = shutil.which("node"), ask_script()
+    # CODE_CITY_NODE: a Node to use instead of the one on PATH (the VS Code extension passes its own)
+    node, script = os.environ.get("CODE_CITY_NODE") or shutil.which("node"), ask_script()
     if not node:
         return "Ask is off: it needs Node 18+ (https://nodejs.org), and GEMINI_API_KEY is set."
     if not script:
@@ -304,7 +314,7 @@ def start_ask():
     line = [None]
     reader = threading.Thread(target=lambda: line.__setitem__(0, proc.stdout.readline()), daemon=True)
     reader.start()
-    reader.join(15)
+    reader.join(30)   # loading the Gemini packages can take a while on a busy machine
     m = re.match(r"ready (\d+)", line[0] or "")
     if not m:
         proc.kill()
