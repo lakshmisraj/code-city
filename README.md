@@ -49,6 +49,12 @@ Opens by itself when a repo loads (and from **How it's built** under Understand)
 
 A repo's imports and functions are read as soon as it loads, and kept in this browser for that commit (the eight most recent; built-in repos for the day), so coming back reads nothing again.
 
+### Commits and branches
+
+**Commits and branches** (under Display, or click the commit count in the top bar) shows the repo's history as a graph, like GitHub Desktop: newest at the top, one coloured lane per line of work, a dot per commit, and lines to its parents, so branches split off and merges join back (a hollow dot is a merge). Branch names sit on their newest commit. It reads the default branch's newest 100 commits (**Load older commits** for more) and the newest 30 of up to 8 other branches whose work isn't on it yet, about 11 GitHub requests the first time.
+
+Click a commit to see its message, author, date and the files it changed (lines added and removed), lit over the city in the pull request colours with everything else dimmed. When the commit is in the history the city loaded, the city goes back to that moment and the history bar opens there; **Back to today** returns. A commit outside the loaded history (newer than a built-in repo's saved history, or on another branch) keeps today's city with its files lit. For a folder or city file, its own history is shown as one line.
+
 ### Importance
 
 **Importance** under Display colours each file by its importance score (see the table above) and names the eight most important files over their buildings. A file's panel shows its score and the reasons that weigh most, such as "21 product files (not tests) depend on it, directly or through others".

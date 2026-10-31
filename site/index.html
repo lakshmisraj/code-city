@@ -145,6 +145,22 @@ ol.paths li { border-left: 3px solid var(--wf); padding: 4px 0 4px 10px; display
 ul.cycles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 ul.cycles li.warn { border-left: 3px solid var(--fire); padding: 2px 0 2px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-dim); }
 ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 12px; }
+.tb-link { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+.tb-link:hover, .tb-link:focus-visible { background: var(--street-2); outline: none; }
+.cg { position: relative; }
+.cg-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.cg-rows { list-style: none; margin: 0 0 0 calc(var(--cg-w) + 6px); padding: 0; }
+.cg-row { all: unset; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; height: 30px; padding: 0 6px; border-radius: 6px; cursor: pointer; min-width: 0; }
+.cg-row:hover, .cg-row:focus-visible { background: var(--street-2); }
+.cg-row.on { background: color-mix(in srgb, var(--sodium) 16%, transparent); }
+.cg-msg { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+.cg-meta { font-size: 10.5px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+.cg-ref { font: 600 10px var(--f-mono); color: var(--night); background: var(--sky, #6fd0e0); border-radius: 3px; padding: 0 4px; margin-right: 5px; }
+.cg-ref.def { background: var(--sodium); }
+.cg-detail { flex: none; position: sticky; top: -14px; z-index: 1; margin: -14px -16px 0; padding: 12px 16px; background: var(--street); border-bottom: 1px solid var(--line); max-height: 45vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.cg-dhead { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.cg-dhead b { font-size: 13px; }
+.cg-files .chip { flex: none; }
 .map-key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--ink-dim); margin: 0; }
 .map-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .seg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
@@ -544,7 +560,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   <dl class="tb-stats">
     <div><dt>files</dt><dd id="sFiles">0</dd></div>
     <div><dt>lines</dt><dd id="sLines">0</dd></div>
-    <div><dt>commits</dt><dd id="sCommits">0</dd></div>
+    <div id="tbCommits" class="tb-link" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
 </header>
@@ -633,6 +649,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div class="field">
       <span class="label">Over time</span>
       <div class="seg-actions">
+        <button id="commitsBtn" type="button" class="seg-action" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
         <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
       </div>
     </div>
@@ -667,6 +684,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Understand</b>: how it's built (entry points, core files, main paths and where they meet), the <b>System map</b> (modules in layers and import cycles), and the workflows tour.</li>
       <li><b>Find</b>: a file by name.</li>
       <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
+      <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
       <li><b>Display</b>: colour by language, change heat, imports or <b>importance</b> (a score from what depends on a file, its calls, entry points and changes; the top files are named); show or hide connections; hotspots.</li>
       <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
@@ -1631,6 +1649,7 @@ function matFor(b) {
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
   if (sideMode === "system") { const m = systemMat(b.userData.f.path); if (m) return m; }
+  if (sideMode === "commits" && commitSel) { const st = commitSel.get(b.userData.f.path); return st ? PR_MATS[st] || PR_MATS.modified : DIM; }
   if (sideMode === "trace" && traceState) { const p = b.userData.f.path; return p === traceState.path ? PICKED : traceState.files.has(p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
   if (sideMode === "map") { const r = mapRole(b.userData.f.path); if (r) return r === "entry" ? PICKED : MATCH; }
@@ -1675,6 +1694,9 @@ function colorByImports() {
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("sysBtn").onclick = () => sideMode === "system" ? closeSide() : openSide("system");
+document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
+document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
+document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
 document.getElementById("cHeat").onclick = () => setColorMode("heat");
 document.getElementById("cImp").onclick = () => setColorMode("imports");
 document.getElementById("cRank").onclick = () => setColorMode("rank");
@@ -2792,10 +2814,12 @@ function openSide(mode) {
     if (sideMode === "ask") askState = null;
     if (sideMode === "tour") endTour();
   }
+  if (mode !== "commits") commitSel = null;
   roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
   $("sysBtn").setAttribute("aria-pressed", mode === "system");
+  $("commitsBtn").setAttribute("aria-pressed", mode === "commits");
   if (mode === "map") loadMap();
   renderSide(); syncUrl();
 }
@@ -2803,14 +2827,16 @@ function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
   if (sideMode === "ask") askState = null;
   if (sideMode === "tour") endTour();
+  commitSel = null;
   sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
   drawLinks();
   $("hotBtn").setAttribute("aria-pressed", "false");
   $("mapBtn").setAttribute("aria-pressed", "false");
   $("sysBtn").setAttribute("aria-pressed", "false");
+  $("commitsBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "system") return renderSystem(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "system") return renderSystem(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -4653,6 +4679,166 @@ sideBody.addEventListener("click", e => {
   const g = systemState.groups.get(row.dataset.group);
   if (g) { const dir = g.name; const d = districts.find(x => x.userData.dir === dir); if (d) openFolder(dir); else if (g.files[0]) openDrawer(bmap.get(g.files[0])); }
 });
+
+// ---------- commits and branches ----------
+// The repo's history as a graph, like GitHub Desktop: one lane per line of work, newest at the top, a dot per
+// commit and lines down to its parents (two for a merge). The default branch's newest commits come first, then
+// the newest commits of up to COMMIT_BRANCHES other branches whose work isn't on it yet. Clicking a commit shows
+// what it changed, lights those files, and rewinds the city to it when it's in the loaded history.
+const COMMIT_PAGE = 100, COMMIT_BRANCHES = 8, BRANCH_COMMITS = 30, CG_ROW = 30, CG_LANE = 14;
+const LANE_COLORS = ["#f2a541", "#6fd0e0", "#a97bff", "#7ed49b", "#ff7a9a", "#8fb0ff", "#e8d36a", "#d49bff"];
+let commitState = null;   // { city, commits: Map(sha -> commit), heads: Map(sha -> [branch]), def, branches, page, more, loading, error, sel, detail: Map(sha -> files | error), rewound }
+let commitSel = null;     // the selected commit's files: Map(path -> status), lit over the city
+function openCommits() {
+  if (!commitState || commitState.city !== buildings) commitState = { city: buildings, commits: new Map(), heads: new Map(), def: null, branches: [], page: 0, more: false, loading: false, error: null, sel: null, detail: new Map() };
+  openSide("commits");
+  if (!commitState.commits.size && !commitState.loading) loadCommits();
+}
+async function loadCommits() {
+  const st = commitState;
+  st.loading = true; st.error = null; renderSide();
+  try {
+    if (!currentRepo) {   // a folder or city file: its own history, one line
+      const list = hist ? hist.commits : [];
+      list.forEach((c, k) => st.commits.set(c.h, { sha: c.h, parents: k ? [list[k - 1].h] : [], t: c.t, a: c.a, m: c.m }));
+      st.more = false;
+    } else {
+      const base = `/repos/${currentRepo}`, add = c => { if (!st.commits.has(c.sha)) st.commits.set(c.sha, { sha: c.sha, parents: (c.parents || []).map(p => p.sha), t: when(c), a: (c.author && c.author.login) || c.commit.author.name, m: c.commit.message.split("\n")[0].slice(0, 140) }); };
+      if (!st.def) {
+        st.def = (await gh(base)).default_branch;
+        st.branches = (await gh(`${base}/branches?per_page=100`)).map(b => ({ name: b.name, sha: b.commit.sha }));
+      }
+      st.page++;
+      const list = await gh(`${base}/commits?sha=${encodeURIComponent(st.def)}&per_page=${COMMIT_PAGE}&page=${st.page}`);
+      list.forEach(add); st.more = list.length === COMMIT_PAGE;
+      if (st.page === 1) {   // branches whose newest commit isn't on the default branch: their latest work
+        const pref = n => /^(main|master|develop|dev|next|release|staging)/i.test(n) ? 0 : 1;
+        const others = st.branches.filter(b => b.name !== st.def && !st.commits.has(b.sha)).sort((a, b) => pref(a.name) - pref(b.name)).slice(0, COMMIT_BRANCHES);
+        st.skipped = Math.max(0, st.branches.filter(b => b.name !== st.def && !st.commits.has(b.sha)).length - others.length);
+        await pool(others, 4, b => gh(`${base}/commits?sha=${encodeURIComponent(b.name)}&per_page=${BRANCH_COMMITS}`).then(l => l.forEach(add)).catch(() => {}));
+      }
+      st.heads = new Map();
+      for (const b of st.branches) { if (!st.heads.has(b.sha)) st.heads.set(b.sha, []); st.heads.get(b.sha).push(b.name); }
+    }
+  } catch (e) { if (!isAbort(e)) st.error = e.message || "Couldn't read the commits."; }
+  st.loading = false;
+  if (commitState === st) renderSide();
+}
+// Newest first, but never a commit before one of its children (a rebase can make a parent look newer).
+function commitOrder(commits) {
+  const kids = new Map(); for (const c of commits.values()) for (const p of c.parents) if (commits.has(p)) kids.set(p, (kids.get(p) || 0) + 1);
+  const ready = [...commits.values()].filter(c => !kids.get(c.sha)).sort((a, b) => b.t - a.t), out = [];
+  while (ready.length) {
+    const c = ready.shift(); out.push(c.sha);
+    for (const p of c.parents) if (commits.has(p)) { const n = kids.get(p) - 1; kids.set(p, n); if (!n) { const pc = commits.get(p); let k = ready.findIndex(x => x.t < pc.t); if (k < 0) k = ready.length; ready.splice(k, 0, pc); } }
+  }
+  return out;
+}
+// One row per commit: its lane, the lanes that join it from above (branches merging in or starting here), the
+// lanes its parents continue in, and the lanes that run straight past.
+function laneLayout(order, commits) {
+  const lanes = [], rows = [];   // lanes[k]: the commit that lane is heading down to
+  let width = 1;
+  for (const sha of order) {
+    const c = commits.get(sha), before = lanes.slice();
+    let col = lanes.indexOf(sha);
+    const into = [];
+    lanes.forEach((s, k) => { if (s === sha && k !== col) { into.push(k); lanes[k] = null; } });
+    const fromTop = col >= 0;
+    if (col < 0) { col = lanes.indexOf(null); if (col < 0) col = lanes.length; }
+    const ps = c.parents.filter(p => commits.has(p)), cut = c.parents.length > ps.length;   // cut: its parents are further back than what's loaded
+    lanes[col] = ps[0] || null;
+    const out = [];
+    for (const p of ps.slice(1)) { let k = lanes.indexOf(p); if (k < 0) { k = lanes.indexOf(null); if (k < 0) k = lanes.length; lanes[k] = p; } out.push(k); }
+    const pass = []; before.forEach((s, k) => { if (s && s !== sha && k !== col) pass.push(k); });
+    rows.push({ sha, col, into, out, pass, fromTop, down: !!ps[0], cut, merge: c.parents.length > 1 });
+    while (lanes.length && lanes[lanes.length - 1] == null) lanes.pop();
+    width = Math.max(width, lanes.length, col + 1);
+  }
+  return { rows, width };
+}
+function commitGraphSvg(layout) {
+  const X = k => CG_LANE / 2 + 2 + k * CG_LANE, col = k => LANE_COLORS[k % LANE_COLORS.length], H = CG_ROW;
+  const w = X(layout.width - 1) + CG_LANE / 2 + 2, h = layout.rows.length * H, parts = [];
+  const line = (x1, y1, x2, y2, c, dash) => parts.push(x1 === x2 ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}"${dash ? ` stroke-dasharray="2 3"` : ""}/>` : `<path d="M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}" stroke="${c}" fill="none"/>`);
+  layout.rows.forEach((r, i) => {
+    const top = i * H, mid = top + H / 2, bot = top + H;
+    for (const k of r.pass) line(X(k), top, X(k), bot, col(k));
+    if (r.fromTop) line(X(r.col), top, X(r.col), mid, col(r.col));
+    for (const k of r.into) line(X(k), top, X(r.col), mid, col(k));
+    if (r.down) line(X(r.col), mid, X(r.col), bot, col(r.col));
+    else if (r.cut) line(X(r.col), mid, X(r.col), bot, col(r.col), true);
+    for (const k of r.out) line(X(r.col), mid, X(k), bot, col(k));
+  });
+  layout.rows.forEach((r, i) => parts.push(`<circle cx="${X(r.col)}" cy="${i * H + H / 2}" r="${r.merge ? 3.5 : 4.5}" fill="${r.merge ? "var(--night)" : col(r.col)}" stroke="${col(r.col)}" stroke-width="2"/>`));
+  return { w, svg: `<svg class="cg-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><g stroke-width="2">${parts.join("")}</g></svg>` };
+}
+function ago(t) {
+  const s = Date.now() / 1000 - t, d = s / 86400;
+  return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : d < 30 ? `${Math.round(d)} d ago` : d < 365 ? `${Math.round(d / 30)} mo ago` : `${(d / 365).toFixed(1)} y ago`;
+}
+function renderCommits() {
+  const st = commitState && commitState.city === buildings ? commitState : null;
+  $("sideTitle").textContent = "Commits and branches";
+  if (!st) { sideBody.innerHTML = ""; return; }
+  const n = st.commits.size;
+  $("sideSub").textContent = currentRepo ? `${currentRepo}${st.def ? ` · ${st.def}` : ""}${n ? ` · ${fmt(n)} commits shown` : ""}` : cityName;
+  if (!n) {
+    sideBody.innerHTML = st.error ? `<p class="side-note">${esc(st.error)}</p><div class="side-actions"><button type="button" data-commits-retry>Try again</button></div>`
+      : st.loading ? `<p class="side-note">Reading commits and branches from GitHub…</p>`
+      : `<p class="side-note">${currentRepo || hist ? "No commits found." : "This city has no history. Build a GitHub repo, or open a city.json made with git history."}</p>`;
+    return;
+  }
+  const order = commitOrder(st.commits), layout = laneLayout(order, st.commits), g = commitGraphSvg(layout);
+  const sel = st.sel && st.commits.get(st.sel);
+  const tags = sha => (st.heads.get(sha) || []).map(b => `<span class="cg-ref${b === st.def ? " def" : ""}">${esc(b)}</span>`).join("");
+  sideBody.innerHTML = (sel ? commitDetailHtml(st, sel) : `<p class="side-note">Newest first. Each lane is a line of work; a hollow dot is a merge. Click a commit to see what it changed in the city.</p>`) +
+    `<div class="cg" style="--cg-w:${g.w}px">${g.svg}<ol class="cg-rows">${layout.rows.map((r, i) => { const c = st.commits.get(r.sha); return `<li><button type="button" class="cg-row${r.sha === st.sel ? " on" : ""}" data-commit="${esc(r.sha)}" title="${esc(c.m)}">` +
+      `<span class="cg-msg">${tags(r.sha)}${esc(c.m)}</span><span class="cg-meta">${esc(c.a || "")} · ${ago(c.t)}</span></button></li>`; }).join("")}</ol></div>` +
+    (st.loading ? `<p class="side-note">Reading more commits…</p>` : st.more ? `<div class="side-actions"><button type="button" data-commits-more>Load older commits</button></div>` : "") +
+    (st.skipped ? `<p class="side-note">${fmt(st.skipped)} more branch${st.skipped === 1 ? " isn't" : "es aren't"} shown.</p>` : "") +
+    (st.error ? `<p class="side-note">${esc(st.error)}</p>` : "");
+}
+function commitDetailHtml(st, c) {
+  const files = st.detail.get(c.sha), idx = hist ? hist.commits.findIndex(x => x.h === c.sha.slice(0, 8)) : -1;
+  const rows = Array.isArray(files) ? files : [];
+  return `<div class="cg-detail"><div class="cg-dhead"><b>${esc(c.m)}</b><button type="button" class="mini" data-commit-close aria-label="Close the commit" title="Close">✕</button></div>` +
+    `<p class="side-note">${esc(c.a || "")} · ${esc(dateFmt.format(new Date(c.t * 1000)))} · <code>${esc(c.sha.slice(0, 8))}</code>${c.parents.length > 1 ? ` · merges ${c.parents.length} lines` : ""}${(st.heads.get(c.sha) || []).length ? ` · tip of ${st.heads.get(c.sha).map(esc).join(", ")}` : ""}</p>` +
+    `<p class="side-note">${idx >= 0 ? `The city shows the repo as it was right after this commit.${st.rewound ? ` <button type="button" class="linkish" data-commit-today>Back to today</button>` : ""}` : `This commit isn't in the loaded history${hist ? "" : " (load history from Repo)"}, so the city shows today's files, with its changes lit.`}</p>` +
+    (files === undefined ? `<p class="side-note">Reading what it changed…</p>` : typeof files === "string" ? `<p class="side-note">${esc(files)}</p>` :
+      `<ol class="rank cg-files">${rows.slice(0, 60).map(f => `<li><button type="button" ${bmap.has(f.path) ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}><span class="chip ${esc(f.status)}">${esc(f.status)}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">+${fmt(f.add)} −${fmt(f.del)}</span></button></li>`).join("")}</ol>` +
+      (rows.length > 60 ? `<p class="side-note">and ${fmt(rows.length - 60)} more files</p>` : "")) + `</div>`;
+}
+async function selectCommit(sha) {
+  const st = commitState; if (!st) return;
+  st.sel = sha; commitSel = null;
+  const idx = hist ? hist.commits.findIndex(x => x.h === sha.slice(0, 8)) : -1;
+  if (idx >= 0) { playing = false; viewAt(idx); scrub.value = idx; tlOpen = true; syncTimeline(); st.rewound = true; }   // the city as it was right after it
+  renderSide();
+  if (!st.detail.has(sha)) {
+    if (currentRepo && sha.length > 8) {
+      try {
+        const d = await gh(`/repos/${currentRepo}/commits/${sha}`);
+        st.detail.set(sha, (d.files || []).map(f => ({ path: f.filename, status: { copied: "added", changed: "modified" }[f.status] || (PR_MATS[f.status] ? f.status : "modified"), add: f.additions || 0, del: f.deletions || 0 })));
+      } catch (e) { st.detail.set(sha, isAbort(e) ? "" : e.message || "Couldn't read what it changed."); }
+    } else {   // a city's own history: the files it touched
+      const h = hist && hist.commits[idx];
+      st.detail.set(sha, h ? h.c.map(row => ({ path: row[0], status: "modified", add: 0, del: 0 })) : []);
+    }
+  }
+  const files = st.detail.get(sha);
+  if (st.sel === sha && Array.isArray(files)) commitSel = new Map(files.map(f => [f.path, f.status]));
+  if (commitState === st && sideMode === "commits") renderSide();
+}
+sideBody.addEventListener("click", e => {
+  if (sideMode !== "commits" || !commitState) return;
+  const row = e.target.closest("[data-commit]");
+  if (row) { e.stopPropagation(); return selectCommit(row.dataset.commit); }
+  if (e.target.closest("[data-commits-more]")) { e.stopPropagation(); return loadCommits(); }
+  if (e.target.closest("[data-commits-retry]")) { e.stopPropagation(); commitState.page = 0; return loadCommits(); }
+  if (e.target.closest("[data-commit-close]")) { e.stopPropagation(); commitState.sel = null; commitSel = null; return renderSide(); }
+  if (e.target.closest("[data-commit-today]")) { e.stopPropagation(); goNow(); commitState.rewound = false; return renderSide(); }
+}, true);
 
 // The drawer's Imports and Used by lists for one file.
 async function renderFileLinks(path) {
