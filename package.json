@@ -5,13 +5,15 @@
   "scripts": {
     "test": "node --test --experimental-test-module-mocks \"tests/*.test.mjs\"",
     "build": "python3 codecity.py build",
-    "dev": "node dev-server.mjs"
+    "dev": "node dev-server.mjs",
+    "bundle:ask": "esbuild local/ask-server.mjs --bundle --platform=node --format=esm --target=node18 --minify --legal-comments=linked --outfile=build/ask-server.mjs \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@google/genai": "^2.31.0",
     "@netlify/blobs": "11.1.4"
   },
   "devDependencies": {
+    "esbuild": "0.25.10",
     "playwright": "1.59.1"
   }
 }

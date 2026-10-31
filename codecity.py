@@ -17,7 +17,11 @@ import re
 import subprocess
 import sys
 import errno
+import secrets
+import shutil
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -267,12 +271,91 @@ def page():
             '</head><body>' + body + "</body></html>").encode("utf-8")
 
 
+# Ask, tours and explanations with your own Gemini key: local/ask-server.mjs runs the site's own ask.mjs under
+# Node, and this server passes the page's requests through to it. Off unless GEMINI_API_KEY is set.
+ASK = None   # {"port", "secret"} once it's running
+ASK_NO_KEY = "Set GEMINI_API_KEY before running code-city to use Ask here (it needs Node 18+)."
+
+
+def ask_script():
+    """The ask server to run: the bundled copy in an installed code-city, or the source in a checkout."""
+    bundled = os.path.join(ASSETS, "ask-server.mjs")
+    if ASSETS != HERE and os.path.isfile(bundled):
+        return bundled
+    source = os.path.join(HERE, "local", "ask-server.mjs")
+    if os.path.isfile(source) and os.path.isdir(os.path.join(HERE, "node_modules", "@google", "genai")):
+        return source
+    return None
+
+
+def start_ask():
+    """Start the ask server if there's a key, Node and the script; returns a line for the terminal."""
+    global ASK
+    if not os.environ.get("GEMINI_API_KEY"):
+        return "Ask is off: " + ASK_NO_KEY
+    node, script = shutil.which("node"), ask_script()
+    if not node:
+        return "Ask is off: it needs Node 18+ (https://nodejs.org), and GEMINI_API_KEY is set."
+    if not script:
+        return "Ask is off: run `npm install` in this checkout first."
+    secret = secrets.token_hex(24)
+    proc = subprocess.Popen([node, script], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            env=dict(os.environ, ASK_SECRET=secret), text=True)
+    line = [None]
+    reader = threading.Thread(target=lambda: line.__setitem__(0, proc.stdout.readline()), daemon=True)
+    reader.start()
+    reader.join(15)
+    m = re.match(r"ready (\d+)", line[0] or "")
+    if not m:
+        proc.kill()
+        return "Ask is off: its server didn't start (see the error above)."
+    ASK = {"port": int(m.group(1)), "secret": secret, "proc": proc}
+    return "Ask is on, with your Gemini key."
+
+
+def ask_forward(method, query, body):
+    """Pass one request to the ask server; returns (status, body)."""
+    req = urllib.request.Request(f"http://127.0.0.1:{ASK['port']}/{'?' + query if query else ''}", data=body, method=method,
+                                 headers={"X-Ask-Secret": ASK["secret"], "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except (urllib.error.URLError, OSError):
+        return 502, b'{"error": "Code City\'s ask server stopped. Restart code-city."}'
+
+
 class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.headers.get("Host", "").split(":")[0] not in ("localhost", "127.0.0.1"):
+            return self.reply(403, "text/plain", b"Forbidden")
+        url = urlparse(self.path)
+        if url.path != "/.netlify/functions/ask":
+            return self.reply(404, "text/plain", b"Not found")
+        # Only the app's own page may spend your key: other websites can't send same-origin requests.
+        if self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+            return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
+        if not ASK:
+            return self.reply(503, "application/json", json.dumps({"error": ASK_NO_KEY}).encode("utf-8"))
+        size = int(self.headers.get("Content-Length") or 0)
+        if size > 2 * 1024 * 1024:
+            return self.reply(413, "application/json", b'{"error": "That request is too big."}')
+        status, body = ask_forward("POST", url.query, self.rfile.read(size))
+        return self.reply(status, "application/json", body)
+
     def do_GET(self):
         # Refuse requests that arrive under another hostname (DNS rebinding).
         if self.headers.get("Host", "").split(":")[0] not in ("localhost", "127.0.0.1"):
             return self.reply(403, "text/plain", b"Forbidden")
         url = urlparse(self.path)
+        if url.path == "/.netlify/functions/ask":   # is Ask on? (the page asks once it loads)
+            if not ASK:
+                return self.reply(200, "application/json", b'{"enabled": false}')
+            if url.query and self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+                return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
+            status, body = ask_forward("GET", url.query, None)
+            return self.reply(status, "application/json", body)
         if url.path in ("/", "/index.html"):
             return self.reply(200, "text/html; charset=utf-8", page())
         if url.path.startswith("/vendor/tree-sitter/"):
@@ -365,6 +448,7 @@ def main(argv=None):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)   # that port is taken: any free one
     url = f"http://localhost:{server.server_address[1]}/"
     print(f"Code City is running at {url}{f'  showing {START}' if START else ''}  (Ctrl+C to stop)", flush=True)
+    print("  " + start_ask(), flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

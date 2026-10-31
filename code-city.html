@@ -3120,14 +3120,17 @@ function needSignin(what) {
     ? `<button class="linkish" type="button" data-signin>Sign in with GitHub</button> to ${what}. Signing in keeps it free for everyone.${pasted}`
     : `Sign-in isn't available here, so you can't ${what}.`;
 }
-let askEnabled = false, askState = null;   // askState: { question, answer, order: [{ path, why }], files: Map(path -> why) }
+let askEnabled = false, askOpen = false, askState = null;   // askState: { question, answer, order: [{ path, why }], files: Map(path -> why) }
 async function initAsk() {
-  try { const r = await fetch(ASK_URL, { cache: "no-store" }); askEnabled = r.ok && !!(await r.json()).enabled; }
-  catch (e) { askEnabled = false; }   // the claude.ai copy, the local app and the VS Code view have no ask function
+  try { const r = await fetch(ASK_URL, { cache: "no-store" }), d = r.ok ? await r.json() : {}; askEnabled = !!d.enabled; askOpen = askEnabled && !!d.open; }
+  catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
   $("tourBtn2").hidden = !askEnabled;
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
+// The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
+const canAsk = () => !!oauthToken || askOpen;
+const askHeaders = () => ({ "Content-Type": "application/json", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
 {
@@ -3138,7 +3141,7 @@ $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("as
 async function askCity(question) {
   const q = question.trim(), status = $("askStatus");
   if (!q) return;
-  if (!oauthToken) { status.innerHTML = needSignin("ask questions"); return; }
+  if (!canAsk()) { status.innerHTML = needSignin("ask questions"); return; }
   const gen = cityGen;
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
@@ -3148,7 +3151,7 @@ async function askCity(question) {
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      headers: askHeaders(),
       body: JSON.stringify({ question: q, repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
@@ -3236,7 +3239,7 @@ async function pullCode(path) {
 // Each explanation opens in its own window and is a step in a chain: Follow on a connected file explains it next.
 let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
 async function explainCode(state, paths, question, from) {
-  if (!oauthToken) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
+  if (!canAsk()) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
   const gen = cityGen;
   paths = paths.slice(0, MAX_EXPLAIN);   // the files actually read, so the window's title is true
   const st = { paths, from: from || null, loading: true };
@@ -3258,7 +3261,7 @@ async function explainCode(state, paths, question, from) {
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      headers: askHeaders(),
       body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
     });
     const data = await r.json().catch(() => ({}));
@@ -4935,7 +4938,7 @@ const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000;
 async function explainChange(sha, onlyPath) {
   const c = commitState && commitState.commits.get(sha), files = knownCommitFiles(sha), message = (c && c.m) || looseMsg.get(sha);
   if (!files || !message) return;
-  if (!oauthToken) { toast("Sign in with GitHub (under Account) to have changes explained."); return; }
+  if (!canAsk()) { toast("Sign in with GitHub (under Account) to have changes explained."); return; }
   const gen = cityGen;
   const pick = (onlyPath ? files.filter(f => f.path === onlyPath) : files.filter(f => f.patch && !/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|uv\.lock|poetry\.lock|Cargo\.lock|go\.sum)$/.test(f.path))
     .sort((a, b) => (b.add + b.del) - (a.add + a.del))).slice(0, MAX_CHANGE_FILES);
@@ -4947,7 +4950,7 @@ async function explainChange(sha, onlyPath) {
   renderViewer();
   const redraw = () => { win.dirty = true; renderViewer(); };
   try {
-    const r = await fetch(ASK_URL, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+    const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(),
       body: JSON.stringify({ mode: "change", question: message, repo: currentRepo || cityName, files: buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines })),
         change: pick.map(f => ({ path: f.path, status: f.status, patch: numberedPatch(f.patch).slice(0, MAX_PATCH_CHARS) })) }) });
     const data = await r.json().catch(() => ({}));
@@ -5026,7 +5029,7 @@ $("tourBtn2").onclick = () => startTour($("askInput").value);   // a topic typed
 async function startTour(topic) {
   const gen = cityGen;
   const status = $("askStatus");
-  if (!oauthToken) { status.innerHTML = needSignin("take a tour"); return; }
+  if (!canAsk()) { status.innerHTML = needSignin("take a tour"); return; }
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
   if (gen !== cityGen) { status.textContent = ""; return; }
@@ -5035,7 +5038,7 @@ async function startTour(topic) {
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      headers: askHeaders(),
       body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
@@ -5121,7 +5124,7 @@ async function loadKeyLines(w) {
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      headers: askHeaders(),
       body: JSON.stringify({ mode: "lines", question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
         files: [{ path: send[0].path, lines: 1 }], code: send }),
     });

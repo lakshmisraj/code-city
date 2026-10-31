@@ -57,3 +57,23 @@ test("a name that's neither a folder nor a repo is refused", () => {
 test("--version", () => {
   assert.match(execFileSync("python3", [CLI, "--version"], { encoding: "utf8" }), /^code-city \d+\.\d+\.\d+/);
 });
+
+// Ask with your own key: requests go through to the site's own ask.mjs (here with a dummy key, so they stop
+// before Gemini), with no sign-in, and only from the page.
+test("with GEMINI_API_KEY set, Ask runs locally with no sign-in", { timeout: 30000 }, async () => {
+  const p = spawn("python3", [CLI, repo, "--no-open", "--port", "0"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GEMINI_API_KEY: "dummy" } });
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let out = "";
+      p.stdout.on("data", d => { out += d; const m = /running at (http:\/\/localhost:\d+)\/[\s\S]*Ask is (on|off)/.exec(out); if (m) m[2] === "on" ? resolve(m[1]) : reject(new Error(out)); });
+      p.on("exit", code => reject(new Error(`code-city exited (${code}): ${out}`)));
+    });
+    const ask = url + "/.netlify/functions/ask";
+    assert.deepEqual(await (await fetch(ask)).json(), { enabled: true, open: true });
+    const r = await fetch(ask, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "explain", files: [], code: [] }) });
+    assert.equal(r.status, 400, "reached ask.mjs, which refuses an explain with no code");
+    assert.match((await r.json()).error, /no (code|files)/i);
+    const other = await fetch(ask, { method: "POST", headers: { "Sec-Fetch-Site": "cross-site" }, body: "{}" });
+    assert.equal(other.status, 403);
+  } finally { p.kill(); }
+});

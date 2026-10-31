@@ -19,13 +19,22 @@ Pick the one that matches what you're changing:
 |---|---|---|
 | The page, with public repos or a local folder | `python3 codecity.py serve` | http://localhost:8787 (opens by itself) |
 | The page with sign-in, Ask, tours or explanations | `npm run dev` (needs `.env`, see the README's Dev server section) | the link it prints, with its one-time key |
-| The command-line tool | `python3 codecity.py --help` | |
+| The command-line tool | `python3 codecity.py .` (`GEMINI_API_KEY=… ` in front for Ask) | opens by itself |
 
 Both servers read `code-city.html` on every load, so a reload shows your edits. The dev server also rebuilds `site/index.html` for you.
 
 ## The build
 
 Netlify serves `site/`. `site/index.html` is `code-city.html` wrapped in a document skeleton by `python3 codecity.py build` (or `npm run build`). **Commit both files together**: the tests fail when `site/index.html` is out of date.
+
+## The package
+
+`pyproject.toml` builds the `code-city` package: `codecity.py`, the page and the parser, plus `local/ask-server.mjs` bundled with `ask.mjs` and its packages (`hatch_build.py` runs `npm run bundle:ask` when npm is there). To try a build:
+
+    python3 -m pip install build && python3 -m build
+    pipx install dist/code_city-*.whl --force
+
+Bump `__version__` in `codecity.py` for a release.
 
 ## Tests
 
@@ -35,7 +44,7 @@ It runs everything in `tests/`:
 
 - `ask.test.mjs`, `ask-cache.test.mjs`: the Ask function (`netlify/functions/ask.mjs`) with Gemini and Netlify Blobs mocked. No key is needed and nothing is called.
 - `page.test.mjs`: `site/index.html` matches the build, the page's script parses, and the page draws the example city in headless Chromium without errors.
-- `cli.test.mjs`: the `code-city` command on a small throwaway repo.
+- `cli.test.mjs`: the `code-city` command on a small throwaway repo, including Ask with your own key (with a dummy key, so Gemini is never called).
 
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`).
 

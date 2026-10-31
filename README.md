@@ -182,6 +182,15 @@ Your browser opens on that folder's city, history included. Your code stays on y
 
 From a checkout of this repo, `python3 codecity.py` takes the same arguments.
 
+### Ask, tours and explanations on your own machine
+
+Set your own [Gemini API key](https://aistudio.google.com/apikey) before running `code-city`, and Ask, the workflows tour, Explain and Explain this commit work locally with no sign-in:
+
+    export GEMINI_API_KEY=your-key
+    code-city .
+
+It needs Node 18+ as well: `code-city` runs the hosted site's own Ask code under Node, on your machine, and the terminal says whether Ask is on. Gemini sees what the hosted site would send it (file names, a digest of the repo, and the code of files you ask it to explain), billed to your key. Only the Code City page can use it: other websites and other programs on your machine can't spend your key through it.
+
 The local server only answers its own page: other websites can't make it clone or read anything, and it never runs programs that a folder's own git settings name (hooks, fsmonitor). `python3 codecity.py export` can read any folder.
 
 ## Dev server
@@ -220,6 +229,9 @@ The timelapse follows the main line of history (first parents), with each merge 
 | `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, "How this repo is built", windows |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
+| `local/ask-server.mjs` | Runs `ask.mjs` for `code-city` with your own Gemini key; the installed package carries it bundled (`npm run bundle:ask`) |
+| `pyproject.toml`, `hatch_build.py` | The `code-city` package for PyPI: the command, the page, the parser and the bundled ask server |
+| `tests/` | `npm test`: the Ask function, the page, and the `code-city` command |
 | `netlify/functions/` | Server code on Netlify: `ask.mjs` (Ask, tours, explanations, important lines via Gemini), `github-login.js` / `github-callback.js` (Sign in with GitHub) and `github-signout.js` (revokes the token on sign-out) |
 | `site/vendor/tree-sitter/` | The parser behind Trace: web-tree-sitter 0.20.8 and grammars for Python, JavaScript, TypeScript and Go (see its README) |
 | `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |

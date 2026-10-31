@@ -10,6 +10,8 @@
 // (counted separately) and PER_USER_DAY calls a day, and the whole site PER_DAY; calls that fail don't count.
 // Needs GEMINI_API_KEY in the site's environment variables; ASK_PER_HOUR, ASK_PER_USER_DAY and ASK_PER_DAY
 // override the limits. GET tells the page whether asking is set up; GET ?models (signed in) lists the models.
+// On a developer's own machine (local/ask-server.mjs, run by `code-city`) ASK_OPEN=1 skips the sign-in: the key
+// and the machine are theirs. Never set it on the site.
 // The same request about the same code is answered from a saved copy for CACHE_DAYS, without calling Gemini or
 // counting towards any limit (the request carries the files' list, digest and code, so new code is a new request).
 import { createHash } from "node:crypto";
@@ -286,7 +288,8 @@ async function bump(store, key, by = 1) {
 }
 // Returns an error message when this ask would go over a limit, or null. Counts by GitHub account id.
 // Run by dev-server.mjs on a developer's own machine, where Netlify Blobs doesn't exist: no limits, no notes.
-const LOCAL = process.env.ASK_LOCAL === "1";
+const LOCAL = process.env.ASK_LOCAL === "1" || process.env.ASK_OPEN === "1";
+const OPEN = process.env.ASK_OPEN === "1";   // no sign-in: the local app with the developer's own key
 async function overLimit(userId, kind) {   // returns [message or null, refund()]
   if (LOCAL) return [null, async () => {}];
   const store = getStore({ name: "ask-limits", consistency: "strong" });
@@ -320,24 +323,31 @@ function json(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) };
 }
 
-async function handle(event) {
-  const started = Date.now(), left = () => BUDGET_MS - (Date.now() - started);
-  const enabled = !!process.env.GEMINI_API_KEY;
-  const listModels = event.httpMethod === "GET" && enabled && event.query && event.query.has("models");
-  if (event.httpMethod === "GET" && !listModels) return json(200, { enabled });
-  if (event.httpMethod !== "POST" && !listModels) return json(405, { error: "Use POST." });
-  if (!enabled) return json(503, { error: "Ask the city isn't set up on this site yet." });
-
+// The GitHub account behind the request's token, or { error: response }.
+async function signedIn(event) {
   const token = String(event.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return json(401, { error: "Sign in with GitHub to ask questions." });
+  if (!token) return { error: json(401, { error: "Sign in with GitHub to ask questions." }) };
   const who = await fetch("https://api.github.com/user", {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "code-city" },
     signal: AbortSignal.timeout(2000),
   }).catch(() => null);
-  if (!who) { console.log("ask: GitHub check failed to respond"); return json(503, { error: "Couldn't check your GitHub sign-in just now. Try again in a moment." }); }
-  if (!who.ok) return json(401, { error: "Your GitHub sign-in has expired. Sign in again to ask questions." });
+  if (!who) { console.log("ask: GitHub check failed to respond"); return { error: json(503, { error: "Couldn't check your GitHub sign-in just now. Try again in a moment." }) }; }
+  if (!who.ok) return { error: json(401, { error: "Your GitHub sign-in has expired. Sign in again to ask questions." }) };
   const user = await who.json().catch(() => null);
-  if (!user || !user.id) return json(503, { error: "Couldn't check your GitHub sign-in just now. Try again in a moment." });
+  if (!user || !user.id) return { error: json(503, { error: "Couldn't check your GitHub sign-in just now. Try again in a moment." }) };
+  return user;
+}
+
+async function handle(event) {
+  const started = Date.now(), left = () => BUDGET_MS - (Date.now() - started);
+  const enabled = !!process.env.GEMINI_API_KEY;
+  const listModels = event.httpMethod === "GET" && enabled && event.query && event.query.has("models");
+  if (event.httpMethod === "GET" && !listModels) return json(200, OPEN ? { enabled, open: true } : { enabled });
+  if (event.httpMethod !== "POST" && !listModels) return json(405, { error: "Use POST." });
+  if (!enabled) return json(503, { error: "Ask the city isn't set up on this site yet." });
+
+  const user = OPEN ? { id: "local" } : await signedIn(event);
+  if (user.error) return user.error;
   if (listModels) return json(200, { models: await textModels() });   // which Gemini models the key can use (signed in only)
 
   let body;
