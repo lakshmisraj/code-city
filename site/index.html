@@ -473,6 +473,15 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .vl .ln { flex-shrink: 0; width: 4.5ch; padding-right: 1.2ch; text-align: right; color: var(--ink-dim); opacity: .6; user-select: none; }
 .vl.hit { background: color-mix(in srgb, var(--sodium) 22%, transparent); }
 .vl.picked { background: color-mix(in srgb, var(--sodium) 12%, transparent); box-shadow: inset 2px 0 0 var(--sodium); }
+#siteTour { position: fixed; inset: 0; z-index: 40; }
+#siteTour .st-spot { position: fixed; border-radius: 10px; box-shadow: 0 0 0 9999px rgba(6,9,20,.62); outline: 2px solid var(--sodium); transition: left .25s, top .25s, width .25s, height .25s; pointer-events: none; }
+#siteTour .st-spot.none { outline: 0; width: 0 !important; height: 0 !important; left: 50% !important; top: 50% !important; }
+#siteTour .st-card { position: fixed; width: min(320px, calc(100vw - 32px)); box-sizing: border-box; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--street-2); box-shadow: 0 14px 40px rgba(0,0,0,.45); color: var(--ink); }
+#siteTour .st-card h3 { margin: 0 28px 6px 0; font: 600 15px var(--f-body); }
+#siteTour .st-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--ink-dim); }
+#siteTour .st-foot { display: flex; align-items: center; gap: 6px; }
+#siteTour .st-count { margin-right: auto; font: 11px var(--f-mono); color: var(--ink-dim); }
+#siteTour .st-close { position: absolute; top: 10px; right: 10px; }
 .ctx-menu { position: fixed; z-index: 30; min-width: 180px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--street-2); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 .ctx-menu button { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--street); color: var(--sodium); }
@@ -711,6 +720,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   </section>
 
   <section class="segment guide" data-seg="guide">
+    <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick walk around the site, one part at a time.</p></div>
     <div><h3>Start here</h3><ul>
       <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
       <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
@@ -799,10 +809,14 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 </aside>
 <section id="viewer" hidden aria-label="Code viewer">
   <div class="viewer-panes" id="viewerPanes"></div>
-  <div class="ctx-menu" id="ctxMenu" role="menu" hidden></div>
   <nav class="win-tabs" id="winTabs" aria-label="Open windows"></nav>
 </section>
 <div id="toast" role="status" aria-live="polite"></div>
+<div class="ctx-menu" id="ctxMenu" role="menu" hidden></div>
+<div id="siteTour" hidden role="dialog" aria-modal="true" aria-labelledby="stTitle"><div class="st-spot"></div>
+  <div class="st-card"><button type="button" class="mini st-close" data-st="close" aria-label="Close the tour" title="Close the tour">✕</button>
+    <h3 id="stTitle"></h3><p id="stText"></p>
+    <div class="st-foot"><span class="st-count" id="stCount"></span><button type="button" class="mini" data-st="back">Back</button><button type="button" class="mini primary" data-st="next">Next</button></div></div></div>
 
 <button id="tlShow" type="button" hidden aria-label="Show the history bar" title="Show the history bar">^</button>
 <div id="timeline" hidden>
@@ -3237,6 +3251,7 @@ function signOut() {
   toast("Signed out of GitHub");
 }
 $("signoutBtn").onclick = signOut;
+let signedLogin = null;   // the signed-in GitHub account, once known
 async function initSignin() {
   try {
     const err = sessionStorage.getItem("codecity.signinError");
@@ -3248,7 +3263,7 @@ async function initSignin() {
   } catch (e) { signinEnabled = false; }   // the claude.ai copy and the local app have no sign-in
   if (oauthToken) {
     $("signedinRow").hidden = false;
-    try { $("ghLogin").textContent = "@" + (await gh("/user", null)).login; }
+    try { signedLogin = (await gh("/user", null)).login; $("ghLogin").textContent = "@" + signedLogin; }
     catch (e) { if (/rejected/.test(e.message)) { signOut(); setRepoStatus("Your GitHub sign-in expired. Please sign in again."); } }
   } else $("signinRow").hidden = !signinEnabled;
   syncTokenUi();
@@ -5537,11 +5552,85 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// ---------- site tour ----------
+// A walk around the site, one part at a time, with the rest dimmed. It shows on every visit until someone signs in
+// (closing it hides it for that visit), and once for each GitHub account the first time it signs in. Where there's
+// no sign-in at all (the local app, VS Code) it shows on the first visit only. The Guide can start it any time.
+const SITE_TOUR = [
+  { title: "Welcome to Code City", text: "Each file is a building, its height the lines of code; each folder is a district. Here's a quick look around." },
+  { at: ".tb-repo", title: "The repo on screen", text: "Its name, with its size beside it. Click the commit count to see its history." },
+  { at: "#askSlot", title: "Ask", text: "Ask a question about the code, such as \"where is sign-in handled?\". The files that answer it light up." },
+  { at: '.rail-btn[data-seg="repo"]', title: "Repo", text: "Open any public GitHub repo (or a private one with a token), load its history, or show a pull request on the city." },
+  { at: '.rail-btn[data-seg="understand"]', title: "Understand", text: "The code's structure, and a guided tour of its workflows." },
+  { at: "#side", title: "Code structure", text: "Where the code starts, its most-used files, its main paths and how its parts connect. Point at a row to light it in the city." },
+  { title: "The city", text: "Drag to turn it, scroll to zoom. Click a building to open its file: what it does, its functions, what it uses, View code and Explain." },
+  { at: '.rail-btn[data-seg="find"]', title: "Find", text: "Jump to a file by name." },
+  { at: '.rail-btn[data-seg="display"]', title: "Display", text: "Colour the city by language, hotspots or imports, and see every commit and branch." },
+  { at: ".tb-actions", title: "Share and record", text: "Copy a link to exactly this view, record a video of what you do, or reset the view." },
+  { at: '.rail-btn[data-seg="info"]', title: "Info", text: "What the buildings, colours and panels mean." },
+  { at: '.rail-btn[data-seg="guide"]', title: "Guide", text: "How to use each tool, and this tour again whenever you want it." },
+  { at: '.rail-btn[data-seg="account"]', title: "Sign in", text: "Sign in with GitHub to ask questions, take workflow tours and have code explained, and to raise GitHub's limit from 60 to 5,000 requests an hour.", when: () => signinEnabled && !oauthToken },
+];
+const siteTour = { el: $("siteTour"), i: 0, steps: [] };
+function stShown(sel) { const el = document.querySelector(sel); if (!el || el.hidden || el.closest("[hidden]")) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; }
+function startSiteTour() {
+  closeCtx();
+  siteTour.steps = SITE_TOUR.filter(st => (!st.when || st.when()) && (!st.at || stShown(st.at)));
+  siteTour.i = 0; siteTour.el.hidden = false; drawSiteTour();
+  siteTour.el.querySelector('[data-st="next"]').focus();
+}
+function drawSiteTour() {
+  const st = siteTour.steps[siteTour.i], spot = siteTour.el.querySelector(".st-spot"), card = siteTour.el.querySelector(".st-card");
+  $("stTitle").textContent = st.title; $("stText").textContent = st.text;
+  $("stCount").textContent = `${siteTour.i + 1} of ${siteTour.steps.length}`;
+  siteTour.el.querySelector('[data-st="back"]').hidden = siteTour.i === 0;
+  siteTour.el.querySelector('[data-st="next"]').textContent = siteTour.i === siteTour.steps.length - 1 ? "Done" : "Next";
+  const r = st.at && stShown(st.at), pad = 6, gap = 12, cw = card.offsetWidth, ch = card.offsetHeight;
+  spot.classList.toggle("none", !r);
+  if (!r) { card.style.left = (innerWidth - cw) / 2 + "px"; card.style.top = (innerHeight - ch) / 2 + "px"; return; }
+  Object.assign(spot.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + pad * 2 + "px", height: r.height + pad * 2 + "px" });
+  // beside it where there's room (right, then left), else below or above
+  let x, y;
+  if (r.right + gap + cw < innerWidth - 8) { x = r.right + gap + pad; y = r.top; }
+  else if (r.left - gap - cw > 8) { x = r.left - gap - pad - cw; y = r.top; }
+  else { x = r.left; y = r.bottom + gap + pad + ch < innerHeight - 8 ? r.bottom + gap + pad : r.top - gap - pad - ch; }
+  card.style.left = Math.max(8, Math.min(x, innerWidth - cw - 8)) + "px"; card.style.top = Math.max(8, Math.min(y, innerHeight - ch - 8)) + "px";
+}
+function closeSiteTour() {
+  siteTour.el.hidden = true;
+  try { sessionStorage.setItem("codecity.siteTourClosed", "1"); } catch (e) { /* storage blocked */ }
+}
+siteTour.el.addEventListener("click", e => {
+  const b = e.target.closest("[data-st]"); if (!b) return;
+  if (b.dataset.st === "close") return closeSiteTour();
+  if (b.dataset.st === "back") { siteTour.i = Math.max(0, siteTour.i - 1); return drawSiteTour(); }
+  if (siteTour.i >= siteTour.steps.length - 1) return closeSiteTour();
+  siteTour.i++; drawSiteTour();
+});
+addEventListener("keydown", e => {
+  if (siteTour.el.hidden) return;
+  if (e.key === "Escape") { e.stopPropagation(); closeSiteTour(); }
+  else if (e.key === "ArrowRight") siteTour.el.querySelector('[data-st="next"]').click();
+  else if (e.key === "ArrowLeft" && siteTour.i > 0) siteTour.el.querySelector('[data-st="back"]').click();
+}, true);
+addEventListener("resize", () => { if (!siteTour.el.hidden) drawSiteTour(); });
+$("siteTourBtn").onclick = startSiteTour;
+function siteTourOnLoad() {
+  let show;
+  try {
+    if (oauthToken) {   // signed in: once per account
+      const key = "codecity.siteTour.@" + (signedLogin || "signed-in");
+      show = !localStorage.getItem(key); if (show) localStorage.setItem(key, "1");
+    } else if (signinEnabled) show = !sessionStorage.getItem("codecity.siteTourClosed");   // not signed in: every visit, until closed
+    else { show = !localStorage.getItem("codecity.siteTour.here"); if (show) localStorage.setItem("codecity.siteTour.here", "1"); }   // no sign-in here
+  } catch (e) { show = false; }   // storage blocked: it would show on every page, so it waits for the Guide
+  if (show) setTimeout(startSiteTour, 900);   // once the first panels have settled
+}
 const start = () => {
   const link = readLink();
   openSeg(segOpen);
   buildCity(sampleCity()); frame();
-  initSignin();
+  initSignin().then(siteTourOnLoad, siteTourOnLoad);
   initAsk();
   if (link.repo) { document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
   else if (LOCAL) {   // `code-city .` names a folder or repo to open straight away

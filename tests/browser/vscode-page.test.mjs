@@ -35,6 +35,7 @@ test("in VS Code, the page reveals files it's sent and hands files to the editor
       window.reveal = p => document.getElementById("city").contentWindow.postMessage({ codeCity: "reveal", path: p }, "*");</script></body>`); });
     await new Promise(r => host.listen(0, "127.0.0.1", r));
     const page = await browser.newPage({ viewport: { width: 1200, height: 760 } });
+    await page.addInitScript(() => { try { localStorage.setItem("codecity.siteTour.here", "1"); sessionStorage.setItem("codecity.siteTourClosed", "1"); } catch (e) {} });   // the site tour would cover the page
     // Headless Chromium has no GPU and compiles the city's shaders in software, which holds the page (and this
     // harness, in the same process) up for a while; nothing here should take long on a real machine.
     page.setDefaultTimeout(120000);

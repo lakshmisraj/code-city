@@ -31,6 +31,7 @@ test("code-city <folder> opens its city, and the overview downloads as Markdown"
       server.on("exit", code => reject(new Error(`code-city exited (${code}): ${out}`)));
     });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    await page.addInitScript(() => { try { localStorage.setItem("codecity.siteTour.here", "1"); sessionStorage.setItem("codecity.siteTourClosed", "1"); } catch (e) {} });   // the site tour would cover the page
     // Headless Chromium has no GPU and compiles the city's shaders in software, which holds the page up for a while.
     page.setDefaultTimeout(120000);
     const errors = [];
