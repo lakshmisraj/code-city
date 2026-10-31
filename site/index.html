@@ -148,6 +148,15 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .tb-link { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
 .tb-link:hover, .tb-link:focus-visible { background: var(--street-2); outline: none; }
 .cg { position: relative; }
+.cg-row.now { box-shadow: inset 3px 0 0 var(--sodium); }
+.cg-file { display: flex; align-items: center; gap: 4px; }
+.cg-file > button:first-child { flex: 1; min-width: 0; }
+.pane-body.diff .dl { display: grid; grid-template-columns: 3.2em 3.2em 1fr; white-space: pre; }
+.pane-body.diff .dl .ln { color: var(--ink-dim); text-align: right; padding-right: 8px; user-select: none; opacity: .7; }
+.pane-body.diff .dl.add { background: color-mix(in srgb, var(--added, #56b878) 18%, transparent); }
+.pane-body.diff .dl.del { background: color-mix(in srgb, var(--fire) 16%, transparent); }
+.pane-body.diff .dl.hunk { color: var(--sky, #6fd0e0); background: color-mix(in srgb, var(--street-2) 70%, transparent); }
+.pane-body.diff .dl.hit { outline: 1px solid var(--sodium); outline-offset: -1px; }
 .cg-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .cg-rows { list-style: none; margin: 0 0 0 calc(var(--cg-w) + 6px); padding: 0; }
 .cg-row { all: unset; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; height: 30px; padding: 0 6px; border-radius: 6px; cursor: pointer; min-width: 0; }
@@ -776,6 +785,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
     <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
   </div>
+  <button id="tlCommits" type="button" title="The commits list, following this bar">Commits</button>
   <button id="speedBtn" type="button" title="Commits per second" aria-label="Playback speed: 8 commits per second">8/s</button>
   <button id="recBtn" type="button" title="Replay the history and save it as a video">Record video</button>
 </div>
@@ -1546,7 +1556,10 @@ function goNow(initial) {
   controls.autoRotate = false;
   if (!initial) renderLegend();
 }
+let followQueued = false;
+function followSoon() { if (followQueued || sideMode !== "commits") return; followQueued = true; requestAnimationFrame(() => { followQueued = false; commitFollow(); }); }
 function viewAt(i) {
+  followSoon();
   viewNow = false; cursor = i;
   state = i >= 0 ? stateAt(i) : freshState();
   churnSrc = state.churn;
@@ -1697,6 +1710,7 @@ document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("sysBtn").onclick = () => sideMode === "system" ? closeSide() : openSide("system");
 document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
+document.getElementById("tlCommits").onclick = () => { if (sideMode !== "commits") openCommits(); followSoon(); };
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
 document.getElementById("cHeat").onclick = () => setColorMode("heat");
@@ -1796,7 +1810,7 @@ function stepPlayback(dt) {
   if (moved) {
     churnSrc = state.churn;
     setTargets(histLines);
-    scrub.value = cursor;
+    scrub.value = cursor; followSoon();
   }
   if (cursor >= hist.commits.length - 1 && playAcc >= 1.5 * speed()) goNow();
 }
@@ -2725,7 +2739,7 @@ function onCityBuilt() {
 // loads again within half an hour.
 const SESSION_KEY = "codecity.session", SESSION_MS = 30 * 60 * 1000;
 function stepToJSON(st) {
-  return { paths: st.paths, from: st.from, summary: st.summary, files: st.files, partial: [...(st.partial || [])],
+  return { paths: st.paths, from: st.from, change: st.change || null, summary: st.summary, files: st.files, partial: [...(st.partial || [])],
     real: st.real ? [...st.real].map(([k, v]) => [k, [...v]]) : null,
     errorHtml: st.loading ? "This explanation was interrupted. Press Explain again." : st.errorHtml };
 }
@@ -2734,7 +2748,7 @@ function saveSession() {
   if (!currentRepo) return;
   const geo = p => ({ x: p.x, y: p.y, w: p.w, h: p.h, collapsed: !!p.collapsed });
   const snap = { at: Date.now(), repo: currentRepo,
-    windows: panes.map(p => ({ kind: p.kind, path: p.path, line: p.line, st: p.st ? stepToJSON(p.st) : null, ...geo(p) })),
+    windows: panes.filter(p => p.kind !== "diff").map(p => ({ kind: p.kind, path: p.path, line: p.line, st: p.st ? stepToJSON(p.st) : null, ...geo(p) })),
     ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order } : null };
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) { /* storage blocked: nothing to restore */ }
 }
@@ -3169,7 +3183,7 @@ function explainHtml(x) {
     return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
       (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
   const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
-  return `<div><h3>How the code works</h3><p class="ask-answer">${rich(x.summary)}</p>` +
+  return `<div><h3>${x.change ? "What changed" : "How the code works"}</h3><p class="ask-answer">${rich(x.summary)}</p>` +
     (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, 6)))}">View ${Math.min(every.length, 6)} files side by side</button></div>` : "") +
     `</div>` + x.files.map(f => `
     <section class="explain-file">
@@ -3183,6 +3197,8 @@ function explainHtml(x) {
 // View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
 function explainClicks(e) {
   const all = e.target.closest("[data-view-all]"), view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]");
+  const change = changeOf(e);
+  if (change && (line || view)) { openDiff(change, line ? line.dataset.file : view.dataset.view, line ? +line.dataset.line : 0); return true; }
   if (all) viewFiles(JSON.parse(all.dataset.viewAll));
   else if (view) viewFile(view.dataset.view);
   else if (line) viewFile(line.dataset.file, +line.dataset.line);
@@ -3426,14 +3442,15 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
 }
 function explainCol(st) {
   return `${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
-    ${st.loading ? `<p class="side-note">Reading the code…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
+    ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
     ${st.files ? `<p class="side-note">Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</p>` : ""}`;
 }
 function paneHtml(p) {
+  if (p.kind === "diff") return diffPaneHtml(p);
   if (p.kind === "explain") {   // several files at once, or a file whose code isn't available
     const st = p.st, name = st.paths.length > 1 ? `${st.paths.length} files` : st.paths[0].split("/").pop();
     return `<div class="pane-head"><span class="pane-kind">Explain</span><button type="button" class="explain-path" data-path="${esc(st.paths[0])}">${esc(name)}</button>
-        <button type="button" class="mini" data-pane-code>View code</button>
+        <button type="button" class="mini" data-pane-code>${st.change ? "View changes" : "View code"}</button>
         <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
         <button type="button" class="mini" data-pane-close aria-label="Close this explanation" title="Close">✕</button></div>
       <div class="explain-col solo">${explainCol(st)}</div>`;
@@ -3500,7 +3517,7 @@ function shortNames(paths) {
 }
 function paneTitle(p, names) {
   const nm = path => (names && names.get(path)) || path.split("/").pop();
-  return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${nm(p.st.paths[0])}`) : p.fn ? (p.fn.endsWith(" (top level)") ? p.fn : `${p.fn.split(".").pop()} · ${nm(p.path)}`) : nm(p.path);
+  return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${nm(p.st.paths[0])}`) : p.kind === "diff" ? `Δ ${nm(p.path)} ${p.sha.slice(0, 7)}` : p.fn ? (p.fn.endsWith(" (top level)") ? p.fn : `${p.fn.split(".").pop()} · ${nm(p.path)}`) : nm(p.path);
 }
 let tabsFolded = false;   // the tab strip folded down to one button
 try { tabsFolded = localStorage.getItem("codecity.tabsFolded") === "1"; } catch (e) { /* storage blocked */ }
@@ -3564,9 +3581,10 @@ $("viewerPanes").addEventListener("click", e => {
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
+  if (e.target.closest("[data-diff-explain]")) return explainChange(p.sha, p.path);
   if (e.target.closest("[data-pane-collapse]")) { p.collapsed = true; renderViewer(); return; }
   if (e.target.closest("[data-hide-explain]")) { p.st = null; p.dirty = true; renderViewer(); drawLinks(); return; }
-  if (e.target.closest("[data-pane-code]")) { if (p.st.paths.length > 1) viewFiles(p.st.paths); else addCodeTo(p); return; }
+  if (e.target.closest("[data-pane-code]")) { if (p.st.change) viewChanges(p.st.change, p.st.paths); else if (p.st.paths.length > 1) viewFiles(p.st.paths); else addCodeTo(p); return; }
   if (explainClicks(e)) return;
   const go = e.target.closest("[data-path]");
   if (go) { const b = bmap.get(go.dataset.path); if (b && b.userData.lines > 0) { if (go.closest(".pane-head")) flyToBuilding(b); else openDrawer(b); } }
@@ -4802,7 +4820,7 @@ function renderCommits() {
   const sel = st.sel && st.commits.get(st.sel);
   const tags = sha => (st.heads.get(sha) || []).map(b => `<span class="cg-ref${b === st.def ? " def" : ""}">${esc(b)}</span>`).join("");
   sideBody.innerHTML = (sel ? commitDetailHtml(st, sel) : `<p class="side-note">Newest first. Each lane is a line of work; a hollow dot is a merge. Click a commit to see what it changed in the city.</p>`) +
-    `<div class="cg" style="--cg-w:${g.w}px">${g.svg}<ol class="cg-rows">${layout.rows.map((r, i) => { const c = st.commits.get(r.sha); return `<li><button type="button" class="cg-row${r.sha === st.sel ? " on" : ""}" data-commit="${esc(r.sha)}" title="${esc(c.m)}">` +
+    `<div class="cg" style="--cg-w:${g.w}px">${g.svg}<ol class="cg-rows">${layout.rows.map((r, i) => { const c = st.commits.get(r.sha); return `<li><button type="button" class="cg-row${r.sha === st.sel ? " on" : ""}${r.sha === st.now ? " now" : ""}" data-commit="${esc(r.sha)}" title="${esc(c.m)}">` +
       `<span class="cg-msg">${tags(r.sha)}${esc(c.m)}</span><span class="cg-meta">${esc(c.a || "")} · ${ago(c.t)}</span></button></li>`; }).join("")}</ol></div>` +
     (st.loading ? `<p class="side-note">Reading more commits…</p>` : st.more ? `<div class="side-actions"><button type="button" data-commits-more>Load older commits</button></div>` : "") +
     (st.skipped ? `<p class="side-note">${fmt(st.skipped)} more branch${st.skipped === 1 ? " isn't" : "es aren't"} shown.</p>` : "") +
@@ -4815,7 +4833,9 @@ function commitDetailHtml(st, c) {
     `<p class="side-note">${esc(c.a || "")} · ${esc(dateFmt.format(new Date(c.t * 1000)))} · <code>${esc(c.sha.slice(0, 8))}</code>${c.parents.length > 1 ? ` · merges ${c.parents.length} lines` : ""}${(st.heads.get(c.sha) || []).length ? ` · tip of ${st.heads.get(c.sha).map(esc).join(", ")}` : ""}</p>` +
     `<p class="side-note">${idx >= 0 ? `The city shows the repo as it was right after this commit.${st.rewound ? ` <button type="button" class="linkish" data-commit-today>Back to today</button>` : ""}` : `This commit isn't in the loaded history${hist ? "" : " (load history from Repo)"}, so the city shows today's files, with its changes lit.`}</p>` +
     (files === undefined ? `<p class="side-note">Reading what it changed…</p>` : typeof files === "string" ? `<p class="side-note">${esc(files)}</p>` :
-      `<ol class="rank cg-files">${rows.slice(0, 60).map(f => `<li><button type="button" ${bmap.has(f.path) ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}><span class="chip ${esc(f.status)}">${esc(f.status)}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">+${fmt(f.add)} −${fmt(f.del)}</span></button></li>`).join("")}</ol>` +
+      (rows.some(f => f.patch) ? `<div class="side-actions"><button type="button" data-commit-diffs title="Each changed file's lines removed and added, side by side">View changes</button>${askEnabled ? `<button type="button" class="primary" data-commit-explain title="What changed and why, file by file (AI, signed in)">Explain this commit</button>` : ""}</div>` : "") +
+      `<ol class="rank cg-files">${rows.slice(0, 60).map(f => `<li class="cg-file"><button type="button" ${bmap.has(f.path) ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}><span class="chip ${esc(f.status)}">${esc(f.status)}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">+${fmt(f.add)} −${fmt(f.del)}</span></button>` +
+        (f.patch ? `<button type="button" class="mini" data-diff="${esc(f.path)}" title="The lines this commit removed and added">Changes</button>` : "") + `</li>`).join("")}</ol>` +
       (rows.length > 60 ? `<p class="side-note">and ${fmt(rows.length - 60)} more files</p>` : "")) + `</div>`;
 }
 async function selectCommit(sha) {
@@ -4828,7 +4848,7 @@ async function selectCommit(sha) {
     if (currentRepo && sha.length > 8) {
       try {
         const d = await gh(`/repos/${currentRepo}/commits/${sha}`);
-        st.detail.set(sha, (d.files || []).map(f => ({ path: f.filename, status: { copied: "added", changed: "modified" }[f.status] || (PR_MATS[f.status] ? f.status : "modified"), add: f.additions || 0, del: f.deletions || 0 })));
+        st.detail.set(sha, ghCommitFiles(d));
       } catch (e) { st.detail.set(sha, isAbort(e) ? "" : e.message || "Couldn't read what it changed."); }
     } else {   // a city's own history: the files it touched
       const h = hist && hist.commits[idx];
@@ -4847,7 +4867,128 @@ sideBody.addEventListener("click", e => {
   if (e.target.closest("[data-commits-retry]")) { e.stopPropagation(); commitState.page = 0; return loadCommits(); }
   if (e.target.closest("[data-commit-close]")) { e.stopPropagation(); commitState.sel = null; commitSel = null; return renderSide(); }
   if (e.target.closest("[data-commit-today]")) { e.stopPropagation(); goNow(); commitState.rewound = false; return renderSide(); }
+  const df = e.target.closest("[data-diff]"); if (df && commitState.sel) { e.stopPropagation(); return openDiff(commitState.sel, df.dataset.diff); }
+  if (e.target.closest("[data-commit-diffs]") && commitState.sel) { e.stopPropagation(); const f = commitState.detail.get(commitState.sel); return viewChanges(commitState.sel, (Array.isArray(f) ? f : []).filter(x => x.patch).map(x => x.path)); }
+  if (e.target.closest("[data-commit-explain]") && commitState.sel) { e.stopPropagation(); return explainChange(commitState.sel); }
 }, true);
+
+// ---------- a commit's changes ----------
+// A changed file opens in a diff window: what the commit removed (red) and added (green), with the old and new
+// line numbers, from GitHub's patch for that commit. Explain this commit sends Gemini the message and the
+// patches and gets back what changed and why, file by file, with the changed lines that matter.
+function parsePatch(patch) {   // -> [{ kind: "hunk" | "add" | "del" | "ctx", text, old, now }]
+  const out = []; let o = 0, n = 0;
+  for (const l of String(patch || "").split("\n")) {
+    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(l);
+    if (h) { o = +h[1]; n = +h[2]; out.push({ kind: "hunk", text: l }); continue; }
+    if (l.startsWith("\\")) continue;   // "\ No newline at end of file"
+    if (l[0] === "+") out.push({ kind: "add", text: l.slice(1), now: n++ });
+    else if (l[0] === "-") out.push({ kind: "del", text: l.slice(1), old: o++ });
+    else out.push({ kind: "ctx", text: l.slice(1), old: o++, now: n++ });
+  }
+  return out;
+}
+function ghCommitFiles(d) {
+  return (d.files || []).map(f => ({ path: f.filename, status: { copied: "added", changed: "modified" }[f.status] || (PR_MATS[f.status] ? f.status : "modified"), add: f.additions || 0, del: f.deletions || 0, patch: f.patch || "" }));
+}
+// A commit's files outside the commits list: an explanation restored after a reload still opens its diffs.
+const looseDetail = new Map(), looseMsg = new Map(), detailReads = new Map();
+function knownCommitFiles(sha) { const files = (commitState && commitState.detail.get(sha)) || looseDetail.get(sha); return Array.isArray(files) ? files : null; }
+function commitFile(sha, path) { const files = knownCommitFiles(sha); return files ? files.find(f => f.path === path) || null : null; }
+function readCommitDetail(sha) {   // -> the files, or null; read once per commit
+  if (knownCommitFiles(sha)) return Promise.resolve(knownCommitFiles(sha));
+  if (!currentRepo) return Promise.resolve(null);
+  if (!detailReads.has(sha)) detailReads.set(sha, gh(`/repos/${currentRepo}/commits/${sha}`).then(d => { looseDetail.set(sha, ghCommitFiles(d)); looseMsg.set(sha, d.commit.message.split("\n")[0].slice(0, 140)); return looseDetail.get(sha); },
+    e => { detailReads.delete(sha); toast(e.message || "Couldn't read what that commit changed."); return null; }));
+  return detailReads.get(sha);
+}
+function openDiff(sha, path, line) {   // one window per file and commit; a line brings that new line into view
+  const f = commitFile(sha, path);
+  if (!f) { if (!knownCommitFiles(sha)) readCommitDetail(sha).then(files => files && openDiff(sha, path, line)); return null; }
+  let p = panes.find(q => q.kind === "diff" && q.sha === sha && q.path === path);
+  if (p) { p.line = line || p.line; p.dirty = true; p.collapsed = false; toFront(p); renderViewer(); return p; }
+  p = { kind: "diff", sha, path, line: line || 0, patch: f.patch, status: f.status, add: f.add, del: f.del };
+  if (!addPane(p)) return null;
+  renderViewer();
+  return p;
+}
+function diffPaneHtml(p) {
+  const rows = parsePatch(p.patch), key = esc(p.path), short = esc(p.sha.slice(0, 8));
+  return `<div class="pane-head"><span class="pane-fn" title="The change commit ${short} made">Δ ${short}</span><button type="button" class="explain-path short" data-path="${key}" title="${key}">${esc(shortFile(p.path))}</button>
+      ${askEnabled ? `<button type="button" class="mini" data-diff-explain>Explain</button>` : ""}
+      <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
+      <button type="button" class="mini" data-pane-close aria-label="Close the change to ${key}" title="Close">✕</button></div>
+    <p class="pane-note"><span class="chip ${esc(p.status)}">${esc(p.status)}</span> +${fmt(p.add)} −${fmt(p.del)} lines${p.patch ? "" : " · GitHub didn't send this file's patch (it's too big, or not text)"}</p>
+    <div class="pane-body diff" tabindex="0">${rows.map(r => r.kind === "hunk" ? `<div class="dl hunk"><span class="ln"></span><span class="ln"></span><span>${esc(r.text)}</span></div>`
+      : `<div class="dl ${r.kind}${r.now && r.now === p.line ? " hit" : ""}"${r.now ? ` data-l="${r.now}"` : ""}><span class="ln">${r.old || ""}</span><span class="ln">${r.now || ""}</span><span>${r.kind === "add" ? "+" : r.kind === "del" ? "−" : " "}${esc(r.text) || " "}</span></div>`).join("")}</div>`;
+}
+async function viewChanges(sha, paths) {   // several files' changes, side by side
+  if (!await readCommitDetail(sha)) return;
+  const opened = paths.slice(0, 6).map(p => openDiff(sha, p)).filter(Boolean);
+  lineUp(opened);
+}
+// For Gemini: each patch with the new file's line numbers, so the lines it points at can be found again.
+function numberedPatch(patch) {
+  return parsePatch(patch).map(r => r.kind === "hunk" ? r.text : `${r.kind === "add" ? "+" : r.kind === "del" ? "-" : " "} ${r.now ? String(r.now).padStart(5) : "     "} | ${r.text}`).join("\n");
+}
+const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000;
+async function explainChange(sha, onlyPath) {
+  const c = commitState && commitState.commits.get(sha), files = knownCommitFiles(sha), message = (c && c.m) || looseMsg.get(sha);
+  if (!files || !message) return;
+  if (!oauthToken) { toast("Sign in with GitHub (under Account) to have changes explained."); return; }
+  const gen = cityGen;
+  const pick = (onlyPath ? files.filter(f => f.path === onlyPath) : files.filter(f => f.patch && !/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|uv\.lock|poetry\.lock|Cargo\.lock|go\.sum)$/.test(f.path))
+    .sort((a, b) => (b.add + b.del) - (a.add + a.del))).slice(0, MAX_CHANGE_FILES);
+  if (!pick.length) { toast("There's no text change to explain in that commit."); return; }
+  const step = { paths: pick.map(f => f.path), from: null, loading: true, change: sha };
+  explainState.chain.push(step);
+  const win = { kind: "explain", st: step, path: step.paths[0] };
+  if (!addPane(win)) return;
+  renderViewer();
+  const redraw = () => { win.dirty = true; renderViewer(); };
+  try {
+    const r = await fetch(ASK_URL, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + oauthToken },
+      body: JSON.stringify({ mode: "change", question: message, repo: currentRepo || cityName, files: buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines })),
+        change: pick.map(f => ({ path: f.path, status: f.status, patch: numberedPatch(f.patch).slice(0, MAX_PATCH_CHARS) })) }) });
+    const data = await r.json().catch(() => ({}));
+    if (gen !== cityGen) return;
+    if (r.ok) Object.assign(step, { summary: data.summary, files: (data.files || []).map(f => ({ path: f.path, explanation: f.change, parts: (f.lines || []).map(l => ({ line: l.line, name: "", note: l.note })), links: [] })),
+      partial: new Set(pick.filter(f => numberedPatch(f.patch).length > MAX_PATCH_CHARS).map(f => f.path)), real: null });
+    else step.errorHtml = esc(data.error || `Couldn't explain the change (error ${r.status}). Try again.`);
+  } catch (e) { step.errorHtml = "Couldn't reach Code City's server. Check your connection and try again."; }
+  step.loading = false;
+  redraw();
+}
+// In an explanation of a change, a line or a file's View opens the change, not today's file.
+function changeOf(e) { const el = e.target.closest(".pane"), p = el && panes.find(q => q.el === el); return p && p.st && p.st.change || null; }
+
+// While the history bar moves, the commits list keeps up: the commit the city shows is marked and scrolled to,
+// and commits from around then are read when they aren't loaded yet.
+let followTimer = null;
+function commitFollow() {
+  const st = commitState;
+  if (!st || st.city !== buildings || sideMode !== "commits" || !hist || cursor < 0) return;
+  const h = hist.commits[cursor] && hist.commits[cursor].h; if (!h) return;
+  const sha = [...st.commits.keys()].find(s => s.startsWith(h));
+  st.now = sha || null;
+  for (const el of sideBody.querySelectorAll(".cg-row.now")) el.classList.remove("now");
+  const row = sha && sideBody.querySelector(`[data-commit="${CSS.escape(sha)}"]`);
+  if (row) { row.classList.add("now"); row.scrollIntoView({ block: "center" }); return; }
+  clearTimeout(followTimer);
+  if (!currentRepo || st.loading) return;
+  followTimer = setTimeout(async () => {   // once the bar stops: the commits up to that moment, read once per moment
+    if (commitState !== st || st.loading) return;
+    const t = hist.commits[cursor] && hist.commits[cursor].t; if (!t) return;
+    st.followed = st.followed || new Set(); if (st.followed.has(t)) return; st.followed.add(t);
+    st.loading = true;
+    try {
+      const list = await gh(`/repos/${currentRepo}/commits?sha=${encodeURIComponent(st.def)}&until=${new Date((t + 1) * 1000).toISOString()}&per_page=40`);
+      for (const c of list) if (!st.commits.has(c.sha)) st.commits.set(c.sha, { sha: c.sha, parents: (c.parents || []).map(p => p.sha), t: when(c), a: (c.author && c.author.login) || c.commit.author.name, m: c.commit.message.split("\n")[0].slice(0, 140) });
+    } catch (e) { /* the list stays as it was */ }
+    st.loading = false;
+    if (commitState === st && sideMode === "commits") { renderSide(); commitFollow(); }
+  }, 500);
+}
 
 // The drawer's Imports and Used by lists for one file.
 async function renderFileLinks(path) {
