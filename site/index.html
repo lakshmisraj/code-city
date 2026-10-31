@@ -3462,11 +3462,17 @@ function addPane(p) {
   panes.push(p);
   return true;
 }
+function markLine(p) { p.el.querySelectorAll(".pane-body .vl.hit").forEach(r => r.classList.remove("hit")); const r = p.el.querySelector(`.pane-body [data-l="${p.line}"]`); if (r) r.classList.add("hit"); }
 async function viewFile(path, line, link) {   // resolves with the file's window, or null
   const ex = !codePane(path) && panes.find(q => q.kind === "explain" && q.st && q.st.paths.length === 1 && q.st.paths[0] === path);
   if (ex) { await addCodeTo(ex); if (!codePane(path)) return null; }   // its explanation is open on its own: the code joins that window
   const have = codePane(path);
-  if (have) { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; have.collapsed = false; toFront(have); renderViewer(); return have; }
+  if (have) {
+    // only the line: move the mark and scroll the code, leaving the window (and its explanation) as it is
+    if (link === undefined && have.el && !have.dirty && line) { have.line = line; markLine(have); have.scroll = true; }
+    else { if (line) have.line = line; if (link !== undefined) have.link = link; have.dirty = true; }
+    have.collapsed = false; toFront(have); renderViewer(); return have;
+  }
   const gen = cityGen, c = await pullCode(path);
   if (gen !== cityGen) return null;   // the city changed while it loaded
   if (!c) { toast("The source of that file isn't available here."); return null; }
@@ -3647,7 +3653,12 @@ function renderViewer() {
     }
     p.el.setAttribute("aria-label", p.kind === "explain" ? "Explanation of " + p.st.paths.join(", ") : p.path);
     p.el.classList.toggle("explain-pane", p.kind === "explain" || !!p.st);
-    if (p.dirty) { p.el.innerHTML = paneHtml(p); p.dirty = false; p.scroll = true; }
+    if (p.dirty) {   // rebuilt: the same explanation keeps where it was scrolled to and which parts were open
+      const ex = p.el.querySelector(".explain-col"), keep = ex && p.drawnSt === p.st ? { top: ex.scrollTop, open: [...ex.querySelectorAll("details")].map(d => d.open) } : null;
+      p.el.innerHTML = paneHtml(p); p.dirty = false; p.scroll = true; p.drawnSt = p.st;
+      const ex2 = keep && p.el.querySelector(".explain-col");
+      if (ex2) { ex2.querySelectorAll("details").forEach((d, i) => { if (keep.open[i] != null) d.open = keep.open[i]; }); ex2.scrollTop = keep.top; }
+    }
     fitOnScreen(p);
     p.el.hidden = !!p.collapsed;   // collapsed: put away in its tab, which brings it back
     p.el.classList.toggle("narrow", p.w < 640);   // too narrow for code and explanation side by side: stacked
