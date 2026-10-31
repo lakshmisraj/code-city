@@ -23,7 +23,11 @@ import { getStore } from "@netlify/blobs";
 // the first answer wins, and the model that gave it is asked first next time. (gemini-3.8-flash was tried as a
 // backup but took over 24 s itself.) The models this key can use are listed at GET ?models.
 const MODELS = (process.env.ASK_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite").split(",").map(m => m.trim()).filter(Boolean);
-let preferred = MODELS[0], preferredAt = 0;   // the model that answered last; after PREFER_MS the first model gets its turn again
+// Explaining code (files, selected lines, commits) can ask other models first, such as a stronger Flash for tricky
+// code: ASK_EXPLAIN_MODELS="gemini-3.6-flash,gemini-3.5-flash-lite". Unset, explanations use MODELS like the rest.
+const EXPLAIN_MODELS = (process.env.ASK_EXPLAIN_MODELS || "").split(",").map(m => m.trim()).filter(Boolean);
+// Per list of models: the one that answered last, asked first; after PREFER_MS the list's first model gets its turn again.
+const preferredFor = new Map();   // models.join() -> { model, at }
 const PREFER_MS = 5 * 60 * 1000;
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
@@ -216,9 +220,10 @@ function codeBlocks(code) {
 // MAX_TRIES in all. Resolves with the first answer and cancels the rest; rejects once nothing more can be tried,
 // or when stop fires (the deadline), cancelling everything still running so nothing keeps billing.
 // attempts collects each try's start, time and outcome for the timing notes.
-function hedge(ask, attempts, stop) {
-  const t0 = Date.now(), controllers = [];
-  if (Date.now() - preferredAt > PREFER_MS) preferred = MODELS[0];
+function hedge(ask, attempts, stop, models = MODELS) {
+  const t0 = Date.now(), controllers = [], key = models.join();
+  if (!preferredFor.has(key) || Date.now() - preferredFor.get(key).at > PREFER_MS) preferredFor.set(key, { model: models[0], at: 0 });
+  const pref = preferredFor.get(key);
   return new Promise((resolve, reject) => {
     let settled = false, tries = 0, pending = 0, timer = 0, retry = 0;
     const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || e.cutShort || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
@@ -229,7 +234,7 @@ function hedge(ask, attempts, stop) {
       ok ? resolve(v) : reject(v);
     };
     if (stop) stop.addEventListener("abort", () => finish(false, Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), { once: true });
-    const order = [preferred, ...MODELS.filter(m => m !== preferred)];
+    const order = [pref.model, ...models.filter(m => m !== pref.model)];
     const launch = () => {
       if (settled || tries >= MAX_TRIES) return;
       const model = order[tries % order.length], ctrl = new AbortController();
@@ -240,7 +245,7 @@ function hedge(ask, attempts, stop) {
       attempts.push(rec);
       ask(model, ctrl.signal).then(v => {
         Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: true });
-        if (!settled) { preferred = model; preferredAt = Date.now(); }   // only the winner counts
+        if (!settled) { pref.model = model; pref.at = Date.now(); }   // only the winner counts
         finish(true, v);
       }, e => {
         Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
@@ -439,7 +444,8 @@ async function handle(event) {
     pre = Date.now() - started;
     const stop = new AbortController();
     let answer;
-    try { answer = await Promise.race([hedge(tryModel, attempts, stop.signal), deadline]); } finally { clearTimeout(timer); stop.abort(); }
+    const models = (explain || changed) && EXPLAIN_MODELS.length ? EXPLAIN_MODELS : MODELS;   // explaining code may ask stronger models first
+    try { answer = await Promise.race([hedge(tryModel, attempts, stop.signal, models), deadline]); } finally { clearTimeout(timer); stop.abort(); }
     const { r } = answer;
     used = { model: answer.model, level: answer.level };
     console.log(`ask: ${files.length} files, answered by ${used.model} in ${Date.now() - started} ms`);

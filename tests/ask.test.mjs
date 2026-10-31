@@ -9,6 +9,7 @@ mock.module("@netlify/blobs", { namedExports: { getStore: () => ({
   setJSON: async (k, v) => { counts.set(k, v.n); return { modified: true }; } }) } });
 globalThis.fetch = async () => new Response(JSON.stringify({ id: 7, login: "t" }), { status: 200 });
 process.env.GEMINI_API_KEY = "x"; process.env.ASK_HEDGE_MS = "100"; process.env.ASK_RETRY_MS = "20";
+process.env.ASK_EXPLAIN_MODELS = "strong-model,gemini-3.5-flash-lite";   // explanations try these first
 const { default: handler } = await import(FN);
 const call = async body => { const r = await handler(new Request("http://x/", { method: "POST", headers: { authorization: "Bearer t" }, body: JSON.stringify(body) })); return [r.status, await r.json()]; };
 const files = [{ path: "a.js", lines: 10 }, { path: "b.js", lines: 5 }, { path: "c/d.js", lines: 3 }];
@@ -151,4 +152,12 @@ test("change explains a commit's diffs, keeping only sent files and lines the di
 test("change with no diff is refused", async () => {
   const [st] = await call({ mode: "change", files, change: [] });
   assert.equal(st, 400);
+});
+test("explanations ask their own models first; questions keep the usual ones", async () => {
+  reply = { summary: "S", files: [{ path: "a.js", explanation: "E", parts: [], links: [] }] }; models = [];
+  await call({ mode: "explain", question: "x?", repo: "r", files, code: [{ path: "a.js", text: "x", imports: [] }] });
+  assert.equal(models[0], "strong-model");
+  reply = { answer: "A", files: [] }; models = [];
+  await call({ question: "where is x?", files });
+  assert.notEqual(models[0], "strong-model");
 });

@@ -310,6 +310,7 @@ details.more[open] summary { margin-bottom: 8px; }
 .panel-edge { position: absolute; top: 0; bottom: 0; left: -5px; width: 10px; cursor: ew-resize; touch-action: none; z-index: 2; }
 .panel-edge:hover, .panel-edge:focus-visible { background: linear-gradient(90deg, transparent 4px, var(--sodium) 4px 6px, transparent 6px); outline: none; }
 #side.folded, #drawer.folded { width: 44px; bottom: auto; max-height: 70vh; }
+#side.compact:not(.folded) { bottom: auto; width: min(var(--side-w, 380px), 300px); max-height: calc(100vh - 32px - var(--top-h) - var(--tl-h)); max-height: calc(100dvh - 32px - var(--top-h) - var(--tl-h)); }   /* a language's counts: only as tall as its list */
 .folded .drawer-body, .folded .panel-edge, .folded .drawer-head > div > p, .folded #closeBtn, .folded #sideClose { display: none; }
 .folded .drawer-head { flex-direction: column; align-items: center; padding: 10px 6px; border-bottom: 0; gap: 10px; }
 .folded .drawer-head > div { order: 2; }
@@ -556,6 +557,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   #drawer, #side { top: auto; bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; height: 55vh; height: 55dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   #tlShow { left: max(12px, env(safe-area-inset-left, 0px)); }
   body.tl-peek #drawer, body.tl-peek #side { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+  #side.compact:not(.folded) { width: auto; height: auto; max-height: 55dvh; }
   body.tl-peek .card { max-height: calc(100dvh - 132px - var(--top-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   #side.folded, #drawer.folded { width: auto; height: auto; }
   .folded .drawer-head { flex-direction: row; padding: 10px 14px; }
@@ -2898,7 +2900,7 @@ function openSide(mode) {
     if (sideMode === "lang") { langSel = null; renderLegend(); }
   }
   if (mode !== "commits") commitSel = null;
-  roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
+  roomFor(); sideMode = mode; sidePanel.hidden = false; sidePanel.classList.toggle("compact", mode === "lang"); document.body.classList.add("side-open");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
   $("commitsBtn").setAttribute("aria-pressed", mode === "commits");
   if (mode === "map") loadMap();
@@ -2910,7 +2912,7 @@ function closeSide(quiet) {
   if (sideMode === "tour") endTour();
   if (sideMode === "lang") { langSel = null; renderLegend(); }
   commitSel = null;
-  sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
+  sideMode = null; sidePanel.hidden = true; sidePanel.classList.remove("compact"); document.body.classList.remove("side-open");
   drawLinks();
   $("mapBtn").setAttribute("aria-pressed", "false");
   $("commitsBtn").setAttribute("aria-pressed", "false");
