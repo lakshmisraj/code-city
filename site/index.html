@@ -91,6 +91,7 @@ body.seg-closed .card { display: none; }
 .tb-stats dd.fire { color: var(--fire); }
 .tb-actions { display: flex; gap: 6px; flex: none; }
 .tb-actions button { white-space: nowrap; }
+#tbMore { display: none; flex: none; font-size: 15px; line-height: 1; padding: 3px 9px; }
 #askSlot { flex: 1 1 520px; max-width: 560px; min-width: 0; position: relative; }
 #askSlot:empty { display: none; }
 #askSlot #askForm { border: 0; padding: 0; margin: 0; gap: 0; }
@@ -542,7 +543,10 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   body.has-timeline { --tl-h: 92px; }
   :root { --top-h: 46px; }
   #rail { bottom: auto; right: max(12px, env(safe-area-inset-right, 0px)); width: auto; height: 56px; flex-direction: row; padding: 0 6px; gap: 2px; justify-content: flex-start; }
-  .rail-btn { width: auto; min-width: 48px; flex: 1; max-width: 72px; }
+  .rail-btn { width: auto; min-width: 0; flex: 1; max-width: 72px; }   /* seven icons share the width */
+  .tb-actions { display: none; }   /* the ⋯ menu holds them */
+  .pane { background: var(--street); }   /* a phone stacks windows over the file panel: nothing shows through */
+  #tbMore { display: inline-flex; }
   #topbar { top: calc(80px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); padding: 0 12px; }
   .tb-repo { max-width: none; flex: 1; }
   .tb-stats div:nth-child(n+2) { display: none; }   /* the repo name needs the room */
@@ -557,7 +561,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   #drawer, #side { top: auto; bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); max-height: none; height: 55vh; height: 55dvh; left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   #tlShow { left: max(12px, env(safe-area-inset-left, 0px)); }
   body.tl-peek #drawer, body.tl-peek #side { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
-  #side.compact:not(.folded) { width: auto; height: auto; max-height: 55dvh; }
+  #side.compact:not(.folded) { top: auto; bottom: calc(16px + var(--tl-h) + env(safe-area-inset-bottom, 0px)); width: auto; height: auto; max-height: 55dvh; }   /* still at the bottom, just shorter */
+  body.tl-peek #side.compact:not(.folded) { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
   body.tl-peek .card { max-height: calc(100dvh - 132px - var(--top-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   #side.folded, #drawer.folded { width: auto; height: auto; }
   .folded .drawer-head { flex-direction: row; padding: 10px 14px; }
@@ -605,6 +610,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <button id="recBtn" type="button" class="mini" title="Record what you do here, or the history replay, as a video">Record video</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
+  <button id="tbMore" type="button" class="mini" aria-label="More: copy link, record video, reset view" title="More">⋯</button>
 </header>
 
 <section class="card" id="segPanel" aria-labelledby="segTitle">
@@ -3784,6 +3790,17 @@ function selectedLines(body) {   // the code lines a selection in this window co
   return from && to ? { from: Math.min(from, to), to: Math.max(from, to) } : null;
 }
 function closeCtx() { ctxMenu.hidden = true; ctxMenu.innerHTML = ""; }
+// On a phone the top bar's buttons sit in a ⋯ menu; each item presses the real button, so they behave the same.
+$("tbMore").onclick = e => {
+  e.stopPropagation();
+  const btns = ["shareBtn", "recBtn", "resetBtn"].map(id => $(id)).filter(b => !b.hidden);
+  ctxMenu.innerHTML = btns.map(b => `<button type="button" role="menuitem" data-press="${b.id}">${esc(b.textContent)}</button>`).join("");
+  ctxMenu.hidden = false;
+  const r = $("tbMore").getBoundingClientRect();
+  ctxMenu.style.left = Math.max(8, Math.min(r.right - ctxMenu.offsetWidth, innerWidth - ctxMenu.offsetWidth - 8)) + "px"; ctxMenu.style.top = (r.bottom + 6) + "px";
+  ctxMenu.onclick = ev => { const b = ev.target.closest("[data-press]"); if (!b) return; closeCtx(); $(b.dataset.press).click(); };
+  ctxMenu.querySelector("button").focus();
+};
 addEventListener("pointerdown", e => { if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtx(); }, true);
 addEventListener("keydown", e => { if (e.key === "Escape" && !ctxMenu.hidden) { closeCtx(); e.stopPropagation(); } }, true);
 addEventListener("scroll", () => { if (!ctxMenu.hidden) closeCtx(); }, true);
@@ -5407,7 +5424,7 @@ recBtn.hidden = recBtn.dataset.unsupported === "1";   // shown always; without h
 recBtn.onclick = () => {
   if (rec && rec.url) return saveRecording();
   if (rec) return stopRecording();
-  const r = recBtn.getBoundingClientRect();
+  const r = (recBtn.offsetParent ? recBtn : $("tbMore")).getBoundingClientRect();   // on a phone it's pressed from the ⋯ menu
   ctxMenu.innerHTML = `<button type="button" role="menuitem" data-rec="live">Record what I do</button>` +
     (hist ? `<button type="button" role="menuitem" data-rec="history">Record the history replay</button>` : "");
   ctxMenu.hidden = false;
@@ -5568,13 +5585,16 @@ const SITE_TOUR = [
   { title: "The city", text: "Drag to turn it, scroll to zoom. Click a building to see its file and have it explained." },
   { at: '.rail-btn[data-seg="find"]', title: "Find", text: "Find a file by its name." },
   { at: '.rail-btn[data-seg="display"]', title: "Display", text: "Change the colours, or look through the project's history." },
-  { at: ".tb-actions", title: "Share and record", text: "Share a link to this view, record a video, or reset the view." },
+  { at: ".tb-actions, #tbMore", title: "Share and record", text: "Share a link to this view, record a video, or reset the view." },
   { at: '.rail-btn[data-seg="info"]', title: "Info", text: "What everything on screen means." },
   { at: '.rail-btn[data-seg="guide"]', title: "Guide", text: "How to use each tool. You can start this tour again from here." },
   { at: '.rail-btn[data-seg="account"]', title: "Sign in", text: "Sign in with GitHub to ask questions and have code explained.", when: () => signinEnabled && !oauthToken },
 ];
 const siteTour = { el: $("siteTour"), i: 0, steps: [] };
-function stShown(sel) { const el = document.querySelector(sel); if (!el || el.hidden || el.closest("[hidden]")) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; }
+function stShown(sel) {   // the first of these that is on screen (a phone shows ⋯ instead of the top bar's buttons)
+  for (const el of document.querySelectorAll(sel)) { if (el.hidden || el.closest("[hidden]")) continue; const r = el.getBoundingClientRect(); if (r.width && r.height) return r; }
+  return null;
+}
 function startSiteTour() {
   closeCtx();
   siteTour.steps = SITE_TOUR.filter(st => (!st.when || st.when()) && (!st.at || stShown(st.at)));
