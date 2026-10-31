@@ -2990,13 +2990,12 @@ function renderMap() {
       if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(e.why)} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
-    html += `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-map-tour>Show the workflows (tour)</button>` : ""}<button type="button" data-map-md title="How it's built, main paths, modules, important files and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
+    html += `<div class="side-actions"><button type="button" data-map-md title="How it's built, main paths, modules, important files and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
   sideBody.innerHTML = html;
   drawLinks();
 }
 sideBody.addEventListener("click", e => {
-  if (sideMode === "map" && e.target.closest("[data-map-tour]")) { e.stopPropagation(); startTour(""); }
   if (sideMode === "map" && e.target.closest("[data-map-md]")) { e.stopPropagation(); downloadOverview(); }
 }, true);
 function mapPaths(facts, idx) {
