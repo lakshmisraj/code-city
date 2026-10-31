@@ -717,7 +717,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
       <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
       <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
-      <li><b>Explanations</b>: select lines in a code window and right-click to explain just those; <b>Explain the whole file</b> does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
+      <li><b>Explanations</b>: select lines in a code window and press its <b>Explain</b> to explain just those (with nothing selected it explains the whole file); <b>Explain the whole file</b> at the top of that explanation does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
       <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
       <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
     </ul></div>
@@ -3436,8 +3436,8 @@ async function followLink(from, path) {
   if (panes.filter(p => p.st).length >= MAX_CHAIN) { toast(`${MAX_CHAIN} explanations are open. Close some to follow more.`); return; }
   explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
 }
-// Right-click on selected code: only those lines are explained, beside them; the rest of the file is sent too, as
-// context and so the line numbers stay true.
+// Lines selected in a code window when Explain is pressed: only those are explained, beside them; the rest of the
+// file is sent too, as context and so the line numbers stay true.
 function explainLines(path, range) {
   const lines = range.to > range.from ? `lines ${range.from}–${range.to}` : `line ${range.from}`;
   explainCode(explainState, [path], `Explain only ${lines} of ${path}: what they do and how they work. Use the rest of the file just as context, and keep the key parts within those lines.`, null, range);
@@ -3616,7 +3616,7 @@ function paneHtml(p) {
   }
   const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
   return `<div class="pane-head">${p.fn ? `<span class="pane-fn" title="A step of the trace">${p.step ? `<em>${p.step}</em>` : ""}${esc(p.fn)}</span>` : ""}<button type="button" class="explain-path${p.fn ? " short" : ""}" data-path="${key}" title="${p.fn ? esc(p.path) : "Show it in the city"}">${p.fn ? esc(shortFile(p.path)) : pathHtml(p.path)}</button>
-      ${askEnabled && !p.st ? `<button type="button" class="mini" data-pane-explain>Explain</button>` : ""}
+      ${askEnabled ? `<button type="button" class="mini" data-pane-explain title="Explain the lines selected in this code, or the whole file when none are">Explain</button>` : ""}
       ${IN_VSCODE ? `<button type="button" class="mini" data-pane-editor title="Open this file in the editor${p.line ? `, at line ${p.line}` : ""}">Editor</button>` : ""}
       <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
       <button type="button" class="mini" data-pane-close aria-label="Close ${key}" title="Close">✕</button></div>
@@ -3735,7 +3735,7 @@ $("viewerPanes").addEventListener("pointerdown", e => {
   const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up); };
   head.addEventListener("pointermove", move); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
 });
-// ---------- right-click on code ----------
+// ---------- small menus (Record video), and the lines selected in a code window ----------
 const ctxMenu = $("ctxMenu");
 function selectedLines(body) {   // the code lines a selection in this window covers, or null
   const sel = getSelection();
@@ -3752,30 +3752,21 @@ function selectedLines(body) {   // the code lines a selection in this window co
   return from && to ? { from: Math.min(from, to), to: Math.max(from, to) } : null;
 }
 function closeCtx() { ctxMenu.hidden = true; ctxMenu.innerHTML = ""; }
-$("viewerPanes").addEventListener("contextmenu", e => {
-  const p = paneOf(e.target), body = e.target.closest(".pane-body");
-  if (!p || p.kind !== "code" || !body || !askEnabled) return;   // elsewhere the browser's own menu
-  const range = selectedLines(body);
-  if (!range) return;
-  e.preventDefault();
-  const lines = range.to > range.from ? `lines ${range.from}–${range.to}` : `line ${range.from}`;
-  ctxMenu.innerHTML = `<button type="button" role="menuitem" data-ctx="lines">Explain ${lines}</button><button type="button" role="menuitem" data-ctx="file">Explain the whole file</button>`;
-  ctxMenu.hidden = false;
-  const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
-  ctxMenu.style.left = Math.min(e.clientX, innerWidth - w - 8) + "px"; ctxMenu.style.top = Math.min(e.clientY, innerHeight - h - 8) + "px";
-  ctxMenu.onclick = ev => { const b = ev.target.closest("[data-ctx]"); if (!b) return; closeCtx(); if (b.dataset.ctx === "lines") explainLines(p.path, range); else explainFile(p.path); };
-  ctxMenu.querySelector("button").focus();
-});
 addEventListener("pointerdown", e => { if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtx(); }, true);
 addEventListener("keydown", e => { if (e.key === "Escape" && !ctxMenu.hidden) { closeCtx(); e.stopPropagation(); } }, true);
 addEventListener("scroll", () => { if (!ctxMenu.hidden) closeCtx(); }, true);
+$("viewerPanes").addEventListener("pointerdown", e => {
+  if (!e.target.closest("[data-pane-explain]")) return;
+  const p = paneOf(e.target), body = p && p.el && p.el.querySelector(".pane-body");
+  if (p) p.sel = body ? selectedLines(body) : null;
+}, true);
 $("viewerPanes").addEventListener("click", e => {
   const p = paneOf(e.target);
   if (!p) return;
   const go2 = e.target.closest("[data-goto]");
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
-  if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
+  if (e.target.closest("[data-pane-explain]")) { const r = p.sel; p.sel = null; return r ? explainLines(p.path, r) : explainFile(p.path); }
   if (e.target.closest("[data-explain-full]")) return explainFile(p.path);
   if (e.target.closest("[data-pane-editor]")) return openInEditor(p.path, p.line);
   if (e.target.closest("[data-diff-explain]")) return explainChange(p.sha, p.path);

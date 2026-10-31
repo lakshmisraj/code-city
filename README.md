@@ -107,7 +107,7 @@ Limits: other languages fall back to file-level connections. Calls through varia
 
 ### Windows
 
-Select lines in a code window and right-click: **Explain lines a–b** explains just those, beside them, with the lines marked; **Explain the whole file** at the top of that explanation does the rest.
+Select lines in a code window and press its **Explain**: just those lines are explained, beside them, with the lines marked (with nothing selected it explains the whole file). **Explain the whole file** at the top of that explanation does the rest.
 
 **View code** (in a file's panel, next to any explained file, an outline entry, or Shift-click a building) opens the file's full source in its own window. **Explain this code** opens just the explanation, with **View code** to add the code to the same window: code on the left, explanation on the right, at equal widths (stacked on narrow screens). If the code is already open, the explanation joins its window. **Follow** opens the followed file next to the one it came from, with the lines that connect the two marked. Explanations of several files at once get a window of their own.
 
