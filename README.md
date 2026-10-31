@@ -11,9 +11,9 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (how it's built, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
-2. Read **How this repo is built**, which opens on its own: what the project is, where execution starts, and its core files, all read from the code. Point at a file to see what it connects to.
+2. Read **Code structure**, which opens on its own: what the project is, where execution starts, its core files and how its modules connect, all read from the code. Point at a file to see what it connects to.
 3. Click a building to see its functions, imports and the files that use it; **View code** and **Explain this code** go deeper.
-4. Press **Trace** next to a function (or on an entry in How this repo is built) to follow what it calls, file to file, and what calls it.
+4. Press **Trace** next to a function (or on an entry in Code structure) to follow what it calls, file to file, and what calls it.
 5. Signed in with GitHub, press **Workflows tour** (under Understand) for the main workflows and where they meet, or ask a question in the top bar.
 6. Load some history and the history bar opens: press **Play history** on it to watch the city grow, commit by commit.
 
@@ -45,9 +45,11 @@ The timeline follows the default branch's main line: each merge is one step for 
 
 Building heights are estimated from file size until you click a building, which loads its real source. Loading all time from the first commit replays real line counts.
 
-### How this repo is built
+### Code structure
 
-Opens by itself when a repo loads (and from **How it's built** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). Once functions are read it adds the **Main paths** (from each entry point, the functions the code really calls, drawn over the city in their own colours; **Open side by side** opens each step's code), **Where paths meet** (functions several paths reach), and every place requests and commands come in. It needs no AI and no sign-in: it's read from the code's import lines and functions, once per city (one GitHub download per source file, up to 2,000). **Show the workflows (tour)** goes on to the AI tour, which is built on the main paths.
+Opens by itself when a repo loads (and from **Code structure** under Understand). It shows the README's first sentence, the entry points with why each counts, and the core files with how many files use them, and lights them up in the city (entry points brightest). Once functions are read it adds the **Main paths** (from each entry point, the functions the code really calls, drawn over the city in their own colours; **Open side by side** opens each step's code), **Where paths meet** (functions several paths reach), and every place requests and commands come in. It needs no AI and no sign-in: it's read from the code's import lines and functions, once per city (one GitHub download per source file, up to 2,000). The **Workflows tour** under Understand goes on to the AI tour, which is built on the main paths.
+
+Further down, **How the parts connect** groups the product's files into modules (folders, at a depth that gives a readable number), sorted into layers: the modules that use the others on top, the foundations at the bottom. Each module lists the modules it uses and how many use it; pointing at one lights its files. **Import cycles** lists modules that import each other, with an import each way, and the shortest loops of files that import each other when they load. Imports that don't run at load (inside a Python function, under `if TYPE_CHECKING:`, or TypeScript `import type`) are left out, since they can't cause load-time cycles.
 
 **Download as Markdown** saves all of it as a page for your repo's docs or your team's wiki: what the project is, where it starts, the core, the main paths, the modules and import cycles, the most important files, hotspots (when history is loaded) and, if you took the tour, its workflows, marked as Gemini's reading. Files link to GitHub for a GitHub repo, and are relative links for a folder, so the page works from the repo's root.
 
@@ -62,10 +64,6 @@ Click a commit to see its message, author, date and the files it changed (lines 
 ### Importance
 
 **Importance** under Display colours each file by its importance score (see the table above) and names the eight most important files over their buildings. A file's panel shows its score and the reasons that weigh most, such as "21 product files (not tests) depend on it, directly or through others".
-
-### System map
-
-**System map** under Understand groups the product's files into modules (folders, at a depth that gives a readable number), sorted into layers: the modules that use the others on top, the foundations at the bottom. Each module lists the modules it uses and how many use it; pointing at one lights its files. **Import cycles** lists modules that import each other, with an import each way, and the shortest loops of files that import each other when they load. Imports that don't run at load (inside a Python function, under `if TYPE_CHECKING:`, or TypeScript `import type`) are left out, since they can't cause load-time cycles.
 
 ### History
 
@@ -104,7 +102,7 @@ For Python, JavaScript, TypeScript and Go, a parser ([tree-sitter](https://tree-
 
 - A file's panel lists its **Functions**, each with how many functions it calls (→) and how many places call it (←).
 - **Trace** opens a tree of what a function calls, file to file: open a branch to follow it further, click a name to open the code there. **Called by** goes the other way. The files on the trace light up and arcs join them.
-- **How this repo is built** adds **Where requests and commands come in**: route handlers (`@app.route`, `app.get('/x', …)`, `http.HandleFunc`), CLI commands, `func main` and `if __name__ == "__main__"` blocks. Trace from one to follow a request.
+- **Code structure** adds **Where requests and commands come in**: route handlers (`@app.route`, `app.get('/x', …)`, `http.HandleFunc`), CLI commands, `func main` and `if __name__ == "__main__"` blocks. Trace from one to follow a request.
 - Click a name in the trace to open the code of every step from the traced function down to it, one window per step, side by side in call order and numbered. Each opens at the line that calls the next step. The windows move and resize like any other.
 - **Explain this path** (signed in) has Gemini walk through the first path down the trace.
 
@@ -235,7 +233,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 
 | Path | What it is |
 |---|---|
-| `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, "How this repo is built", windows |
+| `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, Code structure, windows |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `local/ask-server.mjs` | Runs `ask.mjs` for `code-city` with your own Gemini key; the installed package carries it bundled (`npm run bundle:ask`) |

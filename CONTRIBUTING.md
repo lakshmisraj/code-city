@@ -64,7 +64,7 @@ When you change what Ask sends or returns, add a test next to the others in `ask
 
 - **City**: `buildCity`, `layout`, building and district meshes, labels.
 - **History**: `loadHistory`, `stateAt`, `viewAt`, the history bar (`scrub`), playback and video.
-- **Side panels**: `openSide` / `renderSide`, one `render…` per panel (Commits, System map, Hotspots, Ask, Tour, Trace).
+- **Side panels**: `openSide` / `renderSide`, one `render…` per panel (Commits, Code structure, Hotspots, Ask, Tour, Trace).
 - **Windows**: `panes`, `paneHtml`, `renderViewer`; code, explanation and diff windows.
 - **Reading code**: the import parser, the tree-sitter call index (`callIdx`), `importance`.
 - **Ask**: `ASK_URL` and the fetches to it; the server side is `netlify/functions/ask.mjs`.

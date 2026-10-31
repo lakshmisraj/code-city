@@ -9,7 +9,7 @@ A guide for whoever is setting Code City up for a team: which pieces to use, how
 | Newcomers to find their way around a repo | `code-city .` on their machine, or the hosted site for public repos | Each developer, in a minute |
 | The city next to the code | The VS Code extension | Each developer |
 | Reviewers to see what a pull request touches | The PR summary bot | Once per repo |
-| An architecture page in your docs or wiki | **Download as Markdown** in How this repo is built | Anyone, whenever the code changes a lot |
+| An architecture page in your docs or wiki | **Download as Markdown** in Code structure | Anyone, whenever the code changes a lot |
 | A link from your README | The badge below | Once per repo |
 
 ## On each developer's machine
@@ -57,7 +57,7 @@ It runs inside your GitHub Actions, reads only the repo's git history and sends 
 
 ## An architecture page
 
-Open the repo in Code City, wait for **How this repo is built** to finish reading, optionally take the workflows tour, and press **Download as Markdown**. Commit the file (for example as `docs/architecture.md`) or paste it into your wiki. Everything in it is read from the code except the workflows, which are marked as Gemini's reading. Make a new one when the structure changes; it's quick.
+Open the repo in Code City, wait for **Code structure** to finish reading, optionally take the workflows tour, and press **Download as Markdown**. Commit the file (for example as `docs/architecture.md`) or paste it into your wiki. Everything in it is read from the code except the workflows, which are marked as Gemini's reading. Make a new one when the structure changes; it's quick.
 
 ## A README badge
 

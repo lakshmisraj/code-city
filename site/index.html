@@ -629,8 +629,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   <section class="segment" data-seg="understand">
     <p class="seg-note">Start here, then take the tour.</p>
     <div class="seg-actions">
-      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>How it's built</b><span>Where the code starts and its key files</span></button>
-      <button id="sysBtn" type="button" class="seg-action" aria-pressed="false"><b>System map</b><span>The main parts and how they connect</span></button>
+      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts, its key files, and how the parts connect</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. Uses AI. To pick a topic, type it in Ask first.</span></button>
     </div>
   </section>
@@ -678,9 +677,9 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
     <div><h3>Start here</h3><ul>
       <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
-      <li><b>Understand &rsaquo; How it's built</b> opens by itself: the entry points, the core files, and what the project says it is.</li>
+      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, the entry points, the core files, and how its modules connect.</li>
       <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
-      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in How it's built start you at the entry points.</li>
+      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
     </ul></div>
     <div><h3>Reading the city</h3><ul>
       <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
@@ -692,7 +691,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </ul></div>
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
-      <li><b>Understand</b>: how it's built (entry points, core files, main paths and where they meet), the <b>System map</b> (modules in layers and import cycles), and the workflows tour.</li>
+      <li><b>Understand</b>: the <b>Code structure</b> (entry points, core files, main paths and where they meet, then modules in layers and import cycles) and the workflows tour.</li>
       <li><b>Find</b>: a file by name.</li>
       <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
       <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
@@ -1663,7 +1662,7 @@ function matFor(b) {
     if (!st) return (t.shared.get(p) || []).length > 1 ? PICKED : t.paths.has(p) ? MATCH : DIM;   // overview: shared files brightest
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
-  if (sideMode === "system") { const m = systemMat(b.userData.f.path); if (m) return m; }
+  if (sideMode === "map" && systemState && systemState.hover) { const m = systemMat(b.userData.f.path); if (m) return m; }   // a module pointed at
   if (sideMode === "commits" && commitSel) { const st = commitSel.get(b.userData.f.path); return st ? PR_MATS[st] || PR_MATS.modified : DIM; }
   if (sideMode === "trace" && traceState) { const p = b.userData.f.path; return p === traceState.path ? PICKED : traceState.files.has(p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
@@ -1708,7 +1707,6 @@ function colorByImports() {
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
-document.getElementById("sysBtn").onclick = () => sideMode === "system" ? closeSide() : openSide("system");
 document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tlCommits").onclick = () => { if (sideMode !== "commits") openCommits(); followSoon(); };
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
@@ -1925,7 +1923,7 @@ function openDrawer(b) {
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
-// Where a file stands in the system, in one line: an entry point or core file (from "How it's built") and how
+// Where a file stands in the system, in one line: an entry point or core file (from Code structure) and how
 // many files use it (once the imports have been read).
 function fileRole(path) {
   const f = mapState && mapState.city === buildings && mapState.facts;
@@ -2858,7 +2856,6 @@ function openSide(mode) {
   roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
-  $("sysBtn").setAttribute("aria-pressed", mode === "system");
   $("commitsBtn").setAttribute("aria-pressed", mode === "commits");
   if (mode === "map") loadMap();
   renderSide(); syncUrl();
@@ -2872,11 +2869,10 @@ function closeSide(quiet) {
   drawLinks();
   $("hotBtn").setAttribute("aria-pressed", "false");
   $("mapBtn").setAttribute("aria-pressed", "false");
-  $("sysBtn").setAttribute("aria-pressed", "false");
   $("commitsBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "system") return renderSystem(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -2945,7 +2941,7 @@ function hotspotRows(limit) {
   }
   return rows.sort((a, z) => z.score - a.score).slice(0, limit);
 }
-// ---------- "How this repo is built" ----------
+// ---------- Code structure ----------
 // Opens by itself when a repo loads: what the project says it is, where execution starts and its core files,
 // all read from the code (no AI, no sign-in). Pointing at a row shows that file's connections over the city.
 let mapState = null;   // { facts, n, total, error } for the city on screen
@@ -2964,7 +2960,7 @@ function langSummary() {
 }
 function renderMap() {
   const st = mapState, f = st && st.facts, live = buildings.filter(b => b.userData.lines > 0);
-  $("sideTitle").textContent = "How this repo is built";
+  $("sideTitle").textContent = "Code structure";
   $("sideSub").textContent = `${currentRepo || cityName} · ${fmt(live.length)} files · ${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines`;
   const row = (path, n, meta) => `<li><button type="button" data-path="${esc(path)}"><span class="n">${n}</span><span class="path">${pathHtml(path)}</span><span class="meta">${meta}</span></button></li>`;
   const langs = langSummary();
@@ -2989,8 +2985,9 @@ function renderMap() {
       const all = idx.entries.filter(e => idx.def(e.path, e.i) || e.i < 0), main = all.filter(e => !aside(e.path)), list = (main.length ? main : all).slice(0, 12);
       if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(e.why)} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
+    html += systemHtml();
     html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
-    html += `<div class="side-actions"><button type="button" data-map-md title="How it's built, main paths, modules, important files and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
+    html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, core, main paths, modules, important files and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
   sideBody.innerHTML = html;
   drawLinks();
@@ -3804,7 +3801,7 @@ function outlineItems(path, text, max = 80) {
 function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
 // ---------- what the system is: facts read from the code, no AI ----------
 // The README's opening, the manifests, where execution starts (entry points) and the files most of the product
-// depends on (the core). Shown in the "How this repo is built" panel and sent to Gemini in the digest, so the
+// depends on (the core). Shown in the Code structure panel and sent to Gemini in the digest, so the
 // two always agree. Built once per city.
 const ASIDE_RE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?)\//i;   // around the product, not the product
 const aside = f => ASIDE_RE.test(f) || /_test\.go$|\.(test|spec)\.[jt]sx?$/.test(f);
@@ -4414,7 +4411,7 @@ function traceGoBack() {
   traceBack = [];
   if (traceFrom) openSide(traceFrom); else closeSide();
 }
-const TRACE_FROM = { map: "How it's built", system: "System map", hot: "Hotspots", ask: "the answer", tour: "the tour", pr: "the pull request" };
+const TRACE_FROM = { map: "Code structure", hot: "Hotspots", ask: "the answer", tour: "the tour", pr: "the pull request" };
 function renderTrace() {
   const st = traceState, idx = callsReady();
   $("sideTitle").textContent = "Trace";
@@ -4583,7 +4580,7 @@ function rankLabels() {
 }
 
 // ---------- reading the repo once, and keeping it ----------
-// A repo's imports and functions are read as soon as it loads (so How it's built, importance and Trace are
+// A repo's imports and functions are read as soon as it loads (so Code structure, importance and Trace are
 // ready without waiting), and kept in this browser per commit, so coming back to the same commit reads nothing.
 const SCAN_DB = "codecity-scan", SCAN_KEEP = 8;
 const SCAN_VERSION = 2;   // bump when the import or function reader changes what it finds, so saved readings are read again
@@ -4772,17 +4769,13 @@ function shortLoops(edges) {   // the shortest import loops (two to four files),
   }
   return out.sort((a, b) => a.length - b.length).slice(0, 8);
 }
-function renderSystem() {
-  $("sideTitle").textContent = "System map";
+let systemLoading = null;   // the city loadSystem is running for, so redraws don't start it again
+function systemHtml() {   // the modules part of Code structure
   const st = systemState && systemState.city === buildings ? systemState : null;
   if (!st) {
-    $("sideSub").textContent = currentRepo || cityName;
-    const f = mapState && mapState.city === buildings ? mapState : null;
-    sideBody.innerHTML = citySource === "sample" ? `<p class="side-note">The example city has no code to read. Build a repo to see its system map.</p>` : `<p class="side-note">Reading imports…</p>`;
-    loadSystem().then(s => { if (s && sideMode === "system") renderSide(); });
-    return;
+    if (systemLoading !== buildings) { const city = systemLoading = buildings; loadSystem().then(s => { if (systemLoading === city) systemLoading = null; if (s && sideMode === "map") renderSide(); }, () => { if (systemLoading === city) systemLoading = null; }); }
+    return `<div><h3>How the parts connect</h3><p class="side-note">Reading modules…</p></div>`;
   }
-  $("sideSub").textContent = `${fmt(st.groups.size)} modules · ${st.cycles.length ? `${st.cycles.length} folder cycle${st.cycles.length === 1 ? "" : "s"}` : "no folder cycles"}`;
   const top = st.layers.length;
   const grp = g => {
     const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length), by = [...g.usedBy].sort((a, b) => b[1].length - a[1].length);
@@ -4794,7 +4787,7 @@ function renderSystem() {
     for (const a of names) for (const b of names) { const x = st.example.get(a + ">" + b), y = st.example.get(b + ">" + a); if (a < b && x && y && !ex.length) ex.push(x, y); }
     return `<li class="warn"><b>${names.map(esc).join(" ⇄ ")}</b><span>${ex.length ? `${fileLink(ex[0][0], shortFile(ex[0][0]))} imports ${fileLink(ex[0][1], shortFile(ex[0][1]))}, and ${fileLink(ex[1][0], shortFile(ex[1][0]))} imports ${fileLink(ex[1][1], shortFile(ex[1][1]))}. ` : ""}No single file loop${st.fileCycles.length ? " here, except any listed below" : ""}, but the modules can't be separated.</span></li>`;
   };
-  sideBody.innerHTML = `<p class="side-note">The product's folders as modules, read from the code's import lines (tests, docs and examples left out). Each layer uses the ones below it.</p>` +
+  return `<div><h3>How the parts connect</h3><p class="side-note">${fmt(st.groups.size)} module${st.groups.size === 1 ? "" : "s"} (the product's folders), in layers: each uses the ones below it. Point at one to light its files.</p></div>` +
     st.layers.map((l, k) => `<div><h3>${top === 1 ? "One layer: these modules depend on each other" : k === 0 ? "Top: uses the others" : k === top - 1 ? "Foundation: used by the others" : `Layer ${top - k}`}</h3><ol class="rank">${l.map(grp).join("")}</ol></div>`).join("") +
     (st.cycles.length || st.fileCycles.length ? `<div><h3>Import cycles</h3><p class="side-note">Modules or files that import each other when they load, so neither can be understood, tested or changed on its own (in Python a file loop can fail at import time). Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> are left out, since they don't run at load.</p><ul class="cycles">${st.cycles.map(cyc).join("")}` +
       st.fileCycles.map(c => `<li class="warn"><span>${c.map(f => fileLink(f, shortFile(f))).join(" → ")} → ${fileLink(c[0], shortFile(c[0]))}</span></li>`).join("") + `</ul></div>`
@@ -4807,14 +4800,14 @@ function systemMat(path) {   // while the map is open: the module you point at l
   return st.fileCycles.some(c => c.includes(path)) ? FLASH.del || MATCH : null;
 }
 sideBody.addEventListener("mouseover", e => {
-  if (sideMode !== "system" || !systemState) return;
+  if (sideMode !== "map" || !systemState) return;
   const row = e.target.closest("[data-group]"), g = row ? row.dataset.group : null;
   if (g !== systemState.hover) { systemState.hover = g; }
 });
 sideBody.addEventListener("mouseleave", () => { if (systemState) systemState.hover = null; });
 sideBody.addEventListener("click", e => {
   const row = e.target.closest("[data-group]");
-  if (!row || sideMode !== "system" || !systemState) return;
+  if (!row || sideMode !== "map" || !systemState) return;
   const g = systemState.groups.get(row.dataset.group);
   if (g) { const dir = g.name; const d = districts.find(x => x.userData.dir === dir); if (d) openFolder(dir); else if (g.files[0]) openDrawer(bmap.get(g.files[0])); }
 });

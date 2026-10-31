@@ -32,7 +32,7 @@ test("the page draws the example city in a browser, with no errors", { timeout: 
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => +document.getElementById("sFiles").textContent.replace(/\D/g, "") > 0, null, { timeout: 60000 });
-    for (const id of ["commitsBtn", "mapBtn", "sysBtn"]) await page.evaluate(id => document.getElementById(id).click(), id);   // a few panels open and close
+    for (const id of ["commitsBtn", "mapBtn"]) await page.evaluate(id => document.getElementById(id).click(), id);   // a few panels open and close
     await page.waitForTimeout(500);
     assert.deepEqual(errors, []);
   } finally {
