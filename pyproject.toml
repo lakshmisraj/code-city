@@ -1,0 +1,42 @@
+# The `code-city` command: `pipx install code-city`, then `code-city .` in any project folder.
+# The wheel carries codecity.py plus the page and the parser it serves, under codecity_assets/.
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "code-city"
+dynamic = ["version"]
+description = "See a codebase as a 3D city: where it starts, what it depends on, how its workflows run, and how it grew."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.8"
+authors = [{ name = "Lakshmi Shibu Raj" }]
+keywords = ["code visualization", "codebase", "git", "onboarding", "architecture"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://code-city-view.netlify.app"
+Source = "https://github.com/lakshmisraj/code-city"
+
+[project.scripts]
+code-city = "codecity:main"
+
+[tool.hatch.version]
+path = "codecity.py"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["codecity.py"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"code-city.html" = "codecity_assets/code-city.html"
+"site/vendor/tree-sitter" = "codecity_assets/site/vendor/tree-sitter"
+
+[tool.hatch.build.targets.sdist]
+include = ["codecity.py", "code-city.html", "site/vendor/tree-sitter", "README.md", "LICENSE", "pyproject.toml"]

@@ -5344,6 +5344,11 @@ const start = () => {
   initSignin();
   initAsk();
   if (link.repo) { document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
+  else if (LOCAL) {   // `code-city .` names a folder or repo to open straight away
+    fetch("/api/start", { headers: { "X-Code-City": "1" } }).then(r => r.ok ? r.json() : {}).then(d => {
+      if (d && d.src) { document.getElementById("repoInput").value = d.src; loadRepo(d.src); }
+    }).catch(() => { /* an older local server: paste a folder as before */ });
+  }
 };
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start, start);
 })();

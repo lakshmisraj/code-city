@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Code City: turn a git repo into a 3D city.
 
-  python3 codecity.py serve                  open the app; paste any public repo URL
-  python3 codecity.py export pallets/flask   write flask.json to drop into the published page
-  python3 codecity.py build                  write site/index.html for static hosting (Netlify)
+  code-city .                    open this folder's city in the browser (any folder, private code included)
+  code-city pallets/flask        clone a public repo and open its city
+  code-city                      open the app; paste a repo URL or a folder there
+  code-city export owner/repo    write repo.json to drop into the published page
+  code-city build                write site/index.html for static hosting (Netlify), from a checkout
 
+Installed with `pipx install code-city`, or run from a checkout as `python3 codecity.py ...`.
 Needs only Python 3.8+ and git. Public repos are cloned into ~/.cache/code-city.
 """
 import argparse
@@ -13,12 +16,18 @@ import os
 import re
 import subprocess
 import sys
+import errno
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+__version__ = "0.1.0"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
+# In a checkout the page sits next to this file; an installed copy carries it in codecity_assets/.
+ASSETS = HERE if os.path.isfile(os.path.join(HERE, "code-city.html")) else os.path.join(HERE, "codecity_assets")
+START = None   # what the command line asked to open; the page asks for it once it's up (see /api/start)
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "code-city")
 
 # Keep in sync with EXT / SPECIAL / SKIP_DIRS in code-city.html. Never add "env": .env files hold secrets, and
@@ -248,7 +257,7 @@ FAVICON = ("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 vie
 
 def page():
     """code-city.html is written as a page body (that's how the claude.ai artifact takes it); wrap it in a full document."""
-    with open(os.path.join(HERE, "code-city.html"), encoding="utf-8") as fh:
+    with open(os.path.join(ASSETS, "code-city.html"), encoding="utf-8") as fh:
         body = fh.read()
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
@@ -269,18 +278,22 @@ class Handler(BaseHTTPRequestHandler):
         if url.path.startswith("/vendor/tree-sitter/"):
             # The parser behind function-level links. Only plain file names from that one folder.
             name = url.path.rsplit("/", 1)[1]
-            fpath = os.path.join(HERE, "site", "vendor", "tree-sitter", name)
+            fpath = os.path.join(ASSETS, "site", "vendor", "tree-sitter", name)
             if re.fullmatch(r"[\w.-]+\.(js|wasm)", name) and os.path.isfile(fpath):
                 with open(fpath, "rb") as fh:
                     return self.reply(200, "application/wasm" if name.endswith(".wasm") else "text/javascript", fh.read())
-        if url.path == "/api/repo":
+        if url.path in ("/api/repo", "/api/start"):
             # Only the app's own page may ask: other websites can make a browser send GET requests here, but they
             # can't add this header without a CORS preflight, which this server never approves.
             if self.headers.get("X-Code-City") != "1" or self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
                 return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
+        if url.path == "/api/start":
+            return self.reply(200, "application/json", json.dumps({"src": START}).encode("utf-8"))
+        if url.path == "/api/repo":
             src = parse_qs(url.query).get("src", [""])[0]
             try:
-                body = json.dumps(build_city(src, from_page=True), separators=(",", ":")).encode("utf-8")
+                # The folder named on the command line may be anywhere: you typed it. Others must be in your home folder.
+                body = json.dumps(build_city(src, from_page=src != START), separators=(",", ":")).encode("utf-8")
                 return self.reply(200, "application/json", body)
             except (ValueError, RuntimeError, subprocess.TimeoutExpired) as e:
                 msg = "That took too long. Try a smaller repo." if isinstance(e, subprocess.TimeoutExpired) else str(e)
@@ -299,18 +312,25 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("  " + fmt % args + "\n")
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Code City: see a repo as a 3D city.")
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    # `code-city .` and `code-city owner/name` are short for `code-city serve ...`; plain `code-city` opens the app.
+    if not argv or (argv[0] not in ("serve", "export", "build") and argv[0] not in ("-h", "--help", "--version")):
+        argv = ["serve", *argv]
+    ap = argparse.ArgumentParser(prog="code-city", description="Code City: see a repo as a 3D city.",
+                                 epilog="Run `code-city .` in a project folder to see it as a city.")
+    ap.add_argument("--version", action="version", version=f"code-city {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("serve", help="run the app locally")
-    s.add_argument("--port", type=int, default=8787)
+    s = sub.add_parser("serve", help="open the app locally (the default command)")
+    s.add_argument("src", nargs="?", help="a folder, a repo URL or owner/name to open straight away")
+    s.add_argument("--port", type=int, default=8787, help="port to listen on (another free one if it's taken)")
     s.add_argument("--no-open", action="store_true", help="don't open a browser tab")
     e = sub.add_parser("export", help="write a city JSON file")
     e.add_argument("src", help="repo URL, owner/name, or local folder")
     e.add_argument("-o", "--out")
     e.add_argument("--no-source", action="store_true", help="leave out file previews (smaller file)")
-    sub.add_parser("build", help="write site/index.html for static hosting")
-    args = ap.parse_args()
+    sub.add_parser("build", help="write site/index.html for static hosting (from a checkout)")
+    args = ap.parse_args(argv)
 
     if args.cmd == "build":
         os.makedirs(os.path.join(HERE, "site"), exist_ok=True)
@@ -328,9 +348,23 @@ def main():
         print(f"Wrote {out}: {len(city['files'])} files, {len(h['commits']) if h else 0} commits")
         return
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = f"http://localhost:{args.port}/"
-    print(f"Code City is running at {url}  (Ctrl+C to stop)")
+    global START
+    if args.src:
+        local = os.path.expanduser(args.src)
+        if os.path.isdir(local):
+            START = os.path.realpath(local)
+        elif REPO_RE.match(args.src.strip()) or SHORT_RE.match(args.src.strip()):
+            START = args.src.strip()
+        else:
+            ap.exit(2, f"code-city: {args.src} isn't a folder, a repo URL or owner/name\n")
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)   # that port is taken: any free one
+    url = f"http://localhost:{server.server_address[1]}/"
+    print(f"Code City is running at {url}{f'  showing {START}' if START else ''}  (Ctrl+C to stop)", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

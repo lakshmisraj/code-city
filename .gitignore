@@ -7,3 +7,7 @@ node_modules/
 
 # Local secrets for dev-server.mjs: never commit
 .env
+
+# Python package builds
+dist/
+*.egg-info/

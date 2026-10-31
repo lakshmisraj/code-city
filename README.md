@@ -159,13 +159,28 @@ Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitH
    - Authorization callback URL: `https://code-city-view.netlify.app/.netlify/functions/github-callback`
 2. In Netlify: Site configuration → Environment variables, add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (mark the secret as secret), then redeploy.
 
-## Run it locally
+## Run it on your own code
 
-Needs Python 3.8+ and git. No other installs.
+Needs Python 3.8+ and git. Install the `code-city` command once:
 
-    python3 codecity.py serve
+    pipx install code-city                                        # from PyPI
+    pipx install git+https://github.com/lakshmisraj/code-city     # or straight from GitHub
 
-Opens http://localhost:8787. Paste any public GitHub, GitLab or Bitbucket URL (or `owner/name`, or the path of a project folder inside your home folder) and press Build. Repos are cloned into `~/.cache/code-city`.
+Then, in any project folder:
+
+    code-city .
+
+Your browser opens on that folder's city, history included. Your code stays on your machine: the city is read by a server on your computer, and nothing is uploaded. It works for private code and for folders that aren't git repos.
+
+| Command | What it does |
+|---|---|
+| `code-city .` | Open this folder's city (or `code-city path/to/project`) |
+| `code-city pallets/flask` | Clone a public GitHub, GitLab or Bitbucket repo into `~/.cache/code-city` and open it |
+| `code-city` | Open the app and paste a repo or folder there |
+| `code-city export owner/repo` | Write a city file for the hosted site (see below) |
+| `code-city --port 9000 .` | Use another port (a free one is picked if 8787 is taken); `--no-open` skips the browser |
+
+From a checkout of this repo, `python3 codecity.py` takes the same arguments.
 
 The local server only answers its own page: other websites can't make it clone or read anything, and it never runs programs that a folder's own git settings name (hooks, fsmonitor). `python3 codecity.py export` can read any folder.
 

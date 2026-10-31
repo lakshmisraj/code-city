@@ -1,0 +1,59 @@
+// The code-city command on a throwaway repo: it opens the folder it was given, and nothing else outside your home.
+import { test, before, after } from "node:test";
+import assert from "node:assert";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CLI = path.join(ROOT, "codecity.py");
+let repo, proc, base;
+const api = (p, headers = { "X-Code-City": "1" }) => fetch(base + p, { headers });
+
+before(async () => {
+  repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "code-city-repo-")));   // outside your home folder
+  fs.mkdirSync(path.join(repo, "src"));
+  fs.writeFileSync(path.join(repo, "src", "app.py"), "import util\ndef main():\n    util.go()  # TODO tidy\n");
+  fs.writeFileSync(path.join(repo, "src", "util.py"), "def go():\n    pass\n");
+  const git = (...a) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...a]);
+  git("init", "-q"); git("add", "-A"); git("commit", "-qm", "first");
+  proc = spawn("python3", [CLI, repo, "--no-open", "--port", "0"], { stdio: ["ignore", "pipe", "pipe"] });
+  base = await new Promise((resolve, reject) => {
+    let out = "";
+    proc.stdout.on("data", d => { out += d; const m = /running at (http:\/\/localhost:\d+)\//.exec(out); if (m) resolve(m[1]); });
+    proc.on("exit", code => reject(new Error(`code-city exited (${code}): ${out}`)));
+  });
+});
+after(() => { if (proc) proc.kill(); if (repo) fs.rmSync(repo, { recursive: true, force: true }); });
+
+test("it serves the page", async () => {
+  const r = await fetch(base + "/");
+  assert.equal(r.status, 200);
+  assert.match(await r.text(), /<title>Code City<\/title>/);
+});
+test("the page learns which folder to open", async () => {
+  assert.deepEqual(await (await api("/api/start")).json(), { src: repo });
+});
+test("that folder is read, with its history", async () => {
+  const city = await (await api("/api/repo?src=" + encodeURIComponent(repo))).json();
+  assert.equal(city.name, path.basename(repo));
+  assert.deepEqual(city.files.map(f => f.path), ["src/app.py", "src/util.py"]);
+  assert.equal(city.history.commits.length, 1);
+});
+test("other folders outside your home are still refused", async () => {
+  const r = await api("/api/repo?src=" + encodeURIComponent(path.dirname(repo)));
+  assert.equal(r.status, 400);
+});
+test("other websites can't ask", async () => {
+  assert.equal((await api("/api/start", {})).status, 403);
+});
+test("a name that's neither a folder nor a repo is refused", () => {
+  const r = spawnSync("python3", [CLI, path.join(repo, "missing"), "--no-open"], { encoding: "utf8" });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /isn't a folder, a repo URL or owner\/name/);
+});
+test("--version", () => {
+  assert.match(execFileSync("python3", [CLI, "--version"], { encoding: "utf8" }), /^code-city \d+\.\d+\.\d+/);
+});
