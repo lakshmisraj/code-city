@@ -585,7 +585,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
-    <button id="recBtn" type="button" class="mini" title="Replay the history and save it as a video" hidden>Record video</button>
+    <button id="recBtn" type="button" class="mini" title="Replay the history and save it as a video">Record video</button>
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
@@ -1787,7 +1787,6 @@ function syncTimeline() {
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
   document.getElementById("tlShow").hidden = !hist || show;
-  const rb = document.getElementById("recBtn"); rb.hidden = !hist || rb.dataset.unsupported === "1";   // recording replays the history
   document.body.classList.toggle("tl-peek", !!hist && !show);
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
@@ -5374,11 +5373,11 @@ function recMime() {
   return ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || null;
 }
 if (!recMime() || !HTMLCanvasElement.prototype.captureStream) recBtn.dataset.unsupported = "1";
-recBtn.hidden = !hist || recBtn.dataset.unsupported === "1";
+recBtn.hidden = recBtn.dataset.unsupported === "1";   // shown always; without history it says what to load
 recBtn.onclick = () => {
   if (rec && rec.url) return saveRecording();
   if (rec) return stopRecording();
-  if (!hist) return;
+  if (!hist) { toast(citySource === "folder" ? "Recording replays a repo's history, and this folder has none." : "Recording replays the repo's history. Load some first: Repo › Load history."); return; }
   const canvas = Object.assign(document.createElement("canvas"), { width: REC_W, height: REC_H });
   const mime = recMime();
   const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: mime, videoBitsPerSecond: 8e6 });
