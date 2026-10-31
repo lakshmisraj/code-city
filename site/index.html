@@ -1739,7 +1739,7 @@ let impMax = 0, impScan = null;
 function maxImporters() { return impMax || 1; }
 function setColorMode(m) {
   colorMode = m; langSel = null;
-  if (sideMode === "lang") closeSide(true);
+  if (sideMode === "lang" || (sideMode === "hot" && m !== "heat")) closeSide();   // another colour: its list goes
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
   document.getElementById("hotBtn").setAttribute("aria-pressed", m === "heat");
   document.getElementById("cImp").setAttribute("aria-pressed", m === "imports");
