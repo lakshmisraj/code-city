@@ -63,7 +63,7 @@ test("a private repo opens with a pasted token, reading files through the API", 
       [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Build").click();
     }, TOKEN);
     await page.waitForFunction(() => document.getElementById("sideSub").textContent.startsWith("acme/secret"));
-    await page.waitForFunction(() => /Starts here|No clear entry point/.test(document.getElementById("sideBody").textContent));   // the code was read
+    await page.waitForFunction(() => /Where it starts|No clear starting point/.test(document.getElementById("sideBody").textContent));   // the code was read
     assert.ok(seen.contents.some(c => c.path === "shop/cart.py"), "files were read through the API");
     assert.ok(seen.contents.every(c => c.accept === "application/vnd.github.raw"));
     assert.deepEqual(seen.raw, [], "nothing was asked of raw.githubusercontent.com");

@@ -124,7 +124,7 @@ Like asking, tours need Sign in with GitHub and count towards the same hourly li
 
 ### Timelapse video
 
-**Record video** in the timeline bar replays the history from the first commit and saves it as a 1280×720 video (MP4 where the browser supports it, otherwise WebM), with the repo name, date and commit message drawn in.
+**Record video** (top right, when history is loaded) replays the history from the first commit and saves it as a 1280×720 video (MP4 where the browser supports it, otherwise WebM), with the repo name, date and commit message drawn in.
 
 ### PR summary bot (GitHub Action)
 

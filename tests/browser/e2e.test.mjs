@@ -43,7 +43,7 @@ test("code-city <folder> opens its city, and the overview downloads as Markdown"
     const md = fs.readFileSync(await download.path(), "utf8");
     assert.match(md, new RegExp(`^# ${path.basename(repo)}: how it's built`));
     assert.match(md, /## Where it starts\n\n- \[`main\.py`\]\(main\.py\)/);
-    assert.match(md, /## The core[\s\S]*\[`shop\/prices\.py`\]\(shop\/prices\.py\)/);
+    assert.match(md, /## Most-used files[\s\S]*\[`shop\/prices\.py`\]\(shop\/prices\.py\)/);
     assert.doesNotMatch(md, /## Workflows/, "no tour was taken");
     assert.deepEqual(errors, []);
   } finally {

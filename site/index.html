@@ -266,7 +266,12 @@ button:focus-visible, input:focus-visible, .linkish:focus-visible { outline: 2px
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--ink-dim); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
+.parts .pname { font-weight: 600; color: var(--ink); }
 .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.legend button.lg-lang { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; margin: -2px -6px; font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: 6px; }
+.legend button.lg-lang:hover { color: var(--ink); }
+.legend button.lg-lang[aria-pressed="true"] { color: var(--ink); border-color: var(--sodium); }
+.legend .note { flex-basis: 100%; }
 .ramp { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; color: var(--ink-dim); }
 .ramp .bar.imp { background: linear-gradient(90deg, #1e2740, #1f6f74, #4fb88a, #d6ef9a, #fffbd0); }
 .q-wrap { position: relative; }
@@ -575,6 +580,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
+    <button id="recBtn" type="button" class="mini" title="Replay the history and save it as a video" hidden>Record video</button>
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
@@ -675,7 +681,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
     <div><h3>Start here</h3><ul>
       <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
-      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, the entry points, the core files, and how its modules connect.</li>
+      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
       <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
       <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
     </ul></div>
@@ -689,13 +695,22 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </ul></div>
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
-      <li><b>Understand</b>: the <b>Code structure</b> (entry points, core files, main paths and where they meet, then modules in layers and import cycles) and the workflows tour.</li>
+      <li><b>Understand</b>: the <b>Code structure</b> (where it starts, the most-used files, main paths, how the parts connect, and tangles) and the workflows tour.</li>
       <li><b>Find</b>: a file by name.</li>
       <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
       <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
       <li><b>Display</b>: colour by language, <b>Hotspots</b> (how often files change, with a ranked list) or imports; show or hide connections.</li>
       <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
+    </ul></div>
+    <div><h3>Reading the panels</h3><ul>
+      <li><b>Code structure</b> is read from the code itself, with no AI; tests, docs and examples aren't counted. <b>Main paths</b> go from each starting point the way the code goes; click a step to trace it. In <b>How the parts connect</b> each folder is a part: parts that use others come first, then the ones they rely on, then parts with no links to the rest. Point at a part to light its files.</li>
+      <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
+      <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
+      <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
+      <li><b>Explanations</b>: names, files and line numbers in them are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
+      <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
+      <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
     </ul></div>
     <div><h3>Moving around</h3><ul>
       <li>Drag to orbit, scroll (or pinch) to zoom, right-drag (or two fingers) to pan.</li>
@@ -782,9 +797,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
     <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
   </div>
-  <button id="tlCommits" type="button" title="The commits list, following this bar">Commits</button>
   <button id="speedBtn" type="button" title="Commits per second" aria-label="Playback speed: 8 commits per second">8/s</button>
-  <button id="recBtn" type="button" title="Replay the history and save it as a video">Record video</button>
 </div>
 
 
@@ -1170,6 +1183,7 @@ let totalChurn = new Map();
 let state = null;             // replay state while viewing history: { lines: Map, churn: Map }
 let cursor = -1, viewNow = true, playing = false, churnSrc = new Map(), maxChurn = 1;
 let colorMode = "lang", cityName = "", citySource = "sample";
+let langSel = null;   // a language picked in the colour key: its files lit, the rest dimmed
 
 function freshState() {
   return { lines: new Map(Object.entries(hist.base || {})), churn: new Map(Object.entries(hist.baseChurn || {})) };
@@ -1521,6 +1535,7 @@ function buildCity(data) {
   document.getElementById("repoName").textContent = data.name;
   if (!hist) tlOpen = false;
   syncTimeline();
+  langSel = null; if (sideMode === "lang") closeSide(true);
   if (!hist && colorMode === "heat") setColorMode("lang");
   if (hist) { scrub.max = hist.commits.length; speedIdx = 0; showSpeed(); }
   goNow(true);
@@ -1590,7 +1605,26 @@ function renderLegend() {
   const counts = {};
   for (const n of nodes.values()) counts[n.lang] = (counts[n.lang] || 0) + 1;
   el.innerHTML = Object.keys(counts).sort((a, b) => counts[b] - counts[a])
-    .map(l => `<span><i style="background:${LANGS[l].color}"></i>${LANGS[l].name}</span>`).join("");
+    .map(l => `<button type="button" class="lg-lang" data-lang="${l}" aria-pressed="${langSel === l}" title="${langSel === l ? "Show every language" : `Light the ${esc(LANGS[l].name)} files`}"><i style="background:${LANGS[l].color}"></i>${LANGS[l].name}</button>`).join("") +
+    `<p class="note">${langSel ? "Click it again to show every language." : "Click a language to light its files."}</p>`;
+}
+// Clicking a language in the key lights its files and dims the rest; clicking it again clears it.
+document.getElementById("legend").addEventListener("click", e => {
+  const btn = e.target.closest("[data-lang]");
+  if (!btn || colorMode !== "lang") return;
+  langSel = langSel === btn.dataset.lang ? null : btn.dataset.lang;
+  renderLegend();
+  if (langSel) openSide("lang"); else if (sideMode === "lang") closeSide();
+});
+function renderLang() {   // the picked language's counts, and its files, biggest first
+  const L = LANGS[langSel], live = buildings.filter(b => b.userData.lines > 0);
+  const mine = live.filter(b => b.userData.f.lang === langSel).sort((a, b) => b.userData.lines - a.userData.lines);
+  const lines = mine.reduce((n, b) => n + b.userData.lines, 0), all = live.reduce((n, b) => n + b.userData.lines, 0) || 1;
+  $("sideTitle").textContent = L ? L.name : "Language";
+  $("sideSub").textContent = `${fmt(mine.length)} file${mine.length === 1 ? "" : "s"} · ${fmt(lines)} lines · ${Math.round(100 * lines / all)}% of the code`;
+  sideBody.innerHTML = mine.length ? `<ol class="rank">${mine.slice(0, 30).map((b, i) => `<li><button type="button" data-path="${esc(b.userData.f.path)}"><span class="n">${i + 1}</span><span class="path">${pathHtml(b.userData.f.path)}</span><span class="meta">${b.userData.f.estimated ? "~" : ""}${fmt(b.userData.lines)} lines</span></button></li>`).join("")}</ol>` +
+    (mine.length > 30 ? `<p class="side-note">The 30 biggest of ${fmt(mine.length)}.</p>` : "")
+    : `<p class="side-note">No ${L ? esc(L.name) : ""} files in this city.</p>`;
 }
 
 function resetView(animate) {
@@ -1647,6 +1681,7 @@ function matFor(b) {
   if (b === hovered) return HOVER;
   if (b.userData.flash > 0) return FLASH[b.userData.fk];
   if (folderSel != null && !askState && !tourState && !inFolder(b.userData.f.path, folderSel)) return DIM;
+  if (langSel && colorMode === "lang" && b.userData.f.lang !== langSel) return DIM;   // a language picked in the key
   if (tourState) {
     const p = b.userData.f.path, t = tourState, st = tourStep();
     if (!st) return (t.shared.get(p) || []).length > 1 ? PICKED : t.paths.has(p) ? MATCH : DIM;   // overview: shared files brightest
@@ -1674,7 +1709,8 @@ const impMats = IMP_RAMP.map((c, i) => new THREE.MeshStandardMaterial({ color: c
 let impMax = 0, impScan = null;
 function maxImporters() { return impMax || 1; }
 function setColorMode(m) {
-  colorMode = m;
+  colorMode = m; langSel = null;
+  if (sideMode === "lang") closeSide(true);
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
   document.getElementById("hotBtn").setAttribute("aria-pressed", m === "heat");
   document.getElementById("cImp").setAttribute("aria-pressed", m === "imports");
@@ -1694,7 +1730,6 @@ function colorByImports() {
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
-document.getElementById("tlCommits").onclick = () => { if (sideMode !== "commits") openCommits(); followSoon(); };
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
 document.getElementById("cImp").onclick = () => setColorMode("imports");
@@ -1746,6 +1781,7 @@ function syncTimeline() {
   document.body.classList.toggle("has-timeline", show);
   document.getElementById("timeline").hidden = !show;
   document.getElementById("tlShow").hidden = !hist || show;
+  const rb = document.getElementById("recBtn"); rb.hidden = !hist || rb.dataset.unsupported === "1";   // recording replays the history
   document.body.classList.toggle("tl-peek", !!hist && !show);
   if (!show && playing && !rec) { playing = false; document.getElementById("playBtn").textContent = "Play history"; }   // a hidden bar doesn't keep playing
   if (typeof renderViewer === "function" && panes.length) renderViewer();
@@ -2832,6 +2868,7 @@ function openSide(mode) {
     if (sideMode === "pr") clearPR();
     if (sideMode === "ask") askState = null;
     if (sideMode === "tour") endTour();
+    if (sideMode === "lang") { langSel = null; renderLegend(); }
   }
   if (mode !== "commits") commitSel = null;
   roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
@@ -2844,6 +2881,7 @@ function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
   if (sideMode === "ask") askState = null;
   if (sideMode === "tour") endTour();
+  if (sideMode === "lang") { langSel = null; renderLegend(); }
   commitSel = null;
   sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
   drawLinks();
@@ -2851,7 +2889,7 @@ function closeSide(quiet) {
   $("commitsBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "lang") renderLang(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -2882,16 +2920,38 @@ function fileByName(token) {
   return product.length === 1 ? product[0] : null;
 }
 function fileLink(path, label) { return `<button type="button" class="flink" data-path="${esc(path)}" title="Open ${esc(path)}">${label != null ? esc(label) : pathHtml(path)}</button>`; }
-function rich(text) {
-  const str = String(text || ""), re = /(https?:\/\/[^\s<>"'`)\]]+[^\s<>"'`)\].,;:!?])|((?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[A-Za-z][\w]{0,7})/g;
+// Text from Gemini or a README, with what it mentions made clickable: web pages, file names, line numbers (when it's
+// about one file) and the code's own functions and classes, which open the code at their line.
+function rich(text, file) {
+  const str = String(text || ""), re = /(https?:\/\/[^\s<>"'`)\]]+[^\s<>"'`)\].,;:!?])|((?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[A-Za-z][\w]{0,7})(?![\w])|\b(?:[Ll]ines?|L)\s?(\d{1,5})\b|\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+|[A-Za-z]\w*_\w+|[a-z]+[A-Z]\w*|[A-Z][a-z0-9]+[A-Z]\w*|[A-Z][a-z]{4,})\b/g;
   let out = "", last = 0;
   for (const m of str.matchAll(re)) {
-    out += esc(str.slice(last, m.index)); last = m.index + m[0].length;
-    if (m[1]) { out += `<a href="${esc(m[1])}" target="_blank" rel="noopener noreferrer">${esc(m[1])}</a>`; continue; }
-    const path = fileByName(m[2]);
-    out += path ? fileLink(path, m[2]) : esc(m[2]);
+    let html = null;
+    if (m[1]) html = `<a href="${esc(m[1])}" target="_blank" rel="noopener noreferrer">${esc(m[1])}</a>`;
+    else if (m[2]) { const path = fileByName(m[2]); if (path) html = fileLink(path, m[2]); }
+    else if (m[3] && file) html = `<button type="button" class="flink" data-file="${esc(file)}" data-line="${m[3]}" title="Show line ${m[3]} in the code">${esc(m[0])}</button>`;
+    else if (m[4]) { const d = symbolAt(m[4]); if (d) html = `<button type="button" class="flink" data-file="${esc(d.path)}" data-line="${d.line}" title="Show ${esc(d.name)} in ${esc(d.path)}">${esc(m[4])}</button>`; }
+    if (html == null) continue;
+    out += esc(str.slice(last, m.index)) + html; last = m.index + m[0].length;
   }
   return out + esc(str.slice(last));
+}
+let symbols = null;   // { idx, exact: Map(name -> def), lower: Map(lowercase name -> def) }, names defined once in the product
+function symbolAt(token) {
+  const idx = callsReady();
+  if (!idx) return null;
+  if (!symbols || symbols.idx !== idx) {
+    const count = new Map(), first = new Map();
+    for (const [path, f] of idx.files) if (!aside(path)) for (const d of f.defs) if (d.kind !== "alias" && d.name && d.name.length > 2) {
+      count.set(d.name, (count.get(d.name) || 0) + 1); if (!first.has(d.name)) first.set(d.name, { path, line: d.line, name: d.name, kind: d.kind });
+    }
+    const exact = new Map([...first].filter(([n]) => count.get(n) === 1)), lower = new Map();
+    for (const [n, d] of exact) { const k = n.toLowerCase(); lower.set(k, lower.has(k) ? null : d); }
+    symbols = { idx, exact, lower };
+  }
+  const name = token.split(".").pop();
+  if (/^[A-Z][a-z]+$/.test(token)) { const d = symbols.exact.get(token); return d && d.kind === "class" ? d : null; }   // a plain capitalised word only when it's a class
+  return symbols.exact.get(name) || symbols.lower.get(name.toLowerCase()) || null;
 }
 function pathHtml(path) {
   const i = path.lastIndexOf("/");
@@ -2950,22 +3010,24 @@ function renderMap() {
   else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
     : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
   if (f && f.scanned) {
-    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Lit brightest: where it starts</span><span><i style="background:#${MATCH.color.getHexString()}"></i>Lit: the core</span></p>`;
-    html += f.entries.length ? `<div><h3>Starts here</h3><ol class="rank">${f.entries.map((e, i) => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
-      : `<p class="side-note">No clear entry point: this looks like a library others import.</p>`;
-    html += f.core.length ? `<div><h3>The core</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
+    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Brightest: where it starts</span><span><i style="background:#${MATCH.color.getHexString()}"></i>Lit: the most-used files</span></p>`;
+    const starts = f.entries.filter(e => !e.loose), loose = f.entries.filter(e => e.loose);
+    html += starts.length || loose.length ? `<div><h3>Where it starts</h3><ol class="rank">${(starts.length ? starts : loose).map(e => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
+      : `<p class="side-note">No clear starting point: this looks like a library other code imports.</p>`;
+    if (starts.length && loose.length) html += `<details class="more"><summary>Scripts that run on their own · ${fmt(loose.length)}</summary><ol class="rank">${loose.map(e => row(e.path, "·", esc(e.reason))).join("")}</ol></details>`;
+    html += f.core.length ? `<div><h3>Most-used files</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
     const idx = callsReady(), mp = mapPaths(f, idx);
     const step = (p, i) => idx && i >= 0 ? `<button type="button" class="flink" data-fn-trace="${esc(p)}" data-fn-i="${i}" title="Trace from here">${esc(fnName(idx, p, i))}</button>` : fileLink(p, shortFile(p));
-    if (mp.paths.length) html += `<div><h3>Main paths</h3><p class="side-note">From each entry point, the way the code goes${mp.calls ? ", following real function calls" : ", following imports"}. Click a step to trace it.</p><ol class="paths">${mp.paths.map((pth, k) =>
-      `<li style="--wf:${WF_COLORS[k % WF_COLORS.length]}"><div class="pth-head">${step(pth.entry.path, pth.entry.i)}<span class="meta">${esc(pth.entry.why)}</span></div><div class="pth-steps">${pth.steps.slice(1).map(st => `<span>→</span>${step(st.path, st.i)}`).join("")}</div>` +
+    if (mp.paths.length) html += `<div><h3>Main paths</h3><ol class="paths">${mp.paths.map((pth, k) =>
+      `<li style="--wf:${WF_COLORS[k % WF_COLORS.length]}"><div class="pth-head">${step(pth.entry.path, pth.entry.i)}<span class="meta">${esc(whyText(pth.entry.why))}</span></div><div class="pth-steps">${pth.steps.slice(1).map(st => `<span>→</span>${step(st.path, st.i)}`).join("")}</div>` +
       (idx ? `<button type="button" class="mini" data-path-open="${k}" title="Open each step's code, side by side">Open side by side</button>` : "") + `</li>`).join("")}</ol></div>`;
-    if (mp.meet.length) html += `<div><h3>Where paths meet</h3><ol class="rank">${mp.meet.map(m => `<li><button type="button" ${idx && m.i >= 0 ? `data-fn-trace="${esc(m.path)}" data-fn-i="${m.i}"` : `data-path="${esc(m.path)}"`}><span class="n">⋈</span><span class="path">${idx && m.i >= 0 ? esc(fnName(idx, m.path, m.i)) : pathHtml(m.path)}</span><span class="meta">reached from ${fmt(m.n)} entry points · ${esc(shortFile(m.path))}</span></button></li>`).join("")}</ol></div>`;
+    if (mp.meet.length) html += `<div><h3>Where paths meet</h3><ol class="rank">${mp.meet.map(m => `<li><button type="button" ${idx && m.i >= 0 ? `data-fn-trace="${esc(m.path)}" data-fn-i="${m.i}"` : `data-path="${esc(m.path)}"`}><span class="n">⋈</span><span class="path">${idx && m.i >= 0 ? esc(fnName(idx, m.path, m.i)) : pathHtml(m.path)}</span><span class="meta">on ${fmt(m.n)} paths · ${esc(shortFile(m.path))}</span></button></li>`).join("")}</ol></div>`;
     if (idx) {
       const all = idx.entries.filter(e => idx.def(e.path, e.i) || e.i < 0), main = all.filter(e => !aside(e.path)), list = (main.length ? main : all).slice(0, 12);
-      if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(e.why)} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
+      if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(whyText(e.why))} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += systemHtml();
-    html += `<p class="side-note">Read from the code's import lines, with no AI${f.partial ? `; only the first ${fmt(MAX_SCAN)} source files were read` : ""}. Tests, docs and examples are left out of the counts. Point at a file to see what it connects to.</p>`;
+    if (f.partial) html += `<p class="side-note">Only the first ${fmt(MAX_SCAN)} source files were read.</p>`;
     html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, core, main paths, modules and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
   sideBody.innerHTML = html;
@@ -2974,6 +3036,7 @@ function renderMap() {
 sideBody.addEventListener("click", e => {
   if (sideMode === "map" && e.target.closest("[data-map-md]")) { e.stopPropagation(); downloadOverview(); }
 }, true);
+function whyText(w) { return /^(\w+\.)?(re_)?path\(…\)$/.test(w) ? "URL route" : w; }   // how a starting function was found, readably
 function mapPaths(facts, idx) {
   const st = mapState;
   if (!st || st.city !== buildings) return { paths: [], meet: [] };
@@ -3004,7 +3067,7 @@ async function overviewMarkdown() {
   if (langs) out.push(`Written in ${langs}.`, "");
   out.push("## Where it starts", "");
   out.push(...(facts.entries.length ? facts.entries.map(e => `- ${file(e.path)}: ${text(e.reason)}`) : ["No clear entry point: this looks like a library others import."]), "");
-  if (facts.core.length) out.push("## The core", "", "The files most of the product imports.", "", ...facts.core.map((c, i) => `${i + 1}. ${file(c.path)}, used by ${n(c.users, "file")}`), "");
+  if (facts.core.length) out.push("## Most-used files", "", "The files most of the product imports.", "", ...facts.core.map((c, i) => `${i + 1}. ${file(c.path)}, used by ${n(c.users, "file")}`), "");
   if (mp.paths.length) {
     out.push("## Main paths", "", `From each entry point, the way the code goes${mp.calls ? ", following real function calls" : ", following imports"}.`, "");
     mp.paths.forEach((pth, k) => out.push(`${k + 1}. ${step(pth.entry.path, pth.entry.i)}: ${text(pth.entry.why)}`, ...pth.steps.slice(1).map(st => `   - then ${step(st.path, st.i)}`)));
@@ -3067,7 +3130,7 @@ function renderHotspotRows() {
   $("sideSub").textContent = viewNow ? `Top ${rows.length} of ${fmt(buildings.filter(b => b.userData.lines > 0).length)} files` : `As of ${document.getElementById("tlDate").textContent}`;
   if (!rows.length) { sideBody.innerHTML = `<p class="side-note">No files changed in this range.</p>`; return; }
   const top = rows[0].score;
-  sideBody.innerHTML = `<p class="side-note">Ranked by <b>commits × lines</b>: big files that keep changing. They are where bugs tend to cluster and where refactoring pays off first.</p>
+  sideBody.innerHTML = `
     <ol class="rank">${rows.map((r, i) => `<li><button type="button" data-path="${esc(r.b.userData.f.path)}">
       <span class="n">${i + 1}</span><span class="path">${pathHtml(r.b.userData.f.path)}</span>
       <span class="meta">${fmt(r.c)} commit${r.c === 1 ? "" : "s"} · ${r.b.userData.f.estimated ? "~" : ""}${fmt(r.lines)} lines</span>
@@ -3253,8 +3316,7 @@ function renderAsk() {
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
         <span class="n">${i + 1}</span><span class="path">${pathHtml(f.path)}</span><span class="meta">${esc(f.why)}</span></button></li>`;
     }).join("")}</ol>` : "") +
-    (askState.order.length ? `<div class="side-actions"><button type="button" class="primary" data-explain-answer>Explain the code of the top ${Math.min(MAX_EXPLAIN, askState.order.length)} files</button></div>
-      <p class="side-note">Gemini picked these from the repo's structure; explaining reads their code and opens it in its own window.</p>` : "");
+    (askState.order.length ? `<div class="side-actions"><button type="button" class="primary" data-explain-answer>Explain the code of the top ${Math.min(MAX_EXPLAIN, askState.order.length)} files</button></div>` : "");
 }
 function explainHtml(x) {
   const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
@@ -3270,8 +3332,8 @@ function explainHtml(x) {
     <section class="explain-file">
       <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
-      <p class="explain-text">${rich(f.explanation)}</p>
-      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><b>${esc(pt.name)}</b>${rich(pt.note)}</li>`).join("")}</ul></div>` : ""}
+      <p class="explain-text">${rich(f.explanation, f.path)}</p>
+      ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><button type="button" class="flink pname" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">${esc(pt.name)}</button> ${rich(pt.note, f.path)}</li>`).join("")}</ul></div>` : ""}
       ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how)).join("")}</ol></div>` : ""}
     </section>`).join("");
 }
@@ -3525,7 +3587,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
 function explainCol(st) {
   return `${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
     ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
-    ${st.files ? `<p class="side-note">Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</p>` : ""}`;
+`;
 }
 function paneHtml(p) {
   if (p.kind === "diff") return diffPaneHtml(p);
@@ -3809,6 +3871,20 @@ function declaredEntries(manifests, live) {
   }
   return out;
 }
+function startReason(f) {   // why a file named like a start is one, in plain words
+  const name = f.split("/").pop();
+  if (name === "manage.py") return "runs the Django project: its server and commands";
+  if (name === "__main__.py") return "runs the package as a program";
+  if (/^server\./.test(name)) return "starts the server";
+  if (/^cli\./.test(name)) return "the command line";
+  if (name === "app.py") return "creates the app";
+  if (/^(index|main|app)\.[cm]?[jt]sx?$/.test(name)) return "the first file the app loads";
+  return "starts the program";
+}
+function looseReason(f) {   // a file nothing imports, which still imports others
+  const m = /(^|\/)management\/commands\/(\w+)\.py$/.exec(f);
+  return m ? `a Django command: python manage.py ${m[2]}` : "runs on its own: nothing imports it";
+}
 function systemFacts(progress) {
   const g = getGraph();
   if (g.facts) return g.facts;
@@ -3834,14 +3910,16 @@ function systemFacts(progress) {
     // where execution starts: declared by the project, named like an entry point, or imported by nothing
     const why = declaredEntries(facts.manifests, live);
     const named = /(^|\/)(__main__\.py|manage\.py|main\.(py|go|rs|c|cc|cpp|kt|java|swift)|(index|main|server|app|cli)\.([cm]?[jt]sx?|py|rb|php))$/i;
+    const kind = new Map([...why.keys()].map(f => [f, 0]));   // 0 declared by the project, 1 named like a start, 2 a loose script
     for (const f of code) {
       if (aside(f) || why.has(f)) continue;
-      if (/(^|\/)cmd\/[^/]+\/main\.go$/.test(f) || (named.test(f) && f.split("/").length <= 3)) why.set(f, "named like an entry point");
+      // a file another product file imports (App.jsx, loaded by index.js) is a step on the way, not where it starts
+      if (users(f) && !/(^|\/)(manage\.py|__main__\.py|main\.go)$/.test(f)) continue;
+      if (/(^|\/)cmd\/[^/]+\/main\.go$/.test(f) || (named.test(f) && f.split("/").length <= 3)) { why.set(f, startReason(f)); kind.set(f, 1); }
     }
-    for (const f of code) if (!aside(f) && !why.has(f) && !users(f) && out.get(f).length >= 2) why.set(f, "imported by no other file");
-    const order = w => w.startsWith("named") ? 1 : w.startsWith("imported by no") ? 2 : 0;
-    facts.entries = [...why].map(([path, reason]) => ({ path, reason }))
-      .sort((a, b) => order(a.reason) - order(b.reason) || out.get(b.path)?.length - out.get(a.path)?.length || byDepth(a.path, b.path)).slice(0, 8);
+    for (const f of code) if (!aside(f) && !why.has(f) && !users(f) && out.get(f).length >= 2) { why.set(f, looseReason(f)); kind.set(f, 2); }
+    facts.entries = [...why].map(([path, reason]) => ({ path, reason, loose: kind.get(path) === 2 }))
+      .sort((a, b) => kind.get(a.path) - kind.get(b.path) || out.get(b.path)?.length - out.get(a.path)?.length || byDepth(a.path, b.path)).slice(0, 8);
     // the files most product files import; a small repo whose files are each used once still gets a list
     const ranked = code.filter(f => !aside(f) && users(f) > 0).sort((a, b) => users(b) - users(a) || out.get(b).length - out.get(a).length);
     facts.core = (ranked.filter(f => users(f) > 1).length >= 5 ? ranked.filter(f => users(f) > 1) : ranked).slice(0, 10).map(path => ({ path, users: users(path) }));
@@ -3971,6 +4049,8 @@ const CALL_GRAMMARS = { py: "python", js: "javascript", jsx: "javascript", mjs: 
 function callGrammar(path) { const m = /\.(\w+)$/.exec(path); return m ? CALL_GRAMMARS[m[1].toLowerCase()] || null : null; }
 const EVENT_CALL = /\.(on|once|addEventListener|addListener|subscribe|listen|handle|register)\s*$/;
 const ROUTE_CALL = /\.(get|post|put|patch|delete|all|use|route|HandleFunc|Handle|GET|POST|PUT|PATCH|DELETE|Any|Group)\s*$/;
+// Handed to these, a function isn't where requests come in: an HTTP client's hooks, Django admin's model list.
+const NOT_ENTRY = /\binterceptors\b|\.interceptors\.|\badmin[._]site\.register\b|^admin\.register$/;
 const ROUTE_DECO = /^@?\s*[\w.]*\b(route|get|post|put|patch|delete|head|options|websocket|api_route|command|group|task|on|listener|handler|endpoint|subscribe|consumer|before_request|after_request|errorhandler|cli\.command)\b/;
 const GENERIC_METHODS = new Set(["get", "set", "add", "run", "call", "apply", "bind", "send", "write", "read", "open", "close", "push", "pop", "append", "extend", "update", "keys", "values", "items", "map", "filter", "reduce", "join", "split", "format", "copy", "clear", "remove", "insert", "start", "stop", "init", "next", "then", "catch", "emit", "log", "error", "warn", "info", "debug", "toString", "render", "match", "test", "exec", "replace", "find", "has", "delete", "load", "save", "parse", "handle", "process", "execute", "invoke", "resolve", "reject", "flush", "reset", "string", "len", "String", "Error"]);
 const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -4276,8 +4356,9 @@ function makeCallIndex(files, resolveSpec, dirOf) {
     const add = (fromI, e) => { if (!e.r || e.r.dyn || e.r.path == null) return; const k = e.r.path + "\u0000" + e.r.i; if (!into.has(k)) into.set(k, []); into.get(k).push({ path, i: fromI, how: e.r.how, line: e.c.line }); };
     o.per.forEach((list, i) => list.forEach(e => add(i, e)));
     o.mod.forEach(e => add(-1, e));
-    for (const e of o.mod.concat(...o.per)) if (e.kind === "ref" && e.r && e.r.path && /\b(route|get|post|put|patch|delete|use|add_url_rule|handle|HandleFunc|on|addEventListener|command|register)\b/.test(e.c.via)) entries.push({ path: e.r.path, i: e.r.i, why: e.c.via + "(…)" });
+    for (const e of o.mod.concat(...o.per)) if (e.kind === "ref" && e.r && e.r.path && !NOT_ENTRY.test(e.c.via) && (/\b(route|get|post|put|patch|delete|use|add_url_rule|handle|HandleFunc|on|addEventListener|command|register)\b/.test(e.c.via) || (/(^|\/)urls\.py$/.test(path) && /^(re_)?path$|\.(re_)?path$/.test(e.c.via)))) entries.push({ path: e.r.path, i: e.r.i, why: e.c.via + "(…)" });
   }
+  for (let k = entries.length - 1; k >= 0; k--) if (NOT_ENTRY.test(entries[k].why)) entries.splice(k, 1);   // however they were found
   const seenEntry = new Set();
   return {
     files,
@@ -4531,7 +4612,15 @@ async function autoRead() {
 // From each entry point, the path the code takes, following real calls (or imports, for languages the parser
 // doesn't read), and the functions or files several paths pass through: where the workflows join. No AI.
 function mainPaths(facts, idx) {
-  const imp = f => facts.users(f);   // ties go to the file more of the code imports
+  const imp = f => facts.users(f), out = facts.out;   // ties go to the file more of the code imports
+  function importPath(e) {   // from a starting file, the import most worth following at each step
+    const seen = new Set([e.path]), queue = [e.path];
+    while (queue.length) for (const d of out.get(queue.shift()) || []) if (!seen.has(d) && !aside(d)) { seen.add(d); queue.push(d); }
+    seen.delete(e.path);
+    const steps = [{ path: e.path, i: -1 }], on = new Set([e.path]);
+    for (let p = e.path; steps.length < 7;) { const next = (out.get(p) || []).filter(d => !on.has(d) && !aside(d)).sort((a, b) => imp(b) - imp(a))[0]; if (!next) break; on.add(next); steps.push({ path: next, i: -1 }); p = next; }
+    return steps.length > 1 ? { entry: { path: e.path, i: -1, why: e.reason }, steps, reach: seen.size, seen } : null;
+  }
   if (idx) {
     const all = idx.entries.filter(e => !aside(e.path) && (e.i < 0 || idx.def(e.path, e.i))).slice(0, 60);
     const reachOf = (p, i, depth) => {   // every function it reaches, a few calls deep
@@ -4559,19 +4648,21 @@ function mainPaths(facts, idx) {
     }
     const picked = [], files = new Set();   // the longest-reaching, from different files where possible
     for (const pth of paths.sort((a, b) => b.reach - a.reach)) { if (picked.length >= 6) break; if (pth.steps.length < 2) continue; if (files.has(pth.entry.path) && picked.length >= 3) continue; files.add(pth.entry.path); picked.push(pth); }
+    // starting points the calls don't cover (a React app's index.js) follow their imports instead
+    for (const e of facts.entries.filter(x => !x.loose && !aside(x.path) && !picked.some(p => p.entry.path === x.path))) { const pth = importPath(e); if (pth) picked.push(pth); }
+    // the paths from where the program starts come first, then up to three from where requests come in
+    const startFiles = new Set(facts.entries.filter(x => !x.loose).map(x => x.path)), fromStart = picked.filter(p => startFiles.has(p.entry.path));
+    picked.splice(0, picked.length, ...fromStart, ...picked.filter(p => !startFiles.has(p.entry.path)).slice(0, Math.max(3, 6 - fromStart.length)));   // (all of fromStart is kept)
     const meet = [...reachedBy].filter(([, s]) => s.size > 1).map(([k, s]) => { const j = k.lastIndexOf(":"); return { path: k.slice(0, j), i: +k.slice(j + 1), n: s.size }; })
       .sort((a, b) => b.n - a.n || imp(b.path) - imp(a.path)).filter((m, j, all) => all.findIndex(x => x.path === m.path) === j).slice(0, 8);
     return { calls: true, paths: picked, meet };
   }
   // imports only: from each entry file, the import most worth following
-  const out = facts.out, reachedBy = new Map(), paths = [];
+  const reachedBy = new Map(), paths = [];
   for (const e of facts.entries.filter(x => !aside(x.path))) {
-    const seen = new Set([e.path]), queue = [e.path];
-    while (queue.length) for (const d of out.get(queue.shift()) || []) if (!seen.has(d) && !aside(d)) { seen.add(d); queue.push(d); }
-    seen.delete(e.path); for (const f of seen) { if (!reachedBy.has(f)) reachedBy.set(f, new Set()); reachedBy.get(f).add(e.path); }
-    const steps = [{ path: e.path, i: -1 }], on = new Set([e.path]);
-    for (let p = e.path; steps.length < 7;) { const next = (out.get(p) || []).filter(d => !on.has(d) && !aside(d)).sort((a, b) => imp(b) - imp(a))[0]; if (!next) break; on.add(next); steps.push({ path: next, i: -1 }); p = next; }
-    if (steps.length > 1) paths.push({ entry: { path: e.path, i: -1, why: e.reason }, steps, reach: seen.size });
+    const pth = importPath(e); if (!pth) continue;
+    for (const f of pth.seen) { if (!reachedBy.has(f)) reachedBy.set(f, new Set()); reachedBy.get(f).add(e.path); }
+    paths.push(pth);
   }
   const meet = [...reachedBy].filter(([, s]) => s.size > 1).map(([path, s]) => ({ path, i: -1, n: s.size })).sort((a, b) => b.n - a.n || imp(b.path) - imp(a.path)).slice(0, 8);
   return { calls: false, paths: paths.sort((a, b) => b.reach - a.reach).slice(0, 6), meet };
@@ -4681,22 +4772,25 @@ function systemHtml() {   // the modules part of Code structure
     if (systemLoading !== buildings) { const city = systemLoading = buildings; loadSystem().then(s => { if (systemLoading === city) systemLoading = null; if (s && sideMode === "map") renderSide(); }, () => { if (systemLoading === city) systemLoading = null; }); }
     return `<div><h3>How the parts connect</h3><p class="side-note">Reading modules…</p></div>`;
   }
-  const top = st.layers.length;
+  const tangled = new Set(st.cycles.flat().map(g => g.name));
+  const label = n => n === "(top)" ? "top-level files" : n.split("/").pop();
   const grp = g => {
-    const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length), by = [...g.usedBy].sort((a, b) => b[1].length - a[1].length);
-    return `<li><button type="button" data-group="${esc(g.name)}"><span class="n">${fmt(g.files.length)}</span><span class="path">${esc(g.name)}/</span>` +
-      `<span class="meta">${uses.length ? `uses ${uses.slice(0, 4).map(([n, e]) => `${esc(n.split("/").pop())} (${e.length})`).join(", ")}${uses.length > 4 ? "…" : ""}` : "uses no other module"}${by.length ? ` · used by ${fmt(by.length)}` : ""}</span></button></li>`;
+    const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([n]) => label(n)), by = g.usedBy.size;
+    const meta = !uses.length && !by ? "on its own" : [uses.length ? `uses ${uses.slice(0, 3).join(", ")}${uses.length > 3 ? ` and ${uses.length - 3} more` : ""}` : "", by ? `used by ${fmt(by)} part${by === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+    return `<li><button type="button" data-group="${esc(g.name)}"><span class="n">${fmt(g.files.length)}</span><span class="path">${esc(g.name === "(top)" ? "top-level files" : g.name + "/")}</span>` +
+      `<span class="meta">${g.files.length === 1 ? "1 file" : `${fmt(g.files.length)} files`} · ${esc(meta)}${tangled.has(g.name) ? " · tangled" : ""}</span></button></li>`;
   };
+  // parts that use others first, down to the ones everything uses; parts with no links at all last, biggest first
+  const all = st.layers.flat(), linked = all.filter(g => g.uses.size || g.usedBy.size), alone = all.filter(g => !g.uses.size && !g.usedBy.size).sort((a, b) => b.files.length - a.files.length);
   const cyc = c => {
     const names = c.map(g => g.name), ex = [];   // one import each way between the first two that link
     for (const a of names) for (const b of names) { const x = st.example.get(a + ">" + b), y = st.example.get(b + ">" + a); if (a < b && x && y && !ex.length) ex.push(x, y); }
-    return `<li class="warn"><b>${names.map(esc).join(" ⇄ ")}</b><span>${ex.length ? `${fileLink(ex[0][0], shortFile(ex[0][0]))} imports ${fileLink(ex[0][1], shortFile(ex[0][1]))}, and ${fileLink(ex[1][0], shortFile(ex[1][0]))} imports ${fileLink(ex[1][1], shortFile(ex[1][1]))}. ` : ""}No single file loop${st.fileCycles.length ? " here, except any listed below" : ""}, but the modules can't be separated.</span></li>`;
+    return `<li class="warn"><b>${names.map(n => esc(label(n))).join(" ⇄ ")}</b><span>${ex.length ? `For example, ${fileLink(ex[0][0], shortFile(ex[0][0]))} imports ${fileLink(ex[0][1], shortFile(ex[0][1]))}, and ${fileLink(ex[1][0], shortFile(ex[1][0]))} imports ${fileLink(ex[1][1], shortFile(ex[1][1]))}.` : ""}</span></li>`;
   };
-  return `<div><h3>How the parts connect</h3><p class="side-note">${fmt(st.groups.size)} module${st.groups.size === 1 ? "" : "s"} (the product's folders), in layers: each uses the ones below it. Point at one to light its files.</p></div>` +
-    st.layers.map((l, k) => `<div><h3>${top === 1 ? "One layer: these modules depend on each other" : k === 0 ? "Top: uses the others" : k === top - 1 ? "Foundation: used by the others" : `Layer ${top - k}`}</h3><ol class="rank">${l.map(grp).join("")}</ol></div>`).join("") +
-    (st.cycles.length || st.fileCycles.length ? `<div><h3>Import cycles</h3><p class="side-note">Modules or files that import each other when they load, so neither can be understood, tested or changed on its own (in Python a file loop can fail at import time). Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> are left out, since they don't run at load.</p><ul class="cycles">${st.cycles.map(cyc).join("")}` +
+  return `<div><h3>How the parts connect</h3><ol class="rank">${linked.concat(alone).map(grp).join("")}</ol></div>` +
+    (st.cycles.length || st.fileCycles.length ? `<div><h3>Tangles</h3><ul class="cycles">${st.cycles.map(cyc).join("")}` +
       st.fileCycles.map(c => `<li class="warn"><span>${c.map(f => fileLink(f, shortFile(f))).join(" → ")} → ${fileLink(c[0], shortFile(c[0]))}</span></li>`).join("") + `</ul></div>`
-      : `<p class="side-note">No import cycles: every module can be read from the bottom layer up.</p>`);
+      : `<p class="side-note">No tangles: no parts import each other in a loop.</p>`);
 }
 function systemMat(path) {   // while the map is open: the module you point at lights up, files in cycles glow
   const st = systemState && systemState.city === buildings ? systemState : null;
@@ -4829,7 +4923,7 @@ function renderCommits() {
   const order = commitOrder(st.commits), layout = laneLayout(order, st.commits), g = commitGraphSvg(layout);
   const sel = st.sel && st.commits.get(st.sel);
   const tags = sha => (st.heads.get(sha) || []).map(b => `<span class="cg-ref${b === st.def ? " def" : ""}">${esc(b)}</span>`).join("");
-  sideBody.innerHTML = (sel ? commitDetailHtml(st, sel) : `<p class="side-note">Newest first. Each lane is a line of work; a hollow dot is a merge. Click a commit to see what it changed in the city.</p>`) +
+  sideBody.innerHTML = (sel ? commitDetailHtml(st, sel) : "") +
     `<div class="cg" style="--cg-w:${g.w}px">${g.svg}<ol class="cg-rows">${layout.rows.map((r, i) => { const c = st.commits.get(r.sha); return `<li><button type="button" class="cg-row${r.sha === st.sel ? " on" : ""}${r.sha === st.now ? " now" : ""}" data-commit="${esc(r.sha)}" title="${esc(c.m)}">` +
       `<span class="cg-msg">${tags(r.sha)}${esc(c.m)}</span><span class="cg-meta">${esc(c.a || "")} · ${ago(c.t)}</span></button></li>`; }).join("")}</ol></div>` +
     (st.loading ? `<p class="side-note">Reading more commits…</p>` : st.more ? `<div class="side-actions"><button type="button" data-commits-more>Load older commits</button></div>` : "") +
@@ -5167,8 +5261,7 @@ function renderTour() {
       <div class="side-actions">
         <button type="button" class="primary" data-wf="0">Start the first workflow</button>
         <button type="button" data-tour="play">Auto-play all</button>
-      </div>
-      <p class="side-note">The map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans workflows from the repo's README, imports and functions; opening one reads its code for the important lines.</p>`;
+      </div>`;
   } else {
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
@@ -5195,8 +5288,7 @@ function renderTour() {
         <button type="button" class="primary" data-tour="next">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
         <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
         <button type="button" data-tour="files">Open this workflow's files</button>
-      </div>
-      <p class="side-note">Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step. Click a line number to see it in the code viewer.</p>`;
+      </div>`;
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
     if (cur && !again) cur.scrollIntoView({ block: "nearest" });
   }
@@ -5233,7 +5325,8 @@ function recMime() {
   if (typeof MediaRecorder === "undefined") return null;
   return ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || null;
 }
-recBtn.hidden = !recMime() || !HTMLCanvasElement.prototype.captureStream;
+if (!recMime() || !HTMLCanvasElement.prototype.captureStream) recBtn.dataset.unsupported = "1";
+recBtn.hidden = !hist || recBtn.dataset.unsupported === "1";
 recBtn.onclick = () => {
   if (rec && rec.url) return saveRecording();
   if (rec) return stopRecording();
