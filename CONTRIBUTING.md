@@ -66,7 +66,7 @@ When you change what Ask sends or returns, add a test next to the others in `ask
 - **History**: `loadHistory`, `stateAt`, `viewAt`, the history bar (`scrub`), playback and video.
 - **Side panels**: `openSide` / `renderSide`, one `render…` per panel (Commits, Code structure, Hotspots, Ask, Tour, Trace).
 - **Windows**: `panes`, `paneHtml`, `renderViewer`; code, explanation and diff windows.
-- **Reading code**: the import parser, the tree-sitter call index (`callIdx`), `importance`.
+- **Reading code**: the import parser, the tree-sitter call index (`callIdx`).
 - **Ask**: `ASK_URL` and the fetches to it; the server side is `netlify/functions/ask.mjs`.
 
 ## Style

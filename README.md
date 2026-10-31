@@ -26,7 +26,6 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 | Fire | A TODO, FIXME or HACK comment on that file's roof. |
 | Entry point | Where execution starts: a file the project declares (package.json `main`/`bin`, pyproject scripts…), one named like an entry point (`main.py`, `cmd/x/main.go`…), or one no other file imports. |
 | Core | The files most of the product imports (tests, docs and examples aren't counted). |
-| Importance | A score out of 100 for each file: how many product files depend on it (directly or through others) counts most, then how many import it directly, calls into it from other files, whether execution starts there, how often it changes, and its size. Tests, docs and examples count for less. |
 | Main path | From an entry point, the way the code goes: at each step the call (or, for languages Trace doesn't read, the import) that leads to the most code, with error handling counted for less. |
 | Change heat | How many commits touched a file, from dark blue (rarely) to orange-red (constantly). **Hotspots** colours the city this way. |
 | Hotspot | A file in the repo's top tenth for how often it changes (at least 2 changes). The PR view and the PR bot flag these. The **Hotspots** list ranks by *commits × lines* instead, so big files that keep changing come first. |
@@ -51,7 +50,7 @@ Opens by itself when a repo loads (and from **Code structure** under Understand)
 
 Further down, **How the parts connect** groups the product's files into modules (folders, at a depth that gives a readable number), sorted into layers: the modules that use the others on top, the foundations at the bottom. Each module lists the modules it uses and how many use it; pointing at one lights its files. **Import cycles** lists modules that import each other, with an import each way, and the shortest loops of files that import each other when they load. Imports that don't run at load (inside a Python function, under `if TYPE_CHECKING:`, or TypeScript `import type`) are left out, since they can't cause load-time cycles.
 
-**Download as Markdown** saves all of it as a page for your repo's docs or your team's wiki: what the project is, where it starts, the core, the main paths, the modules and import cycles, the most important files, hotspots (when history is loaded) and, if you took the tour, its workflows, marked as Gemini's reading. Files link to GitHub for a GitHub repo, and are relative links for a folder, so the page works from the repo's root.
+**Download as Markdown** saves all of it as a page for your repo's docs or your team's wiki: what the project is, where it starts, the core, the main paths, the modules and import cycles, hotspots (when history is loaded) and, if you took the tour, its workflows, marked as Gemini's reading. Files link to GitHub for a GitHub repo, and are relative links for a folder, so the page works from the repo's root.
 
 A repo's imports and functions are read as soon as it loads, and kept in this browser for that commit (the eight most recent; built-in repos for the day), so coming back reads nothing again.
 
@@ -60,10 +59,6 @@ A repo's imports and functions are read as soon as it loads, and kept in this br
 **Commits and branches** (under Display, or click the commit count in the top bar) shows the repo's history as a graph, like GitHub Desktop: newest at the top, one coloured lane per line of work, a dot per commit, and lines to its parents, so branches split off and merges join back (a hollow dot is a merge). Branch names sit on their newest commit. It reads the default branch's newest 100 commits (**Load older commits** for more) and the newest 30 of up to 8 other branches whose work isn't on it yet, about 11 GitHub requests the first time.
 
 Click a commit to see its message, author, date and the files it changed (lines added and removed), lit over the city in the pull request colours with everything else dimmed. When the commit is in the history the city loaded, the city goes back to that moment and the history bar opens there; **Back to today** returns. A commit outside the loaded history (newer than a built-in repo's saved history, or on another branch) keeps today's city with its files lit. For a folder or city file, its own history is shown as one line.
-
-### Importance
-
-**Importance** under Display colours each file by its importance score (see the table above) and names the eight most important files over their buildings. A file's panel shows its score and the reasons that weigh most, such as "21 product files (not tests) depend on it, directly or through others".
 
 ### History
 
@@ -75,16 +70,16 @@ The history bar opens when you load history from the history panel (▾ hides it
 - **Color by Imports**: colours each file by how many files import it, from dark (none) to bright (the core modules). The first time, it reads every source file's imports (one GitHub download each, once per city).
 - **Folders**: click a district (or its name) to open the folder. Everything outside it dims, and the panel shows its size, the folders inside and its biggest files. The path at the top of a file's or folder's panel links to each parent folder.
 
-- **Hotspots** (under Display) colours the city by change heat and ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building. Closing the list keeps the heat colours until you pick another colour.
+- **Hotspots** (under Display, beside Language) colours the city by change heat and ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building. Closing the list keeps the heat colours until you pick another colour.
 - **Show a pull request** (under Repo): enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
-- **Copy link** copies a link that reopens the same view, for example
+- **Copy link** (top right) copies a link that reopens the same view, for example
   `https://code-city-view.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
   `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.
   A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
 
 ### Ask the city
 
-Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, the most important files and why, the main paths (real function calls from each entry point), and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
+Type a question such as "where is authentication handled?". Before asking, the page reads the repo itself: the README's opening, the project manifests (`package.json`, `pyproject.toml`, `go.mod`…), which files import which, the most-imported files and likely entry points, the main paths (real function calls from each entry point), and the top-level functions and classes of the files that matter most (for repos of up to 600 source files; one GitHub download per file, done once per city). Gemini answers from that and the file list in a few sentences, naming the functions involved, and the files it points to light up. The page then pulls the source of the top three files (from GitHub, or the preview a city file carries) and Gemini explains how that code works: what each file does, its key parts with line numbers, and the other files it connects to. Each connection is marked **imports** when the code's import lines show it, or **inferred** when it's Gemini's reading.
 
 Asking needs **Sign in with GitHub** (a pasted token isn't enough, because it is only ever sent to GitHub), so the site's Gemini budget can't be spent anonymously. Each GitHub account gets 20 questions or tours an hour, plus 20 code explanations and 20 important-line readings, and at most 80 calls a day; the whole site gets 300 a day (set `ASK_PER_HOUR`, `ASK_PER_USER_DAY` and `ASK_PER_DAY` to change them). Calls that fail don't count. The counts are kept in Netlify Blobs. The same question, tour or explanation about the same code (same files, digest and code) is answered from a saved copy for 14 days, in Netlify Blobs, without calling Gemini or counting towards a limit; changed code is a new request. Signing out also revokes the sign-in token with GitHub.
 
