@@ -183,6 +183,9 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .seg-action { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; }
 .seg-action b { font: 600 14px var(--f-body); }
 .seg-action span { font-size: 12px; font-weight: 400; color: var(--ink-dim); }
+.tour-topic { margin: -2px 0 0; }
+.tour-topic input { width: 100%; box-sizing: border-box; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .seg-action.primary span { color: color-mix(in srgb, #1a1205 75%, transparent); }
 .seg-action[aria-pressed="true"] { border-color: var(--sodium); }
 .seg-action[hidden] { display: none; }
@@ -585,8 +588,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
-    <button id="recBtn" type="button" class="mini" title="Replay the history and save it as a video">Record video</button>
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
+    <button id="recBtn" type="button" class="mini" title="Record what you do here, or the history replay, as a video">Record video</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
 </header>
@@ -645,7 +648,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <p class="seg-note">Start here, then take the tour.</p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts, its key files, and how the parts connect</span></button>
-      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. Uses AI. To pick a topic, type it in Ask first.</span></button>
+      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
+      <form id="tourForm" class="tour-topic" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
     </div>
   </section>
 
@@ -3262,7 +3266,7 @@ async function initAsk() {
   try { const r = await fetch(ASK_URL, { cache: "no-store" }), d = r.ok ? await r.json() : {}; askEnabled = !!d.enabled; askOpen = askEnabled && !!d.open; }
   catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
-  $("tourBtn2").hidden = !askEnabled;
+  $("tourBtn2").hidden = $("tourForm").hidden = !askEnabled;
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
 // The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
@@ -5174,7 +5178,8 @@ document.getElementById("dLinks").addEventListener("click", async e => {
 const TOUR_STEP_MS = 7000;   // auto-play pace
 const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
 let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
-$("tourBtn2").onclick = () => startTour($("askInput").value);   // a topic typed in Ask focuses the tour
+$("tourBtn2").onclick = () => startTour($("tourTopic").value.trim());   // a workflow named below focuses the tour
+$("tourForm").addEventListener("submit", e => { e.preventDefault(); startTour($("tourTopic").value.trim()); });
 async function startTour(topic) {
   const gen = cityGen;
   const status = $("askStatus");

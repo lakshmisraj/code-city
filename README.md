@@ -117,7 +117,7 @@ If you leave the page (signing in with GitHub, the back button, a reload), its w
 
 ### Guided tours
 
-Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Workflows tour** under Understand (or type a topic in Ask first, such as "how checkout works"). Using the same reading of the repo, Gemini splits the software into its main workflows ("Starting the app", "Handling a request"), each an ordered walk through files that follows real imports where it can.
+Like asking, tours need Sign in with GitHub and count towards the same hourly limit. Press **Workflows tour** under Understand; for one workflow, write its name in the box below it first (such as "checkout") and press Enter. Using the same reading of the repo, Gemini splits the software into its main workflows ("Starting the app", "Handling a request"), each an ordered walk through files that follows real imports where it can.
 
 - **Overview: how the workflows merge.** The map draws every workflow at once, one colour each, and lights brightest the files workflows share. The panel explains how they fit together, lists each workflow with the ones it leads to, and lists the files where workflows meet.
 - **One workflow.** Open a workflow to step through it. Each step has its clickable file name (opens the file's panel; **View** opens its code), what happens there, its **important lines** (Gemini reads the code of the workflow's first four files when you open it), and the **hand-off** line where it imports the next step's file, found from the code. A hand-off with no import line behind it is marked *inferred*. Click any line number to see it in the code viewer.
