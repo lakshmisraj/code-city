@@ -1,6 +1,6 @@
 # Working on Code City
 
-Code City is one HTML page (`code-city.html`), a small Python tool (`codecity.py`) and a few Netlify Functions. There is no bundler and no framework: you edit the page, rebuild, and reload.
+Code City is one web page (written as `src/page.html`, `src/style.css` and `src/app.js`), a small Python tool (`codecity.py`) and a few Netlify Functions. There is no bundler and no framework: you edit `src/`, rebuild, and reload.
 
 ## Set up
 
@@ -21,17 +21,17 @@ Pick the one that matches what you're changing:
 | The page with sign-in, Ask, tours or explanations | `npm run dev` (needs `.env`, see the README's Dev server section) | the link it prints, with its one-time key |
 | The command-line tool | `python3 codecity.py .` (`GEMINI_API_KEY=… ` in front for Ask) | opens by itself |
 
-Both servers read `code-city.html` on every load, so a reload shows your edits. The dev server also rebuilds `site/index.html` for you.
+Both servers read `src/` on every load, so a reload shows your edits. The dev server also rebuilds `site/index.html` for you.
 
 ## The build
 
-Netlify serves `site/`. `site/index.html` is `code-city.html` wrapped in a document skeleton by `python3 codecity.py build` (or `npm run build`). **Commit both files together**: the tests fail when `site/index.html` is out of date.
+Netlify serves `site/`. `python3 codecity.py build` (or `npm run build`) puts `src/` together into `code-city.html`, the page as one file (the installed package and the claude.ai artifact use it), and wraps that in a document skeleton as `site/index.html`. **Commit them with your `src/` change**: the tests fail when either is out of date. Never edit `code-city.html` or `site/index.html` by hand.
 
 ## The package
 
-`pyproject.toml` builds the `code-city` package: `codecity.py`, the page and the parser, plus `local/ask-server.mjs` bundled with `ask.mjs` and its packages (`hatch_build.py` runs `npm run bundle:ask` when npm is there). To try a build:
+`pyproject.toml` builds the `code-city` package: `codecity.py`, the page and the parser, plus `local/ask-server.mjs` bundled with `ask.mjs` and its packages (`hatch_build.py` runs `npm run bundle:ask` when npm is there). To try a build (`pyproject-build` rather than `python3 -m build`: the repo's `build/` folder, where the ask server is bundled, would be taken for the build tool):
 
-    python3 -m pip install build && python3 -m build
+    python3 -m pip install build && pyproject-build
     pipx install dist/code_city-*.whl --force
 
 ## Releasing
@@ -73,7 +73,7 @@ When you change what Ask sends or returns, add a test next to the others in `ask
 
 ## Where things are in the page
 
-`code-city.html` is long, so search by section comment (`// ---------- name ----------`). The main ones:
+`src/app.js` is long, so search by section comment (`// ---------- name ----------`). The main ones:
 
 - **City**: `buildCity`, `layout`, building and district meshes, labels.
 - **History**: `loadHistory`, `stateAt`, `viewAt`, the history bar (`scrub`), playback and video.
@@ -92,5 +92,5 @@ When you change what Ask sends or returns, add a test next to the others in `ask
 ## Sending a change
 
 1. Branch from `dev`.
-2. Make the change, run `npm run build` if you touched `code-city.html`, and run `npm test`.
+2. Make the change, run `npm run build` if you touched `src/`, and run `npm test`.
 3. Open a pull request into `dev`. `main` is what Netlify deploys.

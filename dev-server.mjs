@@ -46,10 +46,10 @@ if (!TOKEN) { console.error("GITHUB_TOKEN is empty in .env: the dev page signs i
 process.env.ASK_LOCAL = "1";
 const ask = process.env.GEMINI_API_KEY ? (await import(pathToFileURL(path.join(ROOT, "netlify/functions/ask.mjs")).href)).default : null;
 
-// site/index.html is built from code-city.html; rebuild it whenever the source is newer.
+// site/index.html is built from src/; rebuild it whenever any of src/ is newer.
 function freshPage() {
-  const src = path.join(ROOT, "code-city.html"), out = path.join(SITE, "index.html");
-  if (!fs.existsSync(out) || fs.statSync(src).mtimeMs > fs.statSync(out).mtimeMs) {
+  const out = path.join(SITE, "index.html"), newest = Math.max(...["page.html", "style.css", "app.js"].map(f => fs.statSync(path.join(ROOT, "src", f)).mtimeMs));
+  if (!fs.existsSync(out) || newest > fs.statSync(out).mtimeMs) {
     const r = spawnSync("python3", ["codecity.py", "build"], { cwd: ROOT, encoding: "utf8" });
     if (r.status !== 0) console.error("Couldn't rebuild site/index.html:", r.stderr || r.error);
   }

@@ -1,0 +1,286 @@
+<title>Code City</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Instrument+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* src/style.css */
+</style>
+
+<div id="stage" aria-label="3D city where each building is a file"></div>
+
+<nav id="rail" aria-label="Tools">
+  <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder, show a pull request">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span class="rail-label" aria-hidden="true">Repo</span></button>
+  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: code structure and workflows">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
+  <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
+  <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections and hotspots">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
+  <span class="rail-spacer"></span>
+  <button type="button" class="rail-btn" data-seg="info" aria-pressed="false" aria-label="Info" title="Info: what Code City shows and how to read it">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5h.01"/></svg><span class="rail-label" aria-hidden="true">Info</span></button>
+  <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how to use Code City">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.5"/><path d="M12 17h.01"/></svg><span class="rail-label" aria-hidden="true">Guide</span></button>
+  <button type="button" class="rail-btn" data-seg="account" aria-pressed="false" aria-label="GitHub account" title="GitHub account and request limits">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg><span class="rail-label" aria-hidden="true">Account</span></button>
+</nav>
+
+<header id="topbar" aria-label="Repository on screen">
+  <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag" id="mode">Sample</span></div>
+  <div id="askSlot"></div>
+  <dl class="tb-stats">
+    <div><dt>files</dt><dd id="sFiles">0</dd></div>
+    <div><dt>lines</dt><dd id="sLines">0</dd></div>
+    <div id="tbCommits" class="tb-link" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
+    <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
+  </dl>
+  <div class="tb-actions">
+    <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
+    <button id="recBtn" type="button" class="mini" title="Record what you do here, or the history replay, as a video">Record video</button>
+    <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
+  </div>
+  <button id="tbMore" type="button" class="mini" aria-label="More: copy link, record video, reset view" title="More">⋯</button>
+</header>
+
+<section class="card" id="segPanel" aria-labelledby="segTitle">
+  <div class="seg-head"><h2 id="segTitle">Repository</h2><button type="button" id="segClose" class="mini" aria-label="Collapse the panel" title="Collapse">«</button></div>
+  <div class="seg-body">
+
+  <section class="segment" data-seg="repo">
+    <p class="intro">Understand a codebase at a glance: where it starts, what it depends on, how its workflows run, and how it grew. Each file is a building, each folder a district.</p>
+    <form class="field" id="repoForm" autocomplete="off">
+      <label for="repoInput">Open a GitHub repo</label>
+      <div class="inline">
+        <input id="repoInput" type="text" placeholder="github.com/owner/repo" spellcheck="false">
+        <button class="primary" type="submit">Build</button>
+      </div>
+      <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
+      <small id="repoStatus" aria-live="polite"></small>
+    </form>
+    <form class="field" id="prForm" autocomplete="off" hidden>
+      <label for="prInput">Show a pull request</label>
+      <div class="inline">
+        <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
+        <button type="submit">Show</button>
+      </div>
+      <small id="prStatus" aria-live="polite"></small>
+    </form>
+    <section class="hpanel" id="historyPanel" hidden aria-labelledby="hpTitle">
+      <div class="label" id="hpTitle">How much history?</div>
+      <p class="hp-info" id="hpInfo"></p>
+      <div class="hp-slider">
+        <span class="label" id="hpSliderLabel">Drag both ends to pick a stretch of history</span>
+        <div class="dual" id="hpDual">
+          <div class="dual-track"><div class="dual-fill" id="hpFill"></div></div>
+          <input id="hpFrom" type="range" min="0" max="1000" step="1" aria-label="Oldest commit to include">
+          <input id="hpTo" type="range" min="0" max="1000" step="1" aria-label="Newest commit to include">
+        </div>
+        <div class="dual-ticks" id="hpTicks" aria-hidden="true"></div>
+        <div class="hp-ends"><span id="hpFromLabel"></span><span id="hpToLabel"></span></div>
+      </div>
+      <p class="hp-estimate" id="hpEstimate"></p>
+      <p class="hp-warn" id="hpWarn" role="status"></p>
+      <details class="more hp-limits">
+        <summary>How GitHub's request limit works</summary>
+        <p id="hpLimits"></p>
+      </details>
+      <div class="actions">
+        <button class="primary" id="hpLoad" type="button">Load history</button>
+        <button id="hpSkip" type="button">Keep this view</button>
+      </div>
+    </section>
+    <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
+  </section>
+
+  <section class="segment" data-seg="understand">
+    <p class="seg-note">Start here, then take the tour.</p>
+    <div class="seg-actions">
+      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts, its key files, and how the parts connect</span></button>
+      <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
+      <form id="tourForm" class="tour-topic" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
+    </div>
+  </section>
+
+  <section class="segment" data-seg="find">
+    <div class="field">
+      <label for="q">Find a file</label>
+      <div class="q-wrap">
+        <input id="q" type="search" placeholder="e.g. payment, .test., src/db" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qList">
+        <ul id="qList" role="listbox" aria-label="Matching files" hidden></ul>
+      </div>
+      <small id="qInfo" aria-live="polite"></small>
+    </div>
+  </section>
+
+  <section class="segment" data-seg="display">
+    <div class="field">
+      <span class="label">Color buildings by</span>
+      <div class="seg" role="group" aria-label="Color buildings by">
+        <button type="button" id="cLang" aria-pressed="true">Language</button>
+        <button type="button" id="hotBtn" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
+        <button type="button" id="cImp" aria-pressed="false">Imports</button>
+      </div>
+    </div>
+    <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
+    <div class="field">
+      <span class="label">Over time</span>
+      <div class="seg-actions">
+        <button id="commitsBtn" type="button" class="seg-action" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
+      </div>
+    </div>
+    <div class="field" id="howTo">
+      <span class="label">Colours</span>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+
+  <section class="segment guide" data-seg="info">
+    <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
+    <div><h3>Reading the city</h3><ul>
+      <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
+      <li><b>Districts</b> = folders, raised one step per level.</li>
+      <li><b>Fire</b> on a roof = TODO, FIXME or HACK comments.</li>
+      <li><b>Lit buildings</b> show what the open panel is about: <span class="gk" style="background:#f2a541"></span>entry points and the file you picked, <span class="gk" style="background:#ffc46b"></span>core files, answers and tour steps, <span class="gk" style="background:#8ff5d2"></span>search matches. Everything else dims.</li>
+      <li><b>Lines between buildings</b> are imports: which file brings in which.</li>
+      <li><b>Hotspots</b> colours each file by how many commits touched it, from dark blue (rarely) to orange-red (constantly), and lists the big files that keep changing, where bugs tend to live.</li>
+    </ul></div>
+    <div><h3>Reading the panels</h3><ul>
+      <li><b>Code structure</b> is read from the code itself, with no AI; tests, docs and examples aren't counted. <b>Main paths</b> go from each starting point the way the code goes; click a step to trace it. In <b>How the parts connect</b> each folder is a part: parts that use others come first, then the ones they rely on, then parts with no links to the rest. Point at a part to light its files.</li>
+      <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
+      <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
+      <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
+      <li><b>Explanations</b>: select lines in a code window and press its <b>Explain</b> to explain just those (with nothing selected it explains the whole file); <b>Explain the whole file</b> at the top of that explanation does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
+      <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
+      <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
+    </ul></div>
+    <div><h3>Limits</h3><p>Without signing in, GitHub allows 60 requests an hour. Signing in raises it to 5,000 and unlocks Ask, tours and explanations, which have a daily limit per person.</p></div>
+  </section>
+
+  <section class="segment guide" data-seg="guide">
+    <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick look around, one part at a time.</p></div>
+    <div><h3>Start here</h3><ul>
+      <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
+      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
+      <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
+      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
+    </ul></div>
+    <div><h3>The tools</h3><ul>
+      <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
+      <li><b>Understand</b>: the <b>Code structure</b> (where it starts, the most-used files, main paths, how the parts connect, and tangles) and the workflows tour.</li>
+      <li><b>Find</b>: a file by name.</li>
+      <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
+      <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
+      <li><b>Display</b>: colour by language, <b>Hotspots</b> (how often files change, with a ranked list) or imports; show or hide connections.</li>
+      <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
+      <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
+    </ul></div>
+    <div><h3>Moving around</h3><ul>
+      <li>Drag to orbit, scroll (or pinch) to zoom, right-drag (or two fingers) to pan.</li>
+      <li>Click a building or a folder for details; shift-click a building to view its code.</li>
+      <li>Esc folds the front window, then closes the file panel, then the side panel.</li>
+      <li>Panels: click a rail icon again (or &laquo;) to fold the left panel; &raquo; folds a right panel. Drag a panel's edge to resize it.</li>
+    </ul></div>
+  </section>
+
+  <section class="segment" data-seg="account">
+    <div class="signin" id="signinRow" hidden>
+      <button type="button" class="gh-btn" data-signin>Sign in with GitHub</button>
+      <span>Signing in raises GitHub's limit from 60 to 5,000 requests an hour, and unlocks Ask, tours and explanations.</span>
+    </div>
+    <div class="signin" id="signedinRow" hidden>
+      <span>Signed in as <b id="ghLogin">GitHub</b></span>
+      <button class="linkish" type="button" id="signoutBtn">Sign out</button>
+    </div>
+    <details class="more" id="tokenBox">
+      <summary id="tokenSummary">Get more GitHub requests: add a token</summary>
+      <div class="field">
+        <label for="ghToken">GitHub token</label>
+        <input id="ghToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+        <label class="check" for="rememberToken"><input type="checkbox" id="rememberToken"> Remember on this device</label>
+        <small class="help">Raises GitHub's limit from 60 to 5,000 requests an hour, and opens private repos. Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: <b>Public repositories</b> for more requests, or, for private ones, <b>Only select repositories</b> with <b>Contents: Read-only</b>. It can't change anything, and it is only ever sent to api.github.com. A private repo's files cost one request each.</small>
+      </div>
+    </details>
+  </section>
+
+  </div>
+  <div class="seg-resize" id="segResize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0"></div>
+</section>
+
+<form class="group" id="askForm" autocomplete="off" hidden aria-labelledby="gAsk">
+  <h2 class="group-title" id="gAsk">Ask</h2>
+  <div class="field">
+    <label for="askInput">Ask the city, or take a tour</label>
+    <div class="inline">
+      <input id="askInput" type="text" maxlength="300" placeholder="Ask about the code, e.g. where is authentication handled?" spellcheck="false">
+      <button class="primary" type="submit">Ask</button>
+    </div>
+    <small id="askStatus" aria-live="polite"></small>
+  </div>
+</form>
+
+<aside id="drawer" hidden aria-label="File details">
+  <div class="panel-edge" role="separator" aria-orientation="vertical" aria-label="Resize the file panel" tabindex="0"></div>
+  <div class="drawer-head">
+    <div><h2 id="dName"></h2><p id="dPath"></p></div>
+    <button type="button" class="mini panel-fold" data-fold aria-label="Collapse the file panel" title="Collapse">»</button>
+    <button id="closeBtn" type="button" class="mini" aria-label="Close the file panel" title="Close">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div id="dActions"></div>
+    <p id="dRole"></p>
+    <dl class="stats" id="dStats"></dl>
+    <div id="dLinks"></div>
+    <div id="dCode"></div>
+    <div id="dTodos"></div>
+  </div>
+</aside>
+
+<aside id="side" hidden aria-labelledby="sideTitle">
+  <div class="panel-edge" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabindex="0"></div>
+  <div class="drawer-head">
+    <div><h2 id="sideTitle"></h2><p id="sideSub"></p></div>
+    <button type="button" class="mini panel-fold" data-fold aria-label="Collapse the side panel" title="Collapse">»</button>
+    <button id="sideClose" type="button" class="mini" aria-label="Close the side panel" title="Close">✕</button>
+  </div>
+  <div class="drawer-body" id="sideBody"></div>
+</aside>
+<section id="viewer" hidden aria-label="Code viewer">
+  <div class="viewer-panes" id="viewerPanes"></div>
+  <nav class="win-tabs" id="winTabs" aria-label="Open windows"></nav>
+</section>
+<div id="toast" role="status" aria-live="polite"></div>
+<div class="ctx-menu" id="ctxMenu" role="menu" hidden></div>
+<div id="siteTour" hidden role="dialog" aria-modal="true" aria-labelledby="stTitle"><div class="st-spot"></div>
+  <div class="st-card"><button type="button" class="mini st-close" data-st="close" aria-label="Close the tour" title="Close the tour">✕</button>
+    <h3 id="stTitle"></h3><p id="stText"></p>
+    <div class="st-foot"><span class="st-count" id="stCount"></span><button type="button" class="mini" data-st="back">Back</button><button type="button" class="mini primary" data-st="next">Next</button></div></div></div>
+
+<button id="tlShow" type="button" hidden aria-label="Show the history bar" title="Show the history bar">^</button>
+<div id="timeline" hidden>
+  <button id="tlClose" type="button" class="tl-close" aria-label="Hide the history bar" title="Hide the history bar">▾</button>
+  <button id="playBtn" type="button" class="primary">Play history</button>
+  <div class="tl-main">
+    <input id="scrub" type="range" min="0" max="1" value="1" step="1" aria-label="Point in history">
+    <div class="tl-info"><span id="tlDate"></span><code id="tlHash"></code><span id="tlAuthor"></span><span id="tlMsg"></span></div>
+  </div>
+  <button id="speedBtn" type="button" title="Commits per second" aria-label="Playback speed: 8 commits per second">8/s</button>
+</div>
+
+
+<div id="tip" hidden></div>
+<div id="drop" hidden>Drop a folder or city.json</div>
+<div id="busy" hidden role="status" aria-live="polite"><span id="busyText">Surveying files&hellip;</span><button id="cancelLoad" type="button">Cancel</button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" integrity="sha384-wagZhIFgY4hD+7awjQjR4e2E294y6J2HSnd8eTNc15ZubTeQeVRZwhQJ+W6hnBsf" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js" integrity="sha384-nhO9toQuMo5osCuA0l+YFpSqscZWxDu251Bnho2gD3kSPv1neEwHg0LyEmrA+mPj" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js" integrity="sha384-mY+ii969jnDCI2HjRHftH2NZVkIO5ZGUkcnGCg3oVJ3kVstWQXwerYWBg+nbUG4R" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js" integrity="sha384-GkidzTYmQg24v13sa3xhBBbvOLbVLO1QxfyKLdOWweQqNqS/iWwUst2T1fER2Xrg" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js" integrity="sha384-2EpLreWSFuZsk4hcSplXLhlHd/wzvDNF907bTGIXSXM0SlhJNzy4YK0DhBFvkFEs" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js" integrity="sha384-I3lsvPeDJYFrEAzn/TA0yhc/SCYKwpyfyq8lKzHYKohu43H9f7xc/Q9ZWgSVUDl3" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js" integrity="sha384-aVQ2QnWkoxhOefDB0YZB64OPVzujvccydpcC7UqMDJUK0ChwA382zOHmrWHGDRRa" crossorigin="anonymous"></script>
+<script>
+// src/app.js
+</script>

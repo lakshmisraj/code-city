@@ -43,5 +43,5 @@ path = "hatch_build.py"
 "site/vendor/tree-sitter" = "codecity_assets/site/vendor/tree-sitter"
 
 [tool.hatch.build.targets.sdist]
-include = ["codecity.py", "code-city.html", "site/vendor/tree-sitter", "README.md", "LICENSE", "pyproject.toml",
-           "hatch_build.py", "package.json", "package-lock.json", "local/ask-server.mjs", "netlify/functions/ask.mjs"]
+include = ["/codecity.py", "/code-city.html", "/src", "/site/vendor/tree-sitter", "/README.md", "/LICENSE", "/pyproject.toml",
+           "/hatch_build.py", "/package.json", "/package-lock.json", "/local/ask-server.mjs", "/netlify/functions/ask.mjs"]

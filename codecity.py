@@ -5,7 +5,7 @@
   code-city pallets/flask        clone a public repo and open its city
   code-city                      open the app; paste a repo URL or a folder there
   code-city export owner/repo    write repo.json to drop into the published page
-  code-city build                write site/index.html for static hosting (Netlify), from a checkout
+  code-city build                build code-city.html and site/index.html from src/, in a checkout
 
 Installed with `pipx install code-city`, or run from a checkout as `python3 codecity.py ...`.
 Needs only Python 3.8+ and git. Public repos are cloned into ~/.cache/code-city.
@@ -34,7 +34,7 @@ ASSETS = HERE if os.path.isfile(os.path.join(HERE, "code-city.html")) else os.pa
 START = None   # what the command line asked to open; the page asks for it once it's up (see /api/start)
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "code-city")
 
-# Keep in sync with EXT / SPECIAL / SKIP_DIRS in code-city.html. Never add "env": .env files hold secrets, and
+# Keep in sync with EXT / SPECIAL / SKIP_DIRS in src/app.js. Never add "env": .env files hold secrets, and
 # exported cities carry each file's first lines (and get shared); the page can also send them to Gemini.
 CODE_EXT = set("""ts tsx mts cts js jsx mjs cjs vue svelte py ipynb go rs java scala kt kts c h cc cpp hpp cxx cs rb php
 swift css scss sass less html htm sql sh bash zsh ps1 md mdx rst txt json yml yaml toml ini xml gradle lock
@@ -272,10 +272,30 @@ FAVICON = ("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 vie
            "%3Crect x=%2222%22 y=%2210%22 width=%225%22 height=%2218%22 fill=%22%234fb38a%22/%3E%3C/svg%3E")
 
 
+# The page is edited as src/page.html, src/style.css and src/app.js. `code-city build` puts them together into
+# code-city.html, one page body (that's how the claude.ai artifact and the installed package take it), and
+# site/index.html. In a checkout the server reads src/ on every load, so a reload shows edits.
+SRC = os.path.join(HERE, "src")
+STYLE_MARK, APP_MARK = "/* src/style.css */", "// src/app.js"
+
+
+def assembled():
+    """src/page.html with src/style.css and src/app.js put in their places: the page body."""
+    def read(name):
+        with open(os.path.join(SRC, name), encoding="utf-8") as fh:
+            return fh.read()
+    shell = read("page.html")
+    assert STYLE_MARK in shell and APP_MARK in shell, "src/page.html lost its style or app placeholder"
+    return shell.replace(STYLE_MARK, read("style.css").rstrip("\n"), 1).replace(APP_MARK, read("app.js").rstrip("\n"), 1)
+
+
 def page():
-    """code-city.html is written as a page body (that's how the claude.ai artifact takes it); wrap it in a full document."""
-    with open(os.path.join(ASSETS, "code-city.html"), encoding="utf-8") as fh:
-        body = fh.read()
+    """The page body (from src/ in a checkout, else the built code-city.html), wrapped in a full document."""
+    if os.path.isfile(os.path.join(SRC, "page.html")):
+        body = assembled()
+    else:
+        with open(os.path.join(ASSETS, "code-city.html"), encoding="utf-8") as fh:
+            body = fh.read()
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
             '<meta name="description" content="Turn a code repo into a 3D night city: replay its git history and find change hotspots.">'
@@ -430,14 +450,16 @@ def main(argv=None):
     e.add_argument("src", help="repo URL, owner/name, or local folder")
     e.add_argument("-o", "--out")
     e.add_argument("--no-source", action="store_true", help="leave out file previews (smaller file)")
-    sub.add_parser("build", help="write site/index.html for static hosting (from a checkout)")
+    sub.add_parser("build", help="put src/ together into code-city.html and site/index.html (from a checkout)")
     args = ap.parse_args(argv)
 
     if args.cmd == "build":
+        with open(os.path.join(HERE, "code-city.html"), "w", encoding="utf-8", newline="") as fh:
+            fh.write(assembled())
         os.makedirs(os.path.join(HERE, "site"), exist_ok=True)
         with open(os.path.join(HERE, "site", "index.html"), "wb") as fh:
             fh.write(page())
-        print("Wrote site/index.html")
+        print("Wrote code-city.html and site/index.html from src/")
         return
 
     if args.cmd == "export":

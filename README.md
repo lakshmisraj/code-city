@@ -208,7 +208,7 @@ For working on the site itself: the dev copy of the page, signed in with GitHub 
 2. Make it private: `chmod 600 .env` (the server refuses to start otherwise).
 3. Run `node dev-server.mjs` and open the link it prints (http://codecity.localhost:8813/?key=…). The key is new on every run and keeps other programs on your machine from reading the signed-in page.
 
-It rebuilds the page whenever `code-city.html` changes, so a reload shows edits. It only listens on this machine, only answers `codecity.localhost`, and only gives the signed-in page and Ask to the browser that opened its link, so nothing else on the network or the machine, and no other website, can read the token or spend questions through it. Question limits and timing notes need Netlify Blobs, so they're off here. Needs Node 18+ and Python 3.
+It rebuilds the page whenever a file in `src/` changes, so a reload shows edits. It only listens on this machine, only answers `codecity.localhost`, and only gives the signed-in page and Ask to the browser that opened its link, so nothing else on the network or the machine, and no other website, can read the token or spend questions through it. Question limits and timing notes need Netlify Blobs, so they're off here. Needs Node 18+ and Python 3.
 
 ## Troubleshooting
 
@@ -232,7 +232,9 @@ The timelapse follows the main line of history (first parents), with each merge 
 
 | Path | What it is |
 |---|---|
-| `code-city.html` | The whole app: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, Code structure, windows |
+| `src/app.js` | The whole app's code: Three.js scene, treemap layout, timelapse, heat map, hotspots, PR view, import parser, Code structure, windows, site tour |
+| `src/style.css`, `src/page.html` | Its styles, and the page's markup with the panels and the scripts it loads |
+| `code-city.html` | Built from `src/` by `python3 codecity.py build`: the same page as one file (the installed package and the claude.ai artifact use it). Don't edit it by hand |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `local/ask-server.mjs` | Runs `ask.mjs` for `code-city` with your own Gemini key; the installed package carries it bundled (`npm run bundle:ask`) |
@@ -241,7 +243,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 | `tests/` | `npm test`: the Ask function, the page, and the `code-city` command |
 | `netlify/functions/` | Server code on Netlify: `ask.mjs` (Ask, tours, explanations, important lines via Gemini), `github-login.js` / `github-callback.js` (Sign in with GitHub) and `github-signout.js` (revokes the token on sign-out) |
 | `site/vendor/tree-sitter/` | The parser behind Trace: web-tree-sitter 0.20.8 and grammars for Python, JavaScript, TypeScript and Go (see its README) |
-| `site/` | What Netlify serves. Rebuild `site/index.html` with `python3 codecity.py build` after editing `code-city.html`. Pushing to `main` deploys it. |
+| `site/` | What Netlify serves. Rebuild it (and `code-city.html`) with `python3 codecity.py build` after editing `src/`. Pushing to `main` deploys it. |
 
 ## License
 
