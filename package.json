@@ -2,8 +2,16 @@
   "name": "code-city",
   "private": true,
   "description": "Netlify Functions for Code City (sign-in and Ask the city)",
+  "scripts": {
+    "test": "node --test --experimental-test-module-mocks \"tests/*.test.mjs\"",
+    "build": "python3 codecity.py build",
+    "dev": "node dev-server.mjs"
+  },
   "dependencies": {
     "@google/genai": "^2.31.0",
     "@netlify/blobs": "11.1.4"
+  },
+  "devDependencies": {
+    "playwright": "1.59.1"
   }
 }
