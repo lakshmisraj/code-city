@@ -8,7 +8,7 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 
 ### Try it
 
-The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (Code structure, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
+The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (Code structure, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), **Info** (what Code City is, reading the city and its panels, limits), the **Guide** (how to start, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **Code structure**, which opens on its own: what the project is, where execution starts, its core files and how its modules connect, all read from the code. Point at a file to see what it connects to.

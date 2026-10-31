@@ -572,7 +572,9 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   <button type="button" class="rail-btn" data-seg="display" aria-pressed="false" aria-label="Display" title="Display: colours, connections and hotspots">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span class="rail-label" aria-hidden="true">Display</span></button>
   <span class="rail-spacer"></span>
-  <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how Code City works">
+  <button type="button" class="rail-btn" data-seg="info" aria-pressed="false" aria-label="Info" title="Info: what Code City shows and how to read it">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5h.01"/></svg><span class="rail-label" aria-hidden="true">Info</span></button>
+  <button type="button" class="rail-btn" data-seg="guide" aria-pressed="false" aria-label="Guide" title="Guide: how to use Code City">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.5"/><path d="M12 17h.01"/></svg><span class="rail-label" aria-hidden="true">Guide</span></button>
   <button type="button" class="rail-btn" data-seg="account" aria-pressed="false" aria-label="GitHub account" title="GitHub account and request limits">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg><span class="rail-label" aria-hidden="true">Account</span></button>
@@ -686,14 +688,8 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     </div>
   </section>
 
-  <section class="segment guide" data-seg="guide">
+  <section class="segment guide" data-seg="info">
     <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
-    <div><h3>Start here</h3><ul>
-      <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
-      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
-      <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
-      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
-    </ul></div>
     <div><h3>Reading the city</h3><ul>
       <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
       <li><b>Districts</b> = folders, raised one step per level.</li>
@@ -701,6 +697,25 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Lit buildings</b> show what the open panel is about: <span class="gk" style="background:#f2a541"></span>entry points and the file you picked, <span class="gk" style="background:#ffc46b"></span>core files, answers and tour steps, <span class="gk" style="background:#8ff5d2"></span>search matches. Everything else dims.</li>
       <li><b>Lines between buildings</b> are imports: which file brings in which.</li>
       <li><b>Hotspots</b> colours each file by how many commits touched it, from dark blue (rarely) to orange-red (constantly), and lists the big files that keep changing, where bugs tend to live.</li>
+    </ul></div>
+    <div><h3>Reading the panels</h3><ul>
+      <li><b>Code structure</b> is read from the code itself, with no AI; tests, docs and examples aren't counted. <b>Main paths</b> go from each starting point the way the code goes; click a step to trace it. In <b>How the parts connect</b> each folder is a part: parts that use others come first, then the ones they rely on, then parts with no links to the rest. Point at a part to light its files.</li>
+      <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
+      <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
+      <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
+      <li><b>Explanations</b>: select lines in a code window and press its <b>Explain</b> to explain just those (with nothing selected it explains the whole file); <b>Explain the whole file</b> at the top of that explanation does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
+      <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
+      <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
+    </ul></div>
+    <div><h3>Limits</h3><p>Without signing in, GitHub allows 60 requests an hour. Signing in raises it to 5,000 and unlocks Ask, tours and explanations, which have a daily limit per person.</p></div>
+  </section>
+
+  <section class="segment guide" data-seg="guide">
+    <div><h3>Start here</h3><ul>
+      <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
+      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
+      <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
+      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
     </ul></div>
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
@@ -712,22 +727,12 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
-    <div><h3>Reading the panels</h3><ul>
-      <li><b>Code structure</b> is read from the code itself, with no AI; tests, docs and examples aren't counted. <b>Main paths</b> go from each starting point the way the code goes; click a step to trace it. In <b>How the parts connect</b> each folder is a part: parts that use others come first, then the ones they rely on, then parts with no links to the rest. Point at a part to light its files.</li>
-      <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
-      <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
-      <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
-      <li><b>Explanations</b>: select lines in a code window and press its <b>Explain</b> to explain just those (with nothing selected it explains the whole file); <b>Explain the whole file</b> at the top of that explanation does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
-      <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
-      <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
-    </ul></div>
     <div><h3>Moving around</h3><ul>
       <li>Drag to orbit, scroll (or pinch) to zoom, right-drag (or two fingers) to pan.</li>
       <li>Click a building or a folder for details; shift-click a building to view its code.</li>
       <li>Esc folds the front window, then closes the file panel, then the side panel.</li>
       <li>Panels: click a rail icon again (or &laquo;) to fold the left panel; &raquo; folds a right panel. Drag a panel's edge to resize it.</li>
     </ul></div>
-    <div><h3>Limits</h3><p>Without signing in, GitHub allows 60 requests an hour. Signing in raises it to 5,000 and unlocks Ask, tours and explanations, which have a daily limit per person.</p></div>
   </section>
 
   <section class="segment" data-seg="account">
@@ -1747,7 +1752,7 @@ document.getElementById("cImp").onclick = () => setColorMode("imports");
 // ---------- left rail and its segments ----------
 // Each rail icon opens its segment in the panel beside the rail; clicking the open one (or «) collapses the
 // panel. The panel's edge drags to resize it. Which segment, and the width, are remembered.
-const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", guide: "Guide", account: "GitHub account" };
+const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", info: "Info", guide: "Guide", account: "GitHub account" };
 let segOpen = "guide";   // a first visit opens the guide
 try { const saved = localStorage.getItem("codecity.seg"); if (saved !== null) segOpen = saved === "" ? null : saved;
   const w = +localStorage.getItem("codecity.segW"); if (w) document.body.style.setProperty("--seg-w", w + "px"); } catch (e) { /* storage blocked */ }
@@ -1952,15 +1957,14 @@ function openDrawer(b) {
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
-// Where a file stands in the system, in one line: an entry point or core file (from Code structure) and how
+// Where a file stands in the system, in one line: whether it's a starting point (from Code structure) and how
 // many files use it (once the imports have been read).
 function fileRole(path) {
   const f = mapState && mapState.city === buildings && mapState.facts;
   const n = graph && graph.usedBy ? (graph.usedBy.get(path) || new Set()).size : null;
   const used = n == null ? "" : n ? `used by ${fmt(n)} file${n === 1 ? "" : "s"}` : "no other file imports it";
-  const entry = f && f.entries.find(e => e.path === path), core = f ? f.core.findIndex(c => c.path === path) : -1;
+  const entry = f && f.entries.find(e => e.path === path);
   if (entry) return `<b>Entry point</b> · ${esc(entry.reason)}${used ? " · " + used : ""}`;
-  if (core >= 0) return `<b>Core file #${core + 1}</b>${used ? " · " + used : ""}`;
   return used ? used[0].toUpperCase() + used.slice(1) + "." : "";
 }
 // The drawer's outline (the file's functions and classes with their lines; clicking one opens the code there)
