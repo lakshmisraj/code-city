@@ -2,3 +2,4 @@ server/
 node_modules/
 *.vsix
 LICENSE
+.vscode-test/

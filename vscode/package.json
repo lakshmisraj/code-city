@@ -5,26 +5,74 @@
   "version": "0.1.0",
   "publisher": "lakshmisraj",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/lakshmisraj/code-city" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lakshmisraj/code-city"
+  },
   "homepage": "https://code-city-view.netlify.app",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Visualization", "Other"],
-  "keywords": ["codebase", "architecture", "onboarding", "git history", "visualization"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "codebase",
+    "architecture",
+    "onboarding",
+    "git history",
+    "visualization"
+  ],
   "main": "./extension.js",
   "capabilities": {
-    "untrustedWorkspaces": { "supported": false, "description": "Code City runs Python and git on the workspace." }
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Code City runs Python and git on the workspace."
+    }
   },
   "contributes": {
     "commands": [
-      { "command": "codeCity.open", "title": "Open the City", "category": "Code City" },
-      { "command": "codeCity.reveal", "title": "Show This File in the City", "category": "Code City" },
-      { "command": "codeCity.setGeminiKey", "title": "Set Gemini API Key (for Ask)", "category": "Code City" },
-      { "command": "codeCity.clearGeminiKey", "title": "Remove Gemini API Key", "category": "Code City" }
+      {
+        "command": "codeCity.open",
+        "title": "Open the City",
+        "category": "Code City"
+      },
+      {
+        "command": "codeCity.reveal",
+        "title": "Show This File in the City",
+        "category": "Code City"
+      },
+      {
+        "command": "codeCity.setGeminiKey",
+        "title": "Set Gemini API Key (for Ask)",
+        "category": "Code City"
+      },
+      {
+        "command": "codeCity.clearGeminiKey",
+        "title": "Remove Gemini API Key",
+        "category": "Code City"
+      }
     ],
     "menus": {
-      "commandPalette": [{ "command": "codeCity.reveal", "when": "codeCity.open" }],
-      "editor/title/context": [{ "command": "codeCity.reveal", "when": "codeCity.open" }],
-      "explorer/context": [{ "command": "codeCity.reveal", "when": "codeCity.open && !explorerResourceIsFolder" }]
+      "commandPalette": [
+        {
+          "command": "codeCity.reveal",
+          "when": "codeCity.open"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "codeCity.reveal",
+          "when": "codeCity.open"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "codeCity.reveal",
+          "when": "codeCity.open && !explorerResourceIsFolder"
+        }
+      ]
     },
     "configuration": {
       "title": "Code City",
@@ -40,9 +88,11 @@
   },
   "scripts": {
     "prepare-server": "node scripts/prepare-server.mjs",
-    "package": "npm run prepare-server && vsce package --no-dependencies"
+    "package": "npm run prepare-server && vsce package --no-dependencies",
+    "test:vscode": "node test/run.mjs"
   },
   "devDependencies": {
+    "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "3.9.2"
   }
 }

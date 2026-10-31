@@ -24,6 +24,7 @@ function activate(context) {
       vscode.window.showInformationMessage("Code City: Gemini key removed. Reopen the city to turn Ask off.");
     }),
     { dispose: closeCity });
+  return { cityForTests: () => city && { root: city.root, url: city.url, panel: city.panel } };   // read by test/suite.js
 }
 
 function deactivate() { closeCity(); }

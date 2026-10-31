@@ -63,6 +63,9 @@ It runs everything in `tests/`:
 - `browser/private-repo.test.mjs`: a private repo on the hosted page with a pasted token, against a stand-in GitHub: files come through the API, and the token goes only to api.github.com.
 - `vscode-page.test.mjs`: the page framed like the extension's webview: a reveal message opens the file's building and Open in editor messages the parent.
 - `cli.test.mjs`: the `code-city` command on a small throwaway repo, including Ask with your own key (with a dummy key, so Gemini is never called).
+- `browser/features.test.mjs`: the site tour (first visit in the local app; on the hosted site every signed-out visit, and once per GitHub account), the language key and Hotspots, explaining selected lines (and that pointing to a key part leaves the explanation in place), and recording. Ask, GitHub and sign-in are stand-ins answered by the test.
+
+The extension in a real VS Code: `npm run test:vscode` in `vscode/`. It downloads a separate copy of VS Code into `vscode/.vscode-test/` the first time (about 330 MB), opens it for a few seconds on a small repo, runs Open the City, checks the local server answers for the workspace, and closes it. It isn't part of `npm test` or CI (Linux CI would need a virtual display).
 
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`).
 

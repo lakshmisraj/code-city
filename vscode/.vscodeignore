@@ -2,3 +2,5 @@ scripts/**
 node_modules/**
 *.vsix
 .gitignore
+test/**
+.vscode-test/**
