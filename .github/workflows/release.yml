@@ -1,0 +1,69 @@
+# Publishes a release when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0): the `code-city`
+# package to PyPI, and the VS Code extension to the Marketplace when its token is set. The one-time setup is in
+# CONTRIBUTING.md ("Releasing"). Nothing here runs on ordinary pushes.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches both versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          py=$(python3 -c "import codecity; print(codecity.__version__)")
+          ext=$(node -p "require('./vscode/package.json').version")
+          echo "tag $tag, codecity.py $py, vscode/package.json $ext"
+          test "$tag" = "$py" && test "$tag" = "$ext"
+
+  pypi:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # PyPI trusted publishing: no token is stored anywhere
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci   # the package carries the bundled ask server
+      - run: python -m pip install build && python -m build
+      - name: The wheel carries the page and the ask server
+        run: |
+          python -m zipfile -l dist/*.whl > files.txt
+          grep -q "codecity_assets/" files.txt && grep -q "ask-server.mjs" files.txt
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  vscode:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: npm ci && npm run package
+        working-directory: vscode
+      - name: Publish to the VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath code-city-*.vsix
+        working-directory: vscode
+      - name: No Marketplace token yet
+        if: env.VSCE_PAT == ''
+        run: echo "::notice::VSCE_PAT isn't set, so the extension was built but not published. See CONTRIBUTING.md, Releasing."

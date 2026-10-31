@@ -34,7 +34,17 @@ Netlify serves `site/`. `site/index.html` is `code-city.html` wrapped in a docum
     python3 -m pip install build && python3 -m build
     pipx install dist/code_city-*.whl --force
 
-Bump `__version__` in `codecity.py` for a release.
+## Releasing
+
+A version tag publishes everything: `.github/workflows/release.yml` builds the package and publishes it to PyPI, and builds the VS Code extension and publishes it to the Marketplace.
+
+1. Set the same version in `codecity.py` (`__version__`) and `vscode/package.json` (`version`), and commit.
+2. `git tag v0.2.0 && git push origin v0.2.0`. The workflow stops if the tag and the two versions don't match.
+
+One-time setup, by whoever owns the accounts:
+
+- **PyPI** (no token needed): on pypi.org, under your account's Publishing, add a pending trusted publisher for project `code-city`: owner `lakshmisraj`, repository `code-city`, workflow `release.yml`, environment `pypi`. In the GitHub repo, create an environment named `pypi` (Settings › Environments); requiring a reviewer there makes each release wait for your approval.
+- **VS Code Marketplace**: create a publisher at marketplace.visualstudio.com/manage, and put its ID in `vscode/package.json` (`publisher`; `lakshmisraj` is a placeholder). Make an Azure DevOps personal access token with the Marketplace › Manage scope for all accessible organizations, and add it as the repository secret `VSCE_PAT`. Until it's set, the workflow builds the extension and skips publishing.
 
 ## The VS Code extension
 
