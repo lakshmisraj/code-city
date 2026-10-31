@@ -107,6 +107,8 @@ Limits: other languages fall back to file-level connections. Calls through varia
 
 ### Windows
 
+Select lines in a code window and right-click: **Explain lines a–b** explains just those, beside them, with the lines marked; **Explain the whole file** at the top of that explanation does the rest.
+
 **View code** (in a file's panel, next to any explained file, an outline entry, or Shift-click a building) opens the file's full source in its own window. **Explain this code** opens just the explanation, with **View code** to add the code to the same window: code on the left, explanation on the right, at equal widths (stacked on narrow screens). If the code is already open, the explanation joins its window. **Follow** opens the followed file next to the one it came from, with the lines that connect the two marked. Explanations of several files at once get a window of their own.
 
 Drag a window by its title bar and resize it from its corner. **–** puts it away in its tab and **✕** closes it. A strip of tabs, one per window, brings any window back; files that share a name show enough of their folders to tell apart, and **▾** folds the strip. New windows never move or close the ones already open, and the side panels stay open beside them. The guide at the bottom can be closed, and steps aside while windows are open. Files and web addresses named in any description are links.

@@ -317,9 +317,9 @@ details.more[open] summary { margin-bottom: 8px; }
 /* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
 @media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + var(--side-occ, 380px) + 12px); } }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.rank button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
-.rank button:hover, .rank button:focus-visible { background: var(--street-2); }
-.rank button:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
+.rank button:not(.mini) { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
+.rank button:not(.mini):hover, .rank button:not(.mini):focus-visible { background: var(--street-2); }
+.rank button:not(.mini):focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
 .rank button.gone { cursor: default; }
 .rank .n { min-width: 18px; font: 12px var(--f-mono); color: var(--ink-dim); font-variant-numeric: tabular-nums; padding-top: 1px; }
 .rank .path { font: 12px var(--f-mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -384,7 +384,7 @@ details.more[open] summary { margin-bottom: 8px; }
 .drawer-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
 .drawer-head > div { min-width: 0; flex: 1; }
 .drawer-head h2 { margin: 0; font-family: var(--f-mono); font-size: 14px; font-weight: 600; word-break: break-all; }
-.drawer-head p { margin: 2px 0 0; color: var(--ink-dim); font-size: 12px; word-break: break-all; }
+.drawer-head p { margin: 2px 0 0; color: var(--ink-dim); font-size: 12px; overflow-wrap: anywhere; }   /* long paths still break, words don't */
 .crumb { background: none; border: 0; padding: 0; font: inherit; color: var(--ink-dim); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
 .crumb:hover { color: var(--sodium); text-decoration-color: var(--sodium); }
 .drawer-body { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
@@ -469,6 +469,11 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .vl { display: flex; white-space: pre; padding-right: 12px; }
 .vl .ln { flex-shrink: 0; width: 4.5ch; padding-right: 1.2ch; text-align: right; color: var(--ink-dim); opacity: .6; user-select: none; }
 .vl.hit { background: color-mix(in srgb, var(--sodium) 22%, transparent); }
+.vl.picked { background: color-mix(in srgb, var(--sodium) 12%, transparent); box-shadow: inset 2px 0 0 var(--sodium); }
+.ctx-menu { position: fixed; z-index: 30; min-width: 180px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--street-2); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.ctx-menu button { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--street); color: var(--sodium); }
+.explain-range { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; font: 12px var(--f-mono); color: var(--ink-dim); }
 .vl.hit .ln { color: var(--sodium); opacity: 1; }
 .vl.import { background: color-mix(in srgb, var(--sodium) 16%, transparent); box-shadow: inset 3px 0 0 var(--sodium); }
 .vl.use { background: color-mix(in srgb, var(--changed) 12%, transparent); box-shadow: inset 3px 0 0 var(--changed); }
@@ -708,7 +713,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
       <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
       <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
-      <li><b>Explanations</b>: names, files and line numbers in them are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
+      <li><b>Explanations</b>: select lines in a code window and right-click to explain just those; <b>Explain the whole file</b> does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
       <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
       <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
     </ul></div>
@@ -785,6 +790,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 </aside>
 <section id="viewer" hidden aria-label="Code viewer">
   <div class="viewer-panes" id="viewerPanes"></div>
+  <div class="ctx-menu" id="ctxMenu" role="menu" hidden></div>
   <nav class="win-tabs" id="winTabs" aria-label="Open windows"></nav>
 </section>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -3326,7 +3332,7 @@ function explainHtml(x) {
     return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
       (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
   const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
-  return `<div><h3>${x.change ? "What changed" : "How the code works"}</h3><p class="ask-answer">${rich(x.summary)}</p>` +
+  return `<div><h3>${x.change ? "What changed" : x.range ? "What these lines do" : "How the code works"}</h3><p class="ask-answer">${rich(x.summary)}</p>` +
     (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, 6)))}">View ${Math.min(every.length, 6)} files side by side</button></div>` : "") +
     `</div>` + x.files.map(f => `
     <section class="explain-file">
@@ -3378,12 +3384,12 @@ async function pullCode(path) {
 }
 // Each explanation opens in its own window and is a step in a chain: Follow on a connected file explains it next.
 let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
-async function explainCode(state, paths, question, from) {
+async function explainCode(state, paths, question, from, range) {
   if (!canAsk()) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
   if (!okToSendPrivate()) return;
   const gen = cityGen;
   paths = paths.slice(0, MAX_EXPLAIN);   // the files actually read, so the window's title is true
-  const st = { paths, from: from || null, loading: true };
+  const st = { paths, from: from || null, range: range || null, loading: true };
   state.chain.push(st);
   // The explanation opens on its own, with a View code button; if the file's code is already open, it joins that
   // window on the right instead.
@@ -3417,7 +3423,7 @@ async function explainCode(state, paths, question, from) {
   redraw();
 }
 // An explanation that's already open comes to the front instead of being asked again.
-function explainWindowFor(path) { return panes.find(p => p.st && p.st.paths.length === 1 && p.st.paths[0] === path); }
+function explainWindowFor(path) { return panes.find(p => p.st && !p.st.range && p.st.paths.length === 1 && p.st.paths[0] === path); }
 async function followLink(from, path) {
   const b = bmap.get(path);
   if (b) flyToBuilding(b);
@@ -3426,6 +3432,12 @@ async function followLink(from, path) {
   if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
   if (panes.filter(p => p.st).length >= MAX_CHAIN) { toast(`${MAX_CHAIN} explanations are open. Close some to follow more.`); return; }
   explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
+}
+// Right-click on selected code: only those lines are explained, beside them; the rest of the file is sent too, as
+// context and so the line numbers stay true.
+function explainLines(path, range) {
+  const lines = range.to > range.from ? `lines ${range.from}–${range.to}` : `line ${range.from}`;
+  explainCode(explainState, [path], `Explain only ${lines} of ${path}: what they do and how they work. Use the rest of the file just as context, and keep the key parts within those lines.`, null, range);
 }
 function explainFile(path) {
   const open = explainWindowFor(path);
@@ -3585,7 +3597,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
   renderViewer();
 }
 function explainCol(st) {
-  return `${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
+  return `${st.range ? `<div class="explain-range"><span>Lines ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
     ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
 `;
 }
@@ -3610,7 +3622,8 @@ function paneHtml(p) {
         ${p.partial ? `<p class="pane-note">Only the first lines of this file are available here.</p>` : ""}
         ${p.link ? linkBanner(p.link) : ""}
         <div class="pane-body" tabindex="0">${shown.map((l, k) => { const m = p.link && p.link.byLine.get(k + 1);
-          return `<div class="vl${k + 1 === p.line ? " hit" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
+          const pk = p.st && p.st.range && k + 1 >= p.st.range.from && k + 1 <= p.st.range.to;
+          return `<div class="vl${k + 1 === p.line ? " hit" : ""}${pk ? " picked" : ""}${m ? " " + m.kind : ""}" data-l="${k + 1}"><span class="ln">${k + 1}</span><span>${esc(l) || " "}</span>${m && m.note ? `<span class="vmark">${esc(m.note)}</span>` : ""}</div>`; }).join("")}</div>
         ${lines.length > MAX_VIEW_LINES ? `<p class="pane-note">Showing the first ${fmt(MAX_VIEW_LINES)} of ${fmt(lines.length)} lines.</p>` : ""}
       </div>
       ${p.st ? `<div class="explain-col"><div class="explain-col-head"><span class="pane-kind">Explanation</span><button type="button" class="mini" data-hide-explain aria-label="Close the explanation">✕</button></div>${explainCol(p.st)}</div>` : ""}
@@ -3719,6 +3732,40 @@ $("viewerPanes").addEventListener("pointerdown", e => {
   const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up); };
   head.addEventListener("pointermove", move); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
 });
+// ---------- right-click on code ----------
+const ctxMenu = $("ctxMenu");
+function selectedLines(body) {   // the code lines a selection in this window covers, or null
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  if (!body.contains(r.startContainer) || !body.contains(r.endContainer)) return null;
+  const lineAt = (node, off, end) => {
+    let el = node.nodeType === 1 ? node : node.parentElement;
+    if (el === body) el = body.children[Math.max(0, Math.min(body.children.length - 1, end ? off - 1 : off))];   // a whole-line selection ends between lines
+    const vl = el && el.closest(".vl"); return vl ? +vl.dataset.l : 0;
+  };
+  let from = lineAt(r.startContainer, r.startOffset, false), to = lineAt(r.endContainer, r.endOffset, true);
+  if (to > from && r.endOffset === 0 && r.endContainer.nodeType === 3) to--;   // ending at the very start of a line
+  return from && to ? { from: Math.min(from, to), to: Math.max(from, to) } : null;
+}
+function closeCtx() { ctxMenu.hidden = true; ctxMenu.innerHTML = ""; }
+$("viewerPanes").addEventListener("contextmenu", e => {
+  const p = paneOf(e.target), body = e.target.closest(".pane-body");
+  if (!p || p.kind !== "code" || !body || !askEnabled) return;   // elsewhere the browser's own menu
+  const range = selectedLines(body);
+  if (!range) return;
+  e.preventDefault();
+  const lines = range.to > range.from ? `lines ${range.from}–${range.to}` : `line ${range.from}`;
+  ctxMenu.innerHTML = `<button type="button" role="menuitem" data-ctx="lines">Explain ${lines}</button><button type="button" role="menuitem" data-ctx="file">Explain the whole file</button>`;
+  ctxMenu.hidden = false;
+  const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+  ctxMenu.style.left = Math.min(e.clientX, innerWidth - w - 8) + "px"; ctxMenu.style.top = Math.min(e.clientY, innerHeight - h - 8) + "px";
+  ctxMenu.onclick = ev => { const b = ev.target.closest("[data-ctx]"); if (!b) return; closeCtx(); if (b.dataset.ctx === "lines") explainLines(p.path, range); else explainFile(p.path); };
+  ctxMenu.querySelector("button").focus();
+});
+addEventListener("pointerdown", e => { if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtx(); }, true);
+addEventListener("keydown", e => { if (e.key === "Escape" && !ctxMenu.hidden) { closeCtx(); e.stopPropagation(); } }, true);
+addEventListener("scroll", () => { if (!ctxMenu.hidden) closeCtx(); }, true);
 $("viewerPanes").addEventListener("click", e => {
   const p = paneOf(e.target);
   if (!p) return;
@@ -3726,6 +3773,7 @@ $("viewerPanes").addEventListener("click", e => {
   if (go2) { p.line = +go2.dataset.goto; p.dirty = true; renderViewer(); return; }
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-explain]")) return explainFile(p.path);
+  if (e.target.closest("[data-explain-full]")) return explainFile(p.path);
   if (e.target.closest("[data-pane-editor]")) return openInEditor(p.path, p.line);
   if (e.target.closest("[data-diff-explain]")) return explainChange(p.sha, p.path);
   if (e.target.closest("[data-pane-collapse]")) { p.collapsed = true; renderViewer(); return; }
