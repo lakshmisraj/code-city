@@ -148,6 +148,7 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .tb-link { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
 .tb-link:hover, .tb-link:focus-visible { background: var(--street-2); outline: none; }
 .cg { position: relative; }
+.cg-view { align-self: flex-start; flex: none; }
 .cg-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .cg-rows { list-style: none; margin: 0 0 0 calc(var(--cg-w) + 6px); padding: 0; }
 .cg-row { all: unset; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; height: 30px; padding: 0 6px; border-radius: 6px; cursor: pointer; min-width: 0; }
@@ -1627,7 +1628,7 @@ function clearView() {   // the centre of the screen area no panel covers, or nu
     if (box.width > innerWidth * 0.6) { if (box.top < innerHeight / 2) t = Math.max(t, box.bottom); else btm = Math.min(btm, box.top); }
     else if (box.left + box.width / 2 < innerWidth / 2) l = Math.max(l, box.right); else r = Math.min(r, box.left);
   }
-  return r - l < 160 || btm - t < 160 ? null : { x: (l + r) / 2, y: (t + btm) / 2, w: r - l };
+  return r - l < 160 || btm - t < 160 ? null : { x: (l + r) / 2, y: (t + btm) / 2, w: r - l, h: btm - t };
 }
 function stepFlight() {
   if (!flight) return;
@@ -1825,7 +1826,7 @@ const tip = document.getElementById("tip");
 function pickAt(ndcX, ndcY) {
   mouse.set(ndcX, ndcY);
   ray.setFromCamera(mouse, camera);
-  const hit = ray.intersectObjects([...buildings.filter(b => b.visible), ...districts, ...labels], false)[0];
+  const hit = ray.intersectObjects([...buildings.filter(b => b.visible), ...districts, ...labels, ...(commitTree ? commitTree.nodes.values() : [])], false)[0];
   return hit ? hit.object : null;   // a building (userData.f) or a folder (userData.dir)
 }
 function pickEvent(ev) {
@@ -1841,7 +1842,7 @@ canvas.addEventListener("pointerup", ev => {
   if (downAt && !downAt.moved && ev.button === 0) {
     const o = pickEvent(ev);
     if (o && o.userData.f && ev.shiftKey) viewFile(o.userData.f.path);
-    else if (o && o.userData.f) openDrawer(o); else if (o && o.userData.dir) openFolder(o.userData.dir); else closeDrawer();
+    else if (o && o.userData.f) openDrawer(o); else if (o && o.userData.dir) openFolder(o.userData.dir); else if (o && o.userData.commit) selectCommit(o.userData.commit); else closeDrawer();
   }
   downAt = null;
 });
@@ -1852,6 +1853,13 @@ function showTip(b, x, y) {
   tip.innerHTML = `${esc(f.path)} · <b>${fmt(b.userData.lines)}</b> lines` +
     (hist ? ` · <b>${fmt(c)}</b> commit${c === 1 ? "" : "s"}` : "") +
     (viewNow && f.todos.length ? ` · <b class="f">${f.todos.length} fires</b>` : "");
+  tip.hidden = false;
+  tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
+  tip.style.top = y + "px";
+}
+function showCommitTip(sha, x, y) {
+  const c = commitState && commitState.commits.get(sha); if (!c) { tip.hidden = true; return; }
+  tip.innerHTML = `${esc(c.m)} · <b>${esc(c.a || "")}</b> · ${esc(dateFmt.format(new Date(c.t * 1000)))}${c.parents.length > 1 ? " · merge" : ""}`;
   tip.hidden = false;
   tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
   tip.style.top = y + "px";
@@ -1870,6 +1878,7 @@ function updateHover() {
   hovered = b;
   canvas.style.cursor = o ? "pointer" : "";
   if (b) showTip(b, lastPointer.clientX, lastPointer.clientY);
+  else if (o && o.userData.commit) showCommitTip(o.userData.commit, lastPointer.clientX, lastPointer.clientY);
   else if (o) showFolderTip(o.userData.dir, lastPointer.clientX, lastPointer.clientY);
   else tip.hidden = true;
 }
@@ -2705,6 +2714,7 @@ function applyPendingView() {
   if (p.pr) loadPR(p.pr); else syncUrl();
 }
 function onCityBuilt() {
+  dropTree();
   if (prState && prState.repo !== currentRepo) clearPR();
   if (askState || tourState) { askState = null; endTour(); if (sideMode === "ask" || sideMode === "tour") closeSide(true); }   // answers and tours belong to the city they were made for
   if (sideMode === "pr" && !prState) closeSide(true); else if (sideMode) renderSide();
@@ -2816,7 +2826,7 @@ function openSide(mode) {
     if (sideMode === "ask") askState = null;
     if (sideMode === "tour") endTour();
   }
-  if (mode !== "commits") commitSel = null;
+  if (mode !== "commits") { commitSel = null; dropTree(); }
   roomFor(); sideMode = mode; sidePanel.hidden = false; document.body.classList.add("side-open");
   $("hotBtn").setAttribute("aria-pressed", mode === "hot");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
@@ -2829,7 +2839,7 @@ function closeSide(quiet) {
   if (sideMode === "pr") clearPR();
   if (sideMode === "ask") askState = null;
   if (sideMode === "tour") endTour();
-  commitSel = null;
+  commitSel = null; dropTree();
   sideMode = null; sidePanel.hidden = true; document.body.classList.remove("side-open");
   drawLinks();
   $("hotBtn").setAttribute("aria-pressed", "false");
@@ -4799,14 +4809,17 @@ function renderCommits() {
     return;
   }
   const order = commitOrder(st.commits), layout = laneLayout(order, st.commits), g = commitGraphSvg(layout);
+  if (commitView === "tree") { const had = commitTree; buildCommitTree(layout); treeSelection(); if (!had && commitTree) { if (segOpen && !phoneMQ.matches) openSeg(null, false, true); frameTree(); } } else dropTree();   // room for the tree: the left panel folds
+  const view = `<div class="seg cg-view" role="group" aria-label="Show commits as"><button type="button" data-cg-view="lanes" aria-pressed="${commitView === "lanes"}">Lanes</button><button type="button" data-cg-view="tree" aria-pressed="${commitView === "tree"}">3D tree</button></div>`;
   const sel = st.sel && st.commits.get(st.sel);
   const tags = sha => (st.heads.get(sha) || []).map(b => `<span class="cg-ref${b === st.def ? " def" : ""}">${esc(b)}</span>`).join("");
-  sideBody.innerHTML = (sel ? commitDetailHtml(st, sel) : `<p class="side-note">Newest first. Each lane is a line of work; a hollow dot is a merge. Click a commit to see what it changed in the city.</p>`) +
+  sideBody.innerHTML = view + (sel ? commitDetailHtml(st, sel) : `<p class="side-note">${commitView === "tree" ? "The tree beside the city grows upward through time: the trunk is the default branch, each limb another line of work, merges curve back in. Click a commit, there or here, to see it in the city." : "Newest first. Each lane is a line of work; a hollow dot is a merge. Click a commit to see what it changed in the city."}</p>`) +
     `<div class="cg" style="--cg-w:${g.w}px">${g.svg}<ol class="cg-rows">${layout.rows.map((r, i) => { const c = st.commits.get(r.sha); return `<li><button type="button" class="cg-row${r.sha === st.sel ? " on" : ""}" data-commit="${esc(r.sha)}" title="${esc(c.m)}">` +
       `<span class="cg-msg">${tags(r.sha)}${esc(c.m)}</span><span class="cg-meta">${esc(c.a || "")} · ${ago(c.t)}</span></button></li>`; }).join("")}</ol></div>` +
     (st.loading ? `<p class="side-note">Reading more commits…</p>` : st.more ? `<div class="side-actions"><button type="button" data-commits-more>Load older commits</button></div>` : "") +
     (st.skipped ? `<p class="side-note">${fmt(st.skipped)} more branch${st.skipped === 1 ? " isn't" : "es aren't"} shown.</p>` : "") +
     (st.error ? `<p class="side-note">${esc(st.error)}</p>` : "");
+  const on = sideBody.querySelector(".cg-row.on"); if (on) on.scrollIntoView({ block: "nearest" });
 }
 function commitDetailHtml(st, c) {
   const files = st.detail.get(c.sha), idx = hist ? hist.commits.findIndex(x => x.h === c.sha.slice(0, 8)) : -1;
@@ -4845,9 +4858,97 @@ sideBody.addEventListener("click", e => {
   if (row) { e.stopPropagation(); return selectCommit(row.dataset.commit); }
   if (e.target.closest("[data-commits-more]")) { e.stopPropagation(); return loadCommits(); }
   if (e.target.closest("[data-commits-retry]")) { e.stopPropagation(); commitState.page = 0; return loadCommits(); }
-  if (e.target.closest("[data-commit-close]")) { e.stopPropagation(); commitState.sel = null; commitSel = null; return renderSide(); }
+  if (e.target.closest("[data-commit-close]")) { e.stopPropagation(); commitState.sel = null; commitSel = null; treeSelection(); return renderSide(); }
   if (e.target.closest("[data-commit-today]")) { e.stopPropagation(); goNow(); commitState.rewound = false; return renderSide(); }
+  const v = e.target.closest("[data-cg-view]"); if (v) { e.stopPropagation(); return setCommitView(v.dataset.cgView); }
 }, true);
+
+// ---------- commits as a 3D tree ----------
+// The same graph grown beside the city: the default branch is a trunk rising through time (oldest at the
+// bottom), each other line of work a limb around it, and merges curve back in. Branch names float over their
+// tips. A commit is clicked like a row in the list: the city beside it goes back to that moment.
+let commitTree = null, commitView = "lanes";   // commitTree: { group, nodes: Map(sha -> mesh), n, top }
+try { if (localStorage.getItem("codecity.commitView") === "tree") commitView = "tree"; } catch (e) { /* storage blocked */ }
+const TREE_NODE = new THREE.SphereGeometry(1, 14, 10);
+const TREE_SEL = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+function dropTree() {
+  if (!commitTree) return;
+  scene.remove(commitTree.group);
+  commitTree.group.traverse(o => { if (o.geometry && o.geometry !== TREE_NODE) o.geometry.dispose(); if (o.material && o.material !== TREE_SEL) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+  commitTree = null;
+}
+function treeLabel(text, color) {   // a branch name over its tip
+  const c = document.createElement("canvas"), ctx = c.getContext("2d"), fs = 48, font = `600 ${fs}px "JetBrains Mono", ui-monospace, monospace`;
+  ctx.font = font; c.width = Math.ceil(ctx.measureText(text).width) + 28; c.height = fs + 22;
+  ctx.font = font; ctx.fillStyle = "rgba(11,16,32,.8)"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, 14, c.height / 2 + 2);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+  sp.userData.aspect = c.width / c.height; sp.renderOrder = 11;
+  return sp;
+}
+function buildCommitTree(layout) {
+  const st = commitState, n = layout.rows.length;
+  if (commitTree && commitTree.n === n && commitTree.city === buildings) return;
+  dropTree();
+  if (!n) return;
+  const step = Math.max(0.45, citySize * 0.9 / n), gap = Math.max(3.5, citySize / 9), rad = Math.max(0.14, Math.min(0.6, citySize / 260));
+  const lanePos = k => { if (!k) return [0, 0]; const a = k * 2.39996, r = gap * Math.sqrt(k); return [Math.cos(a) * r, Math.sin(a) * r]; };   // limbs spread around the trunk
+  const group = new THREE.Group(), at = new Map(), colOf = new Map();
+  layout.rows.forEach((r, i) => { const [x, z] = lanePos(r.col); at.set(r.sha, new THREE.Vector3(x, (n - 1 - i) * step + rad * 3, z)); colOf.set(r.sha, r.col); });
+  const reach = Math.max(...layout.rows.map(r => Math.hypot(...lanePos(r.col)))) + gap;
+  group.position.set(citySize / 2 + reach + gap * 0.8, 0, 0);   // just past the city's edge
+  const mats = LANE_COLORS.map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, fog: false }));
+  const ground = new THREE.Mesh(new THREE.CylinderGeometry(reach, reach, 0.3, 48), new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.9 }));
+  ground.position.y = -0.15; group.add(ground);
+  for (const r of layout.rows) {   // a line from each commit down to its parents: straight up a lane, curved where lines split or join
+    const a = at.get(r.sha);
+    st.commits.get(r.sha).parents.forEach((p, j) => {
+      const b = at.get(p); if (!b) return;
+      const curve = a.x === b.x && a.z === b.z ? new THREE.LineCurve3(a, b)
+        : new THREE.CubicBezierCurve3(a, new THREE.Vector3(a.x, a.y - (a.y - b.y) * 0.5, a.z), new THREE.Vector3(b.x, b.y + (a.y - b.y) * 0.5, b.z), b);
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, a.x === b.x && a.z === b.z ? 1 : 16, rad, 6, false), mats[(j ? colOf.get(p) : r.col) % mats.length]));
+    });
+  }
+  const nodes = new Map();
+  for (const r of layout.rows) {
+    const c = st.commits.get(r.sha), m = new THREE.Mesh(TREE_NODE, mats[r.col % mats.length]);
+    m.position.copy(at.get(r.sha)); m.scale.setScalar(rad * (c.parents.length > 1 ? 2.2 : 2.8));
+    m.userData.commit = r.sha; m.userData.base = m.scale.x; m.userData.mat = m.material;
+    group.add(m); nodes.set(r.sha, m);
+    for (const name of st.heads.get(r.sha) || []) {   // branch names over their tips
+      const sp = treeLabel(name, LANE_COLORS[r.col % LANE_COLORS.length]), h = Math.max(0.9, Math.min(2.2, citySize / 70));
+      sp.scale.set(h * sp.userData.aspect, h, 1); sp.position.copy(at.get(r.sha)).add(new THREE.Vector3(0, h * 0.9 + rad * 3, 0)); group.add(sp);
+    }
+  }
+  scene.add(group);
+  commitTree = { group, nodes, n, city: buildings, top: (n - 1) * step + rad * 3, reach };
+  treeSelection();
+}
+function treeSelection() {   // the selected commit glows white and larger
+  if (!commitTree) return;
+  for (const [sha, m] of commitTree.nodes) { const on = commitState && commitState.sel === sha; m.material = on ? TREE_SEL : m.userData.mat; m.scale.setScalar(m.userData.base * (on ? 1.8 : 1)); }
+}
+function frameTree() {   // the camera takes in the city and the tree together, in the part of the screen panels leave free
+  if (!commitTree) return;
+  const g = commitTree.group.position, minX = -citySize / 2, maxX = g.x + commitTree.reach;
+  const center = new THREE.Vector3((minX + maxX) / 2, commitTree.top * 0.45, 0);
+  const radius = Math.hypot((maxX - minX) / 2, commitTree.top / 2) * 1.05, clear = clearView(), half = camera.fov * Math.PI / 360;
+  const fit = clear ? Math.min(clear.w / innerWidth * camera.aspect, clear.h / innerHeight) : Math.min(camera.aspect, 1);   // the free area's share of the view
+  const dist = 0.8 * radius / Math.tan(half) / Math.max(0.25, fit);   // a sphere around both overstates what this side-on view needs
+  const d = new THREE.Vector3(0.1, 0.32, 1).normalize(), f = d.clone().negate();
+  const right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize(), up = new THREE.Vector3().crossVectors(right, f);
+  const target = center.clone();
+  if (clear) { const per = 2 * dist * Math.tan(half) / innerHeight; target.addScaledVector(right, -(clear.x - innerWidth / 2) * per).addScaledVector(up, (clear.y - innerHeight / 2) * per); }
+  controls.maxDistance = Math.max(controls.maxDistance, dist * 1.6);
+  flyTo(target, target.clone().addScaledVector(d, dist));
+}
+function setCommitView(v) {
+  commitView = v;
+  try { localStorage.setItem("codecity.commitView", v); } catch (e) { /* storage blocked */ }
+  if (v !== "tree") { dropTree(); resetView(true); }
+  renderSide();
+  if (v === "tree") frameTree();
+}
 
 // The drawer's Imports and Used by lists for one file.
 async function renderFileLinks(path) {
