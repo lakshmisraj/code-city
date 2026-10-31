@@ -414,10 +414,12 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 .tabs-fold { all: unset; cursor: pointer; flex-shrink: 0; padding: 4px 8px; font: 12px var(--f-mono); color: var(--ink-dim); border-radius: 6px; }
 .tabs-fold:hover { color: var(--sodium); }
 .tabs-fold:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
-.win-tab { display: flex; align-items: center; flex-shrink: 0; border: 1px solid transparent; border-radius: 6px; }
+.win-tab { display: flex; align-items: center; flex: 0 1 auto; min-width: 120px; border: 1px solid transparent; border-radius: 6px; }
+.win-tab.front { flex-shrink: 0; }   /* the window in front keeps its whole name */
 .win-tab.front { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); background: var(--street-2); }
 .win-tab.collapsed { opacity: .65; }
 .win-tab button { all: unset; cursor: pointer; padding: 4px 8px; font: 12px var(--f-mono); color: var(--ink); white-space: nowrap; }
+.win-tab button[data-tab] { overflow: hidden; text-overflow: ellipsis; max-width: 230px; min-width: 0; flex: 0 1 auto; }
 .win-tab button:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; border-radius: 5px; }
 .win-tab .tab-x { padding: 4px 6px 4px 2px; color: var(--ink-dim); }
 .win-tab .tab-x:hover { color: var(--fire); }
@@ -3498,7 +3500,7 @@ function shortNames(paths) {
 }
 function paneTitle(p, names) {
   const nm = path => (names && names.get(path)) || path.split("/").pop();
-  return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${nm(p.st.paths[0])}`) : p.fn ? `${p.fn.split(".").pop()} · ${nm(p.path)}` : nm(p.path);
+  return p.kind === "explain" ? (p.st.paths.length > 1 ? `Explain · ${p.st.paths.length} files` : `Explain · ${nm(p.st.paths[0])}`) : p.fn ? (p.fn.endsWith(" (top level)") ? p.fn : `${p.fn.split(".").pop()} · ${nm(p.path)}`) : nm(p.path);
 }
 let tabsFolded = false;   // the tab strip folded down to one button
 try { tabsFolded = localStorage.getItem("codecity.tabsFolded") === "1"; } catch (e) { /* storage blocked */ }
@@ -3513,6 +3515,7 @@ function renderTabs() {
       <button type="button" data-tab="${i}" title="${esc(p.kind === "explain" ? p.st.paths.join(", ") : p.path)}" aria-pressed="${!p.collapsed}">${p.st && p.kind !== "explain" ? `<span class="tab-dot" aria-label="explained"></span>` : ""}${esc(paneTitle(p, names))}</button>
       <button type="button" class="tab-x" data-tab-close="${i}" aria-label="Close ${esc(paneTitle(p, names))}">✕</button></div>`).join(""));
   if (had) { const back = el.querySelector(had) || el.querySelector("[data-tab]"); if (back) back.focus(); }   // keyboard focus survives the redraw
+  const shown = el.querySelector(".win-tab.front"); if (shown && el.scrollWidth > el.clientWidth) shown.scrollIntoView({ block: "nearest", inline: "nearest" });   // the front window's tab stays in sight
   document.body.classList.toggle("tabs-open", panes.length > 0);
 }
 $("winTabs").addEventListener("click", e => {
@@ -3865,6 +3868,7 @@ $("linksToggle").onchange = e => setShowLinks(e.target.checked);
 // Python, JavaScript, TypeScript and Go for now.
 const CALL_GRAMMARS = { py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", mts: "typescript", cts: "typescript", tsx: "tsx", go: "go" };
 function callGrammar(path) { const m = /\.(\w+)$/.exec(path); return m ? CALL_GRAMMARS[m[1].toLowerCase()] || null : null; }
+const EVENT_CALL = /\.(on|once|addEventListener|addListener|subscribe|listen|handle|register)\s*$/;
 const ROUTE_CALL = /\.(get|post|put|patch|delete|all|use|route|HandleFunc|Handle|GET|POST|PUT|PATCH|DELETE|Any|Group)\s*$/;
 const ROUTE_DECO = /^@?\s*[\w.]*\b(route|get|post|put|patch|delete|head|options|websocket|api_route|command|group|task|on|listener|handler|endpoint|subscribe|consumer|before_request|after_request|errorhandler|cli\.command)\b/;
 const GENERIC_METHODS = new Set(["get", "set", "add", "run", "call", "apply", "bind", "send", "write", "read", "open", "close", "push", "pop", "append", "extend", "update", "keys", "values", "items", "map", "filter", "reduce", "join", "split", "format", "copy", "clear", "remove", "insert", "start", "stop", "init", "next", "then", "catch", "emit", "log", "error", "warn", "info", "debug", "toString", "render", "match", "test", "exec", "replace", "find", "has", "delete", "load", "save", "parse", "handle", "process", "execute", "invoke", "resolve", "reject", "flush", "reset", "string", "len", "String", "Error"]);
@@ -3899,13 +3903,17 @@ function extractCalls(grammar, root) {
     }
   };
   const kids = (n, ctx) => { for (const c of n.namedChildren) walk(c, ctx); };
-  // app.get("/users", function (req, res) {...}), http.HandleFunc("/", func(w, r) {...}): the inline function is
-  // named after the call ("app.get('/users') handler"), and a route-like call makes it an entry point.
+  // app.get("/users", function (req, res) {...}), http.HandleFunc("/", func(w, r) {...}), el.addEventListener(...):
+  // a route or event handler written inline is named after the call ("app.get('/users') handler"), and a route
+  // makes it an entry point. Any other inline function (items.map(x => ...), a promise's .then) is part of the
+  // function it's written in, so its calls count as that function's.
   const callArgs = (fn, a, ctx) => {
     if (!a) return;
     const str = a.namedChildren.find(c => c.type === "string" || c.type === "interpreted_string_literal" || c.type === "template_string");
+    const named = fn && (ROUTE_CALL.test(fn.text) || EVENT_CALL.test(fn.text));
     for (const c of a.namedChildren) {
-      if (isFn(c) || c.type === "func_literal") {
+      if ((isFn(c) || c.type === "func_literal") && !named) { const b = c.childForFieldName("body"); if (b) walk(b, ctx); }
+      else if (isFn(c) || c.type === "func_literal") {
         const callee = fn ? clip(fn.text.replace(/\s+/g, ""), 32) : "?", label = `${callee}(${str ? clip(str.text, 28) : ""}) handler`;
         const i = addDef(label, "function", c, ctx, { inline: true, deco: fn && ROUTE_CALL.test(fn.text) ? [label.replace(/ handler$/, "")] : [] });
         const b = c.childForFieldName("body"); if (b) kids(b, { def: i });
@@ -4448,10 +4456,11 @@ function rankLabels() {
 // A repo's imports and functions are read as soon as it loads (so How it's built, importance and Trace are
 // ready without waiting), and kept in this browser per commit, so coming back to the same commit reads nothing.
 const SCAN_DB = "codecity-scan", SCAN_KEEP = 8;
+const SCAN_VERSION = 2;   // bump when the import or function reader changes what it finds, so saved readings are read again
 function scanKey() {   // this commit; built-in repos read today's code from GitHub, so theirs is kept for the day
   if (!currentRepo) return null;
-  if (ghRepo && ghRepo.tree) return `${currentRepo}@${ghRepo.tree}`;
-  return codeRepo() ? `${currentRepo}@HEAD@${new Date().toISOString().slice(0, 10)}` : null;
+  if (ghRepo && ghRepo.tree) return `${currentRepo}@${ghRepo.tree}#${SCAN_VERSION}`;
+  return codeRepo() ? `${currentRepo}@HEAD@${new Date().toISOString().slice(0, 10)}#${SCAN_VERSION}` : null;
 }
 function scanDb() {
   return new Promise((ok, fail) => { const r = indexedDB.open(SCAN_DB, 1); r.onupgradeneeded = () => r.result.createObjectStore("scans"); r.onsuccess = () => ok(r.result); r.onerror = () => fail(r.error); });
