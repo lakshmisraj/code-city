@@ -552,7 +552,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 <nav id="rail" aria-label="Tools">
   <button type="button" class="rail-btn" data-seg="repo" aria-pressed="false" aria-label="Repository" title="Repository: open a repo or folder, show a pull request">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span class="rail-label" aria-hidden="true">Repo</span></button>
-  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: how it's built and its workflows">
+  <button type="button" class="rail-btn" data-seg="understand" aria-pressed="false" aria-label="Understand" title="Understand: code structure and workflows">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span class="rail-label" aria-hidden="true">Understand</span></button>
   <button type="button" class="rail-btn" data-seg="find" aria-pressed="false" aria-label="Find" title="Find a file">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span class="rail-label" aria-hidden="true">Find</span></button>
@@ -650,7 +650,6 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <span class="label">Color buildings by</span>
       <div class="seg" role="group" aria-label="Color buildings by">
         <button type="button" id="cLang" aria-pressed="true">Language</button>
-        <button type="button" id="cHeat" aria-pressed="false">Change heat</button>
         <button type="button" id="cImp" aria-pressed="false">Imports</button>
         <button type="button" id="cRank" aria-pressed="false" title="Reach, imports, calls from other files, entry points and changes, combined">Importance</button>
       </div>
@@ -660,7 +659,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <span class="label">Over time</span>
       <div class="seg-actions">
         <button id="commitsBtn" type="button" class="seg-action" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
-        <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Big files that change often (needs history)</span></button>
+        <button id="hotBtn" type="button" class="seg-action" aria-pressed="false"><b>Hotspots</b><span>Colours the city by how often files change and lists the big files that keep changing (needs history)</span></button>
       </div>
     </div>
     <div class="field" id="howTo">
@@ -687,7 +686,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Fire</b> on a roof = TODO, FIXME or HACK comments.</li>
       <li><b>Lit buildings</b> show what the open panel is about: <span class="gk" style="background:#f2a541"></span>entry points and the file you picked, <span class="gk" style="background:#ffc46b"></span>core files, answers and tour steps, <span class="gk" style="background:#8ff5d2"></span>search matches. Everything else dims.</li>
       <li><b>Lines between buildings</b> are imports: which file brings in which.</li>
-      <li><b>Change heat</b> = how many commits touched a file. <b>Hotspots</b> are big files that keep changing, where bugs tend to live.</li>
+      <li><b>Hotspots</b> colours each file by how many commits touched it, from dark blue (rarely) to orange-red (constantly), and lists the big files that keep changing, where bugs tend to live.</li>
     </ul></div>
     <div><h3>The tools</h3><ul>
       <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
@@ -695,7 +694,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <li><b>Find</b>: a file by name.</li>
       <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
       <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
-      <li><b>Display</b>: colour by language, change heat, imports or <b>importance</b> (a score from what depends on a file, its calls, entry points and changes; the top files are named); show or hide connections; hotspots.</li>
+      <li><b>Display</b>: colour by language, imports or <b>importance</b> (a score from what depends on a file, its calls, entry points and changes; the top files are named); show or hide connections; <b>Hotspots</b>, which colours by how often files change.</li>
       <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
       <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
     </ul></div>
@@ -1523,8 +1522,6 @@ function buildCity(data) {
   document.getElementById("repoName").textContent = data.name;
   if (!hist) tlOpen = false;
   syncTimeline();
-  document.getElementById("cHeat").disabled = !hist;
-  document.getElementById("cHeat").title = hist ? "" : "Needs git history: build a repo or open a city.json";
   if (!hist && colorMode === "heat") setColorMode("lang");
   if (hist) { scrub.max = hist.commits.length; speedIdx = 0; showSpeed(); }
   goNow(true);
@@ -1594,7 +1591,7 @@ function renderLegend() {
     return;
   }
   if (colorMode === "heat") {
-    el.innerHTML = `<div class="ramp"><div class="bar"></div><div class="ends"><span>changed rarely</span><span>${fmt(maxChurn)} commits</span></div></div>`;
+    el.innerHTML = `<div class="ramp"><div class="bar"></div><div class="ends"><span>changed rarely</span><span>${fmt(maxChurn)} commits</span></div></div><p class="note">From Hotspots. Pick a colour above to go back.</p>`;
     return;
   }
   const counts = {};
@@ -1687,7 +1684,6 @@ function maxImporters() { return impMax || 1; }
 function setColorMode(m) {
   colorMode = m;
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
-  document.getElementById("cHeat").setAttribute("aria-pressed", m === "heat");
   document.getElementById("cImp").setAttribute("aria-pressed", m === "imports");
   document.getElementById("cRank").setAttribute("aria-pressed", m === "rank");
   if (m === "rank") loadImportance().then(() => { if (colorMode === "rank") { renderLegend(); rankLabels(); } });
@@ -1711,7 +1707,6 @@ document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? c
 document.getElementById("tlCommits").onclick = () => { if (sideMode !== "commits") openCommits(); followSoon(); };
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
-document.getElementById("cHeat").onclick = () => setColorMode("heat");
 document.getElementById("cImp").onclick = () => setColorMode("imports");
 document.getElementById("cRank").onclick = () => setColorMode("rank");
 

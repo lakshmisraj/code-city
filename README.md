@@ -8,7 +8,7 @@ Code City helps you understand a codebase quickly: where it starts, which files 
 
 ### Try it
 
-The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (how it's built, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
+The top bar names the repo on screen, its size, and holds **Ask**. The icons down the left open the tools: **Repo** (open a repo or folder, show a pull request), **Understand** (Code structure, the workflows tour), **Find** (a file), **Display** (colours, connections, Hotspots), the **Guide** (how Code City works: reading the city, the tools, moving around), and your **GitHub account**. Click an icon again to fold the panel away, and drag its edge to resize it. The panels on the right fold (») and resize the same way. On a phone one panel shows at a time.
 
 1. Paste a public GitHub repo (for example `pallets/flask`) and press **Build**.
 2. Read **Code structure**, which opens on its own: what the project is, where execution starts, its core files and how its modules connect, all read from the code. Point at a file to see what it connects to.
@@ -28,7 +28,7 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 | Core | The files most of the product imports (tests, docs and examples aren't counted). |
 | Importance | A score out of 100 for each file: how many product files depend on it (directly or through others) counts most, then how many import it directly, calls into it from other files, whether execution starts there, how often it changes, and its size. Tests, docs and examples count for less. |
 | Main path | From an entry point, the way the code goes: at each step the call (or, for languages Trace doesn't read, the import) that leads to the most code, with error handling counted for less. |
-| Change heat | How many commits touched a file, from dark blue (rarely) to orange-red (constantly). |
+| Change heat | How many commits touched a file, from dark blue (rarely) to orange-red (constantly). **Hotspots** colours the city this way. |
 | Hotspot | A file in the repo's top tenth for how often it changes (at least 2 changes). The PR view and the PR bot flag these. The **Hotspots** list ranks by *commits × lines* instead, so big files that keep changing come first. |
 
 ## On the hosted site
@@ -75,7 +75,7 @@ The history bar opens when you load history from the history panel (▾ hides it
 - **Color by Imports**: colours each file by how many files import it, from dark (none) to bright (the core modules). The first time, it reads every source file's imports (one GitHub download each, once per city).
 - **Folders**: click a district (or its name) to open the folder. Everything outside it dims, and the panel shows its size, the folders inside and its biggest files. The path at the top of a file's or folder's panel links to each parent folder.
 
-- **Hotspots** ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building.
+- **Hotspots** (under Display) colours the city by change heat and ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building. Closing the list keeps the heat colours until you pick another colour.
 - **Show a pull request** (under Repo): enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
 - **Copy link** copies a link that reopens the same view, for example
   `https://code-city-view.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
