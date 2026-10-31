@@ -286,10 +286,11 @@ async function bump(store, key, by = 1) {
     if (tries >= 8) throw new Error("Couldn't update the count");   // too busy to count reliably: refuse rather than miscount
   }
 }
+// No sign-in: the local app with the developer's own key. Never on Netlify, even if ASK_OPEN were set there.
+const OPEN = process.env.ASK_OPEN === "1" && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME;
+// Run by dev-server.mjs or code-city on a developer's own machine, where Netlify Blobs doesn't exist: no limits, no notes.
+const LOCAL = process.env.ASK_LOCAL === "1" || OPEN;
 // Returns an error message when this ask would go over a limit, or null. Counts by GitHub account id.
-// Run by dev-server.mjs on a developer's own machine, where Netlify Blobs doesn't exist: no limits, no notes.
-const LOCAL = process.env.ASK_LOCAL === "1" || process.env.ASK_OPEN === "1";
-const OPEN = process.env.ASK_OPEN === "1";   // no sign-in: the local app with the developer's own key
 async function overLimit(userId, kind) {   // returns [message or null, refund()]
   if (LOCAL) return [null, async () => {}];
   const store = getStore({ name: "ask-limits", consistency: "strong" });

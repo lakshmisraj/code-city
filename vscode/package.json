@@ -11,6 +11,9 @@
   "categories": ["Visualization", "Other"],
   "keywords": ["codebase", "architecture", "onboarding", "git history", "visualization"],
   "main": "./extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "Code City runs Python and git on the workspace." }
+  },
   "contributes": {
     "commands": [
       { "command": "codeCity.open", "title": "Open the City", "category": "Code City" },
@@ -29,6 +32,7 @@
         "codeCity.pythonPath": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "markdownDescription": "Python 3.8+ to run Code City with. Leave empty to use `python3` (or `python`) from your PATH."
         }
       }

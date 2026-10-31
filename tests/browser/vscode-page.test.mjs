@@ -42,9 +42,10 @@ test("in VS Code, the page reveals files it's sent and hands files to the editor
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${host.address().port}/`, { waitUntil: "domcontentloaded" });
     const frame = await (await page.waitForSelector("#city", { state: "attached" })).contentFrame();
-    await frame.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo));
+    // The frame may still be blank when it's first found, so the checks allow for the page not being there yet.
+    await frame.waitForFunction(name => (document.getElementById("sideSub") || {}).textContent?.startsWith(name), path.basename(repo));
     await page.evaluate(() => window.reveal("shop/cart.py"));
-    await frame.waitForFunction(() => document.getElementById("dName").textContent === "cart.py");
+    await frame.waitForFunction(() => (document.getElementById("dName") || {}).textContent === "cart.py");
     assert.match(await frame.evaluate(() => location.search), /host=vscode/, "the page keeps ?host=vscode in its address");
     await frame.locator("[data-open-editor]").dispatchEvent("click");   // the drawer may still be sliding in
     await page.waitForFunction(() => window.got.length > 0);

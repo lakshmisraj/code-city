@@ -123,11 +123,15 @@ def notebook_code(text):
 
 
 def analyze(repo, paths, with_source):
-    files = []
+    files, root = [], os.path.realpath(repo)
     for p in paths:
         if not is_code(p):
             continue
         full = os.path.join(repo, p)
+        # A symlink could point out of the repo (a cloned repo's x.txt -> ~/.ssh/id_rsa); its text would be shown and
+        # could be sent to Gemini. Only files really inside the repo are read.
+        if os.path.islink(full) or not os.path.realpath(full).startswith(root + os.sep):
+            continue
         is_nb = p.lower().endswith(".ipynb")
         try:
             # Notebooks are mostly saved outputs, so they get a higher limit; only their code cells count.
@@ -343,13 +347,17 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path != "/.netlify/functions/ask":
             return self.reply(404, "text/plain", b"Not found")
-        # Only the app's own page may spend your key: other websites can't send same-origin requests.
-        if self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+        # Only the app's own page may spend your key: other websites can't add X-Code-City without a CORS preflight,
+        # which this server never approves (and browsers that send Sec-Fetch-Site say where a request came from).
+        if self.headers.get("X-Code-City") != "1" or self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
             return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
         if not ASK:
             return self.reply(503, "application/json", json.dumps({"error": ASK_NO_KEY}).encode("utf-8"))
-        size = int(self.headers.get("Content-Length") or 0)
-        if size > 2 * 1024 * 1024:
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            size = -1
+        if size < 0 or size > 2 * 1024 * 1024:
             return self.reply(413, "application/json", b'{"error": "That request is too big."}')
         status, body = ask_forward("POST", url.query, self.rfile.read(size))
         return self.reply(status, "application/json", body)
@@ -362,7 +370,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/.netlify/functions/ask":   # is Ask on? (the page asks once it loads)
             if not ASK:
                 return self.reply(200, "application/json", b'{"enabled": false}')
-            if url.query and self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+            if url.query and (self.headers.get("X-Code-City") != "1" or self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none")):
                 return self.reply(403, "application/json", b'{"error": "Requests must come from the Code City page."}')
             status, body = ask_forward("GET", url.query, None)
             return self.reply(status, "application/json", body)

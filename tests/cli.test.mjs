@@ -2,6 +2,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
@@ -70,11 +71,18 @@ test("with GEMINI_API_KEY set, Ask runs locally with no sign-in", { timeout: 300
     });
     const ask = url + "/.netlify/functions/ask";
     assert.deepEqual(await (await fetch(ask)).json(), { enabled: true, open: true });
-    const r = await fetch(ask, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "explain", files: [], code: [] }) });
+    const r = await fetch(ask, { method: "POST", headers: { "Content-Type": "application/json", "X-Code-City": "1" }, body: JSON.stringify({ mode: "explain", files: [], code: [] }) });
     assert.equal(r.status, 400, "reached ask.mjs, which refuses an explain with no code");
     assert.match((await r.json()).error, /no (code|files)/i);
-    const other = await fetch(ask, { method: "POST", headers: { "Sec-Fetch-Site": "cross-site" }, body: "{}" });
+    const other = await fetch(ask, { method: "POST", headers: { "X-Code-City": "1", "Sec-Fetch-Site": "cross-site" }, body: "{}" });
     assert.equal(other.status, 403);
+    const simple = await fetch(ask, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" });   // what a form or no-cors fetch can send
+    assert.equal(simple.status, 403);
+    const raw = await new Promise((resolve, reject) => {   // fetch won't send a bad Content-Length, so write it by hand
+      const u = new URL(ask), sock = net.connect(+u.port, "127.0.0.1", () => sock.end(`POST ${u.pathname} HTTP/1.1\r\nHost: localhost:${u.port}\r\nX-Code-City: 1\r\nContent-Length: -1\r\n\r\n`));
+      let got = ""; sock.on("data", d => { got += d; }); sock.on("end", () => resolve(got)); sock.on("error", reject);
+    });
+    assert.match(raw, /^HTTP\/1\.\d 413/, "a bad Content-Length is refused");
   } finally { p.kill(); }
 });
 
@@ -96,4 +104,16 @@ test("a repo with no commits yet shows its files, with no history", () => {
     const out = execFileSync("python3", ["-c", "import json, sys, codecity; c = codecity.build_city(sys.argv[1]); print(json.dumps([[f['path'] for f in c['files']], c['history']]))", fresh], { cwd: ROOT, encoding: "utf8" });
     assert.deepEqual(JSON.parse(out), [["a.py"], null]);
   } finally { fs.rmSync(fresh, { recursive: true, force: true }); }
+});
+
+test("a symlink pointing out of the repo isn't read", () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "code-city-link-")));
+  try {
+    fs.mkdirSync(path.join(dir, "repo"));
+    fs.writeFileSync(path.join(dir, "secret.txt"), "TOP SECRET\n");
+    fs.writeFileSync(path.join(dir, "repo", "a.py"), "print(1)\n");
+    fs.symlinkSync(path.join(dir, "secret.txt"), path.join(dir, "repo", "notes.txt"));
+    const out = execFileSync("python3", ["-c", "import json, sys, codecity; print(json.dumps([f['path'] for f in codecity.build_city(sys.argv[1])['files']]))", path.join(dir, "repo")], { cwd: ROOT, encoding: "utf8" });
+    assert.deepEqual(JSON.parse(out), ["a.py"]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

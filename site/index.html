@@ -3236,7 +3236,7 @@ function okToSendPrivate() {
   privateOk.add(currentRepo);
   return true;
 }
-const askHeaders = () => ({ "Content-Type": "application/json", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
+const askHeaders = () => ({ "Content-Type": "application/json", "X-Code-City": "1", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
 $("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
 {
