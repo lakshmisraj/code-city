@@ -720,7 +720,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   </section>
 
   <section class="segment guide" data-seg="guide">
-    <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick walk around the site, one part at a time.</p></div>
+    <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick look around, one part at a time.</p></div>
     <div><h3>Start here</h3><ul>
       <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
       <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
@@ -5557,19 +5557,19 @@ function frame() {
 // (closing it hides it for that visit), and once for each GitHub account the first time it signs in. Where there's
 // no sign-in at all (the local app, VS Code) it shows on the first visit only. The Guide can start it any time.
 const SITE_TOUR = [
-  { title: "Welcome to Code City", text: "Each file is a building, its height the lines of code; each folder is a district. Here's a quick look around." },
-  { at: ".tb-repo", title: "The repo on screen", text: "Its name, with its size beside it. Click the commit count to see its history." },
-  { at: "#askSlot", title: "Ask", text: "Ask a question about the code, such as \"where is sign-in handled?\". The files that answer it light up." },
-  { at: '.rail-btn[data-seg="repo"]', title: "Repo", text: "Open any public GitHub repo (or a private one with a token), load its history, or show a pull request on the city." },
-  { at: '.rail-btn[data-seg="understand"]', title: "Understand", text: "The code's structure, and a guided tour of its workflows." },
-  { at: "#side", title: "Code structure", text: "Where the code starts, its most-used files, its main paths and how its parts connect. Point at a row to light it in the city." },
-  { title: "The city", text: "Drag to turn it, scroll to zoom. Click a building to open its file: what it does, its functions, what it uses, View code and Explain." },
-  { at: '.rail-btn[data-seg="find"]', title: "Find", text: "Jump to a file by name." },
-  { at: '.rail-btn[data-seg="display"]', title: "Display", text: "Colour the city by language, hotspots or imports, and see every commit and branch." },
-  { at: ".tb-actions", title: "Share and record", text: "Copy a link to exactly this view, record a video of what you do, or reset the view." },
-  { at: '.rail-btn[data-seg="info"]', title: "Info", text: "What the buildings, colours and panels mean." },
-  { at: '.rail-btn[data-seg="guide"]', title: "Guide", text: "How to use each tool, and this tour again whenever you want it." },
-  { at: '.rail-btn[data-seg="account"]', title: "Sign in", text: "Sign in with GitHub to ask questions, take workflow tours and have code explained, and to raise GitHub's limit from 60 to 5,000 requests an hour.", when: () => signinEnabled && !oauthToken },
+  { title: "Welcome to Code City", text: "Every file is a building. Taller means more code, and folders are districts. Here's a quick look around." },
+  { at: ".tb-repo", title: "The repo on screen", text: "The project you're looking at, and how big it is. Click the commit count to see its history." },
+  { at: "#askSlot", title: "Ask", text: "Type a question about the code. The files that answer it light up." },
+  { at: '.rail-btn[data-seg="repo"]', title: "Repo", text: "Open a project from GitHub, or a folder on your computer." },
+  { at: '.rail-btn[data-seg="understand"]', title: "Understand", text: "See how the code fits together, or take a guided tour of what it does." },
+  { at: "#side", title: "Code structure", text: "Where the code starts, the files used most, and how the parts fit. Point at a row to light it up." },
+  { title: "The city", text: "Drag to turn it, scroll to zoom. Click a building to see its file and have it explained." },
+  { at: '.rail-btn[data-seg="find"]', title: "Find", text: "Find a file by its name." },
+  { at: '.rail-btn[data-seg="display"]', title: "Display", text: "Change the colours, or look through the project's history." },
+  { at: ".tb-actions", title: "Share and record", text: "Share a link to this view, record a video, or reset the view." },
+  { at: '.rail-btn[data-seg="info"]', title: "Info", text: "What everything on screen means." },
+  { at: '.rail-btn[data-seg="guide"]', title: "Guide", text: "How to use each tool. You can start this tour again from here." },
+  { at: '.rail-btn[data-seg="account"]', title: "Sign in", text: "Sign in with GitHub to ask questions and have code explained.", when: () => signinEnabled && !oauthToken },
 ];
 const siteTour = { el: $("siteTour"), i: 0, steps: [] };
 function stShown(sel) { const el = document.querySelector(sel); if (!el || el.hidden || el.closest("[hidden]")) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; }
