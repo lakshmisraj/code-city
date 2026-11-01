@@ -36,7 +36,7 @@ test("explain counts separately from asks", async () => {
 test("tour returns workflows of real files, with feeds between them", async () => {
   reply = { title: "T", overview: "O", workflows: [
     { name: "Start", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "nope.js", title: "x", narration: "x" }, { path: "b.js", title: "t2", narration: "n2" }], feeds: ["Serve", "Ghost", "Start"] },
-    { name: "Serve", summary: "S2", steps: [{ path: "b.js", title: "t", narration: "n" }], feeds: [] },
+    { name: "Serve", summary: "S2", steps: [{ path: "b.js", title: "t", narration: "n" }, { path: "c/d.js", title: "t", narration: "n" }], feeds: [] },
     { name: "Empty", summary: "x", steps: [{ path: "zzz", title: "t", narration: "n" }], feeds: [] }] };
   const [st, out] = await call({ mode: "tour", files, digest: "README: hello" });
   assert.equal(st, 200);
@@ -46,6 +46,23 @@ test("tour returns workflows of real files, with feeds between them", async () =
   assert.equal(out.overview, "O");
   assert.match(lastInput.input, /What the code itself shows[^\n]*\nREADME: hello/);
   assert.match(lastInput.system_instruction, /workflows/);
+});
+test("workflows that walk mostly the same files become one, and feeds follow it", async () => {
+  const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));
+  reply = { title: "T", overview: "O", workflows: [
+    { name: "Start", summary: "S", steps: st("a.js", "b.js"), feeds: ["Serve again"] },
+    { name: "Serve", summary: "S2", steps: st("b.js", "c/d.js"), feeds: ["Start"] },
+    { name: "Serve again", summary: "S3", steps: st("b.js", "c/d.js", "a.js"), feeds: ["Start"] },
+    { name: "Other", summary: "S4", steps: st("e.js", "b.js", "f.js"), feeds: ["Start", "Serve"] }] };
+  const [code, out] = await call({ mode: "tour", files: [...files, { path: "e.js", lines: 2 }, { path: "f.js", lines: 2 }], question: "fold" });
+  assert.equal(code, 200);
+  // Serve again has all of Start's files, so Start folds into it, the longer, in Start's place; then Serve's
+  // files are all in it too, so Serve folds in on the next pass. Other shares one file of three, so it stays.
+  assert.deepEqual(out.workflows.map(w => w.name), ["Serve again", "Other"]);
+  assert.deepEqual(out.workflows[0].merged, ["Start", "Serve"]);
+  assert.deepEqual(out.workflows[1].merged, []);
+  assert.deepEqual(out.workflows[1].feeds, ["Serve again"], "feeds to folded workflows name the one they joined, once");
+  assert.deepEqual(out.workflows[0].feeds, [], "never feeds itself");
 });
 test("lines keeps real line numbers of files that were sent", async () => {
   reply = { steps: [{ path: "a.js", lines: [{ line: 2, note: "n" }, { line: 9, note: "past the end" }] }, { path: "zz.js", lines: [{ line: 1, note: "x" }] }] };

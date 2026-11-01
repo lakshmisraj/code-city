@@ -724,7 +724,6 @@ function buildCity(data) {
   if (hist) { scrub.max = hist.commits.length; speedIdx = 0; showSpeed(); }
   goNow(true);
   closeDrawer(); applySearch();
-  if (colorMode === "imports") { impMax = 0; colorByImports(); }   // the new city's imports
   renderLegend();
   onCityBuilt();
   return true;
@@ -776,12 +775,6 @@ function cursorCommitCount() {
 
 function renderLegend() {
   const el = document.getElementById("legend");
-  if (colorMode === "imports") {
-    el.innerHTML = graph && graph.usedBy
-      ? `<div class="ramp"><div class="bar imp"></div><div class="ends"><span>imported by none</span><span>by ${fmt(maxImporters())} files</span></div></div>`
-      : `<p class="note">Reading imports…</p>`;
-    return;
-  }
   if (colorMode === "heat") {
     el.innerHTML = `<div class="ramp"><div class="bar"></div><div class="ends"><span>changed rarely</span><span>${fmt(maxChurn)} commits</span></div></div><p class="note">Hotspots, ranked in the list on the right.</p>`;
     return;
@@ -871,52 +864,32 @@ function matFor(b) {
     if (!st) return (t.shared.get(p) || []).length > 1 ? PICKED : t.paths.has(p) ? MATCH : DIM;   // overview: shared files brightest
     return p === st.path ? PICKED : t.workflows[t.w].steps.some(s => s.path === p) ? MATCH : DIM;
   }
-  if (sideMode === "map" && systemState && systemState.hover) { const m = systemMat(b.userData.f.path); if (m) return m; }   // a module pointed at
   if (sideMode === "commits" && commitSel) { const st = commitSel.get(b.userData.f.path); return st ? PR_MATS[st] || PR_MATS.modified : DIM; }
   if (sideMode === "trace" && traceState) { const p = b.userData.f.path; return p === traceState.path ? PICKED : traceState.files.has(p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
-  if (sideMode === "map") { const r = mapRole(b.userData.f.path); if (r) return r === "entry" ? PICKED : MATCH; }
+  if (sideMode === "map") { const m = systemMat(b.userData.f.path); if (m) return m; }   // files in a loop
+  if (sideMode === "map" && mapRole(b.userData.f.path)) return PICKED;
   if (query) return b.userData.match ? SEARCH : DIM;
   if (prState) { const st = prState.files.get(b.userData.f.path); return st ? PR_MATS[st] : DIM; }
-  if (colorMode === "imports") {   // how many files import this one: the core modules glow
-    const u = graph && graph.usedBy, n = u ? (u.get(b.userData.f.path) || new Set()).size : 0;
-    return !u ? DIM : impMats[n ? 1 + Math.min(IMP_LEVELS - 2, Math.floor(Math.log1p(n) / Math.log1p(maxImporters()) * (IMP_LEVELS - 2))) : 0];
-  }
   if (colorMode === "heat") {
     const c = churnSrc.get(b.userData.f.path) || 0;
     return heatMats[c ? 1 + Math.floor(Math.log1p(c) / Math.log1p(maxChurn) * (HEAT_LEVELS - 1)) : 0];
   }
   return langMat(b.userData.f.lang);
 }
-const IMP_LEVELS = 8, IMP_RAMP = ["#1e2740", "#1f4a5c", "#1f6f74", "#27947f", "#4fb88a", "#8fd68f", "#d6ef9a", "#fffbd0"];
-const impMats = IMP_RAMP.map((c, i) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: i > 4 ? c : 0x000000, emissiveIntensity: i > 4 ? 0.25 : 0 }));
-let impMax = 0, impScan = null;
-function maxImporters() { return impMax || 1; }
 function setColorMode(m) {
   colorMode = m; langSel = null;
   if (sideMode === "lang" || (sideMode === "hot" && m !== "heat")) closeSide();   // another colour: its list goes
   document.getElementById("cLang").setAttribute("aria-pressed", m === "lang");
   document.getElementById("hotBtn").setAttribute("aria-pressed", m === "heat");
-  document.getElementById("cImp").setAttribute("aria-pressed", m === "imports");
-  if (m === "imports") colorByImports();
   renderLegend();
   syncUrl();
-}
-// Colouring by imports needs every file's imports, so the first time it reads the repo (once per city).
-function colorByImports() {
-  const g = getGraph();
-  if (g.usedBy) { impMax = Math.max(1, ...[...g.usedBy.values()].map(s => s.size)); return; }
-  if (impScan === g) return;
-  impScan = g;
-  scanUsedBy((n, total) => { if (colorMode === "imports") document.getElementById("legend").innerHTML = `<p class="note">Reading imports… ${fmt(n)} of ${fmt(total)} files</p>`; })
-    .then(() => { if (graph !== g) return; impMax = Math.max(1, ...[...g.usedBy.values()].map(s => s.size)); if (colorMode === "imports") renderLegend(); });
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
-document.getElementById("cImp").onclick = () => setColorMode("imports");
 
 // ---------- left rail and its segments ----------
 // Each rail icon opens its segment in the panel beside the rail; clicking the open one (or «) collapses the
@@ -1100,14 +1073,13 @@ function openDrawer(b) {
   document.getElementById("dPath").innerHTML = crumbs(parts) + " · " + esc(LANGS[f.lang].name);
   document.getElementById("dRole").innerHTML = fileRole(f.path);
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
-  document.getElementById("dStats").innerHTML =
-    `<div><dt>Lines</dt><dd>${f.estimated && viewNow ? "~" : ""}${fmt(b.userData.lines)}</dd></div><div><dt>Functions</dt><dd>${ghRepo && f.text == null ? "–" : fmt(f.funcs)}</dd></div>` +
-    `<div><dt>Fires</dt><dd class="fire">${viewNow ? f.todos.length : "–"}</dd></div>` +
-    (hist ? `<div><dt>Commits</dt><dd>${fmt(commits)}</dd></div>` : `<div><dt>Floors</dt><dd>${Math.max(1, Math.round(b.userData.target))}</dd></div>`);
-  document.getElementById("dTodos").innerHTML = !viewNow ? `<p class="note">TODO fires show for current files. Drag the timeline to the end to see them.</p>`
-    : f.todos.length
-    ? `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>`
-    : `<p class="note">No TODOs here. This block is fireproof.</p>`;
+  const stat = (dt, dd, cls) => `<div><dt>${dt}</dt><dd${cls ? ` class="${cls}"` : ""}>${dd}</dd></div>`;   // only what the file has: no rows of zeros
+  document.getElementById("dStats").innerHTML = stat("Lines", (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines)) +
+    (!(ghRepo && f.text == null) && f.funcs ? stat("Functions", fmt(f.funcs)) : "") +
+    (viewNow && f.todos.length ? stat("Fires", fmt(f.todos.length), "fire") : "") +
+    (hist ? (commits ? stat("Commits", fmt(commits)) : "") : stat("Floors", Math.max(1, Math.round(b.userData.target))));
+  document.getElementById("dTodos").innerHTML = viewNow && f.todos.length
+    ? `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
   const fromGitHub = ghRepo && f.nowLines && f.text == null;
   if (fromGitHub && !f.failed) {
     document.getElementById("dTodos").innerHTML = "";
@@ -1131,7 +1103,7 @@ function openDrawer(b) {
 function fileRole(path) {
   const f = mapState && mapState.city === buildings && mapState.facts;
   const n = graph && graph.usedBy ? (graph.usedBy.get(path) || new Set()).size : null;
-  const used = n == null ? "" : n ? `used by ${fmt(n)} file${n === 1 ? "" : "s"}` : "no other file imports it";
+  const used = n ? `used by ${fmt(n)} file${n === 1 ? "" : "s"}` : "";
   const entry = f && f.entries.find(e => e.path === path);
   if (entry) return `<b>Entry point</b> · ${esc(entry.reason)}${used ? " · " + used : ""}`;
   return used ? used[0].toUpperCase() + used.slice(1) + "." : "";
@@ -1150,8 +1122,8 @@ async function renderOutline(path) {
     box.innerHTML = `<details class="more"${defs.length <= 25 ? " open" : ""}><summary>Functions · ${fmt(defs.length)}</summary><ul class="todos parts outline fnlist">${defs.map(({ d, i }) => {
       const n = idx.counts(path, i);
       return `<li class="${d.parent >= 0 ? "nested" : ""}"><button type="button" class="oline" data-oline="${d.line}" title="Open the code at line ${d.line}"><em>L${d.line}</em><b>${esc(d.name)}</b><span class="kind">${esc(d.kind === "function" && d.inline ? "handler" : d.kind)}</span></button>` +
-        (d.kind === "class" ? "" : `<span class="fn-n" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">→${n.calls} ←${n.callers}</span><button type="button" class="mini" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
-    }).join("")}</ul><p class="note">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p></details>` +
+        (d.kind === "class" ? "" : (n.calls || n.callers ? `<span class="fn-n" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">${n.calls ? `→${n.calls}` : ""}${n.calls && n.callers ? " " : ""}${n.callers ? `←${n.callers}` : ""}</span>` : "") + `<button type="button" class="mini" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
+    }).join("")}</ul>${defs.some(({ i }) => { const n = idx.counts(path, i); return n.calls || n.callers; }) ? `<p class="note">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p>` : ""}</details>` +
       `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
     return;
   }
@@ -1882,7 +1854,6 @@ function linkQuery() {
   const q = new URLSearchParams({ repo: currentRepo });
   if (currentRange) q.set("range", currentRange);
   if (colorMode === "heat") q.set("mode", "heat");
-  else if (colorMode === "imports") q.set("mode", "imports");
   if (sideMode === "hot") q.set("panel", "hotspots");
   if (prState) q.set("pr", prState.n);
   if (picked) q.set("file", picked.userData.f.path);
@@ -1934,7 +1905,6 @@ function applyPendingView() {
   if (ghProbe && p.range) return;
   pendingView = p.mode === "heat" && !hist ? { repo: p.repo, mode: "heat" } : null;
   if (p.mode === "heat" && hist) setColorMode("heat");
-  if (p.mode === "imports") setColorMode("imports");
   if (p.panel === "hotspots") openSide("hot");
   if (p.file && bmap.has(p.file)) openDrawer(bmap.get(p.file));
   if (p.pr) loadPR(p.pr); else syncUrl();
@@ -2192,12 +2162,11 @@ function renderMap() {
   else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
     : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
   if (f && f.scanned) {
-    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Brightest: where it starts</span><span><i style="background:#${MATCH.color.getHexString()}"></i>Lit: the most-used files</span></p>`;
+    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Lit: where it starts</span></p>`;
     const starts = f.entries.filter(e => !e.loose), loose = f.entries.filter(e => e.loose);
     html += starts.length || loose.length ? `<div><h3>Where it starts</h3><ol class="rank">${(starts.length ? starts : loose).map(e => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
       : `<p class="side-note">No clear starting point: this looks like a library other code imports.</p>`;
     if (starts.length && loose.length) html += `<details class="more"><summary>Scripts that run on their own · ${fmt(loose.length)}</summary><ol class="rank">${loose.map(e => row(e.path, "·", esc(e.reason))).join("")}</ol></details>`;
-    html += f.core.length ? `<div><h3>Most-used files</h3><ol class="rank">${f.core.map((c, i) => row(c.path, i + 1, `used by ${fmt(c.users)} file${c.users === 1 ? "" : "s"}`)).join("")}</ol></div>` : "";
     const idx = callsReady(), mp = mapPaths(f, idx);
     const step = (p, i) => idx && i >= 0 ? `<button type="button" class="flink" data-fn-trace="${esc(p)}" data-fn-i="${i}" title="Trace from here">${esc(fnName(idx, p, i))}</button>` : fileLink(p, shortFile(p));
     if (mp.paths.length) html += `<div><h3>Main paths</h3><ol class="paths">${mp.paths.map((pth, k) =>
@@ -2210,7 +2179,7 @@ function renderMap() {
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += systemHtml();
     if (f.partial) html += `<p class="side-note">Only the first ${fmt(MAX_SCAN)} source files were read.</p>`;
-    html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, core, main paths, modules and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
+    html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, main paths, tangles and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
   sideBody.innerHTML = html;
   drawLinks();
@@ -2240,7 +2209,6 @@ async function overviewMarkdown() {
   const step = (path, i) => idx && i >= 0 ? `\`${fnName(idx, path, i)}\` (${file(path)})` : file(path);
   const text = s => String(s || "").replace(/\s+/g, " ").trim();
   const n = (k, word) => `${fmt(k)} ${word}${k === 1 ? "" : "s"}`;
-  const mod = name => name.startsWith("(") ? name : `\`${name}/\``;   // "(top)" is the files at the root
   const out = [`# ${name}: how it's built`, "",
     `> Made by [Code City](${SITE_URL}) on ${new Date().toISOString().slice(0, 10)} from ${fmt(live.length)} files (${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines). ` +
     `Everything except the workflows section is read from the code's import lines and function calls, with no AI.`, ""];
@@ -2249,24 +2217,16 @@ async function overviewMarkdown() {
   if (langs) out.push(`Written in ${langs}.`, "");
   out.push("## Where it starts", "");
   out.push(...(facts.entries.length ? facts.entries.map(e => `- ${file(e.path)}: ${text(e.reason)}`) : ["No clear entry point: this looks like a library others import."]), "");
-  if (facts.core.length) out.push("## Most-used files", "", "The files most of the product imports.", "", ...facts.core.map((c, i) => `${i + 1}. ${file(c.path)}, used by ${n(c.users, "file")}`), "");
   if (mp.paths.length) {
     out.push("## Main paths", "", `From each entry point, the way the code goes${mp.calls ? ", following real function calls" : ", following imports"}.`, "");
     mp.paths.forEach((pth, k) => out.push(`${k + 1}. ${step(pth.entry.path, pth.entry.i)}: ${text(pth.entry.why)}`, ...pth.steps.slice(1).map(st => `   - then ${step(st.path, st.i)}`)));
     out.push("");
   }
   if (mp.meet.length) out.push("## Where paths meet", "", ...mp.meet.map(m => `- ${step(m.path, m.i)}, reached from ${n(m.n, "entry point")}`), "");
-  if (sys && sys.layers.length) {
-    out.push("## Modules", "", "The product's folders as modules. Each layer uses the ones below it.", "");
-    const top = sys.layers.length;
-    sys.layers.forEach((l, k) => {
-      out.push(`### ${top === 1 ? "One layer: these modules depend on each other" : k === 0 ? "Top: uses the others" : k === top - 1 ? "Foundation: used by the others" : `Layer ${top - k}`}`, "");
-      out.push(...l.map(g => { const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([m]) => mod(m)); return `- ${mod(g.name)} (${n(g.files.length, "file")})${uses.length ? `: uses ${uses.join(", ")}` : ""}`; }), "");
-    });
-    if (sys.cycles.length || sys.fileCycles.length) {
-      out.push("### Import cycles", "", "Modules or files that import each other when they load, so neither can be changed or tested on its own.", "");
-      out.push(...sys.cycles.map(c => `- ${c.map(g => mod(g.name)).join(" ⇄ ")}`), ...sys.fileCycles.map(c => `- ${[...c, c[0]].map(file).join(" → ")}`), "");
-    }
+  if (sys && (sys.cycles.length || sys.fileCycles.length)) {
+    const mod = name => name.startsWith("(") ? name : `\`${name}/\``;   // "(top)" is the files at the root
+    out.push("## Tangles", "", "Folders or files that import each other when they load, so none of them can be changed or tested on its own.", "");
+    out.push(...sys.cycles.map(c => `- ${c.map(g => mod(g.name)).join(" ⇄ ")}`), ...sys.fileCycles.map(c => `- ${[...c, c[0]].map(file).join(" → ")}`), "");
   }
   if (hist) {
     const rows = hotspotRows(10);
@@ -2294,7 +2254,7 @@ async function downloadOverview() {
 
 function mapRole(path) {   // for the city's colours while the panel is open
   const f = mapState && mapState.city === buildings && mapState.facts;
-  return !f ? null : f.entries.some(e => e.path === path) ? "entry" : f.core.some(c => c.path === path) ? "core" : null;
+  return !f ? null : f.entries.some(e => e.path === path) ? "entry" : null;
 }
 
 function renderHotspots() {
@@ -3076,8 +3036,8 @@ function outlineItems(path, text, max = 80) {
 function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
 // ---------- what the system is: facts read from the code, no AI ----------
 // The README's opening, the manifests, where execution starts (entry points) and the files most of the product
-// depends on (the core). Shown in the Code structure panel and sent to Gemini in the digest, so the
-// two always agree. Built once per city.
+// depends on (the core). The panel shows where it starts; Gemini's digest gets the core too, to plan tours and
+// answers. Built once per city.
 const ASIDE_RE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?)\//i;   // around the product, not the product
 const aside = f => ASIDE_RE.test(f) || /_test\.go$|\.(test|spec)\.[jt]sx?$/.test(f);
 function readmeIntro(text) {   // the first plain sentence of a README, skipping badges, headings and HTML
@@ -3256,6 +3216,16 @@ function drawLinks() {
       m.scale.setScalar(r * st.w * 1.8);
       group.add(m); sparks.push({ mesh: m, curve, phase: k / 3 });
     }
+  }
+  if (sideMode === "tour" && tourState) for (const [p, ks] of tourState.shared) {   // where workflows meet: a ring per workflow, stacked
+    const b = bmap.get(p);
+    if (ks.length < 2 || !b || !(b.userData.lines > 0) || (tourState.w >= 0 && !ks.includes(tourState.w))) continue;
+    const v = top(b), rad = Math.max(b.userData.side * 0.8, r * 8);
+    ks.forEach((k, i) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(rad, r * 2.2, 8, 40), wfArc("wf" + k).tube);
+      ring.rotation.x = Math.PI / 2; ring.position.set(v.x, v.y + 1.2 + i * r * 6, v.z);
+      group.add(ring);
+    });
   }
   if (!group.children.length) return;
   linkGroup = group; scene.add(group);
@@ -3912,8 +3882,8 @@ function mainPathsText(mp, idx) {   // for Gemini: the paths as plain lines
 }
 
 // ---------- system map ----------
-// The product's folders as modules: which folders use which, sorted into layers (the ones that use the others
-// on top, the foundations underneath), with import cycles flagged, between folders and between files.
+// Tangles: folders or files that import each other in a loop. The folders are grouped as modules to find
+// loops between them (with Tarjan's algorithm); file loops are the shortest ones.
 let systemState = null;   // { city, groups, layers, cycles, fileCycles, hover }
 function groupDepth(files) {   // the folder depth that splits the product into a readable number of modules
   const prefix = (() => { const parts = files.map(f => f.split("/").slice(0, -1)); let n = 0; while (parts.length && parts.every(p => p.length > n && p[n] === parts[0][n])) n++; return n; })();
@@ -4004,50 +3974,26 @@ function shortLoops(edges) {   // the shortest import loops (two to four files),
   return out.sort((a, b) => a.length - b.length).slice(0, 8);
 }
 let systemLoading = null;   // the city loadSystem is running for, so redraws don't start it again
-function systemHtml() {   // the modules part of Code structure
+function systemHtml() {   // the tangles part of Code structure: parts or files that import each other in a loop
   const st = systemState && systemState.city === buildings ? systemState : null;
   if (!st) {
     if (systemLoading !== buildings) { const city = systemLoading = buildings; loadSystem().then(s => { if (systemLoading === city) systemLoading = null; if (s && sideMode === "map") renderSide(); }, () => { if (systemLoading === city) systemLoading = null; }); }
-    return `<div><h3>How the parts connect</h3><p class="side-note">Reading modules…</p></div>`;
+    return "";
   }
-  const tangled = new Set(st.cycles.flat().map(g => g.name));
+  if (!st.cycles.length && !st.fileCycles.length) return "";   // nothing tangled: nothing to say
   const label = n => n === "(top)" ? "top-level files" : n.split("/").pop();
-  const grp = g => {
-    const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([n]) => label(n)), by = g.usedBy.size;
-    const meta = !uses.length && !by ? "on its own" : [uses.length ? `uses ${uses.slice(0, 3).join(", ")}${uses.length > 3 ? ` and ${uses.length - 3} more` : ""}` : "", by ? `used by ${fmt(by)} part${by === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
-    return `<li><button type="button" data-group="${esc(g.name)}"><span class="n">${fmt(g.files.length)}</span><span class="path">${esc(g.name === "(top)" ? "top-level files" : g.name + "/")}</span>` +
-      `<span class="meta">${g.files.length === 1 ? "1 file" : `${fmt(g.files.length)} files`} · ${esc(meta)}${tangled.has(g.name) ? " · tangled" : ""}</span></button></li>`;
-  };
-  // parts that use others first, down to the ones everything uses; parts with no links at all last, biggest first
-  const all = st.layers.flat(), linked = all.filter(g => g.uses.size || g.usedBy.size), alone = all.filter(g => !g.uses.size && !g.usedBy.size).sort((a, b) => b.files.length - a.files.length);
   const cyc = c => {
     const names = c.map(g => g.name), ex = [];   // one import each way between the first two that link
     for (const a of names) for (const b of names) { const x = st.example.get(a + ">" + b), y = st.example.get(b + ">" + a); if (a < b && x && y && !ex.length) ex.push(x, y); }
     return `<li class="warn"><b>${names.map(n => esc(label(n))).join(" ⇄ ")}</b><span>${ex.length ? `For example, ${fileLink(ex[0][0], shortFile(ex[0][0]))} imports ${fileLink(ex[0][1], shortFile(ex[0][1]))}, and ${fileLink(ex[1][0], shortFile(ex[1][0]))} imports ${fileLink(ex[1][1], shortFile(ex[1][1]))}.` : ""}</span></li>`;
   };
-  return `<div><h3>How the parts connect</h3><ol class="rank">${linked.concat(alone).map(grp).join("")}</ol></div>` +
-    (st.cycles.length || st.fileCycles.length ? `<div><h3>Tangles</h3><ul class="cycles">${st.cycles.map(cyc).join("")}` +
-      st.fileCycles.map(c => `<li class="warn"><span>${c.map(f => fileLink(f, shortFile(f))).join(" → ")} → ${fileLink(c[0], shortFile(c[0]))}</span></li>`).join("") + `</ul></div>`
-      : `<p class="side-note">No tangles: no parts import each other in a loop.</p>`);
+  return `<div><h3>Tangles</h3><p class="side-note">These import each other in a loop, so none of them can be changed or tested on its own.</p><ul class="cycles">${st.cycles.map(cyc).join("")}` +
+    st.fileCycles.map(c => `<li class="warn"><span>${c.map(f => fileLink(f, shortFile(f))).join(" → ")} → ${fileLink(c[0], shortFile(c[0]))}</span></li>`).join("") + `</ul></div>`;
 }
-function systemMat(path) {   // while the map is open: the module you point at lights up, files in cycles glow
+function systemMat(path) {   // while Code structure is open, files in loops glow
   const st = systemState && systemState.city === buildings ? systemState : null;
-  if (!st) return null;
-  if (st.hover) return st.groupOf(path) === st.hover && !aside(path) ? MATCH : DIM;
-  return st.fileCycles.some(c => c.includes(path)) ? FLASH.del || MATCH : null;
+  return st && st.fileCycles.some(c => c.includes(path)) ? FLASH.del || MATCH : null;
 }
-sideBody.addEventListener("mouseover", e => {
-  if (sideMode !== "map" || !systemState) return;
-  const row = e.target.closest("[data-group]"), g = row ? row.dataset.group : null;
-  if (g !== systemState.hover) { systemState.hover = g; }
-});
-sideBody.addEventListener("mouseleave", () => { if (systemState) systemState.hover = null; });
-sideBody.addEventListener("click", e => {
-  const row = e.target.closest("[data-group]");
-  if (!row || sideMode !== "map" || !systemState) return;
-  const g = systemState.groups.get(row.dataset.group);
-  if (g) { const dir = g.name; const d = districts.find(x => x.userData.dir === dir); if (d) openFolder(dir); else if (g.files[0]) openDrawer(bmap.get(g.files[0])); }
-});
 
 // ---------- commits and branches ----------
 // The repo's history as a graph, like GitHub Desktop: one lane per line of work, newest at the top, a dot per
@@ -4337,16 +4283,17 @@ function commitFollow() {
 async function renderFileLinks(path) {
   const box = $("dLinks");
   if (!canImport(path)) { box.innerHTML = ""; return; }
-  const list = (title, paths, cls) => `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, 6)))}">View with this file</button>` : ""}</h3>${paths.length
+  const list = (title, paths, cls) => !paths.length ? "" : `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, 6)))}">View with this file</button>` : ""}</h3>${paths.length
     ? `<ol class="rank links ${cls}">${paths.map(p => `<li><button type="button" data-file="${esc(p)}"><span class="n">${cls === "in" ? "←" : "→"}</span><span class="path">${pathHtml(p)}</span></button></li>`).join("")}</ol>`
-    : `<p class="note">${cls === "in" ? "No other file imports this one." : "It doesn't import other files in this repo."}</p>`}</div>`;
+    : ""}</div>`;
   box.innerHTML = `<p class="note">Reading its imports…</p>`;
   const out = await loadDeps(path);
   if (!picked || picked.userData.f.path !== path) return;
   const g = graph;
-  box.innerHTML = list("Imports", out, "out") + (g && g.usedBy ? list("Used by", [...(g.usedBy.get(path) || [])].sort(), "in")
-    : `<div><h3>Used by</h3><button type="button" class="mini" data-scan>Find the files that use this</button></div>`) +
-    `<p class="note links-key"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>`;
+  const lists = list("Imports", out, "out") + (g && g.usedBy ? list("Used by", [...(g.usedBy.get(path) || [])].sort(), "in")
+    : `<div><h3>Used by</h3><button type="button" class="mini" data-scan>Find the files that use this</button></div>`);
+  box.innerHTML = lists + (out.length || (g && g.usedBy && (g.usedBy.get(path) || new Set()).size)
+    ? `<p class="note links-key"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>` : "");
   $("dRole").innerHTML = fileRole(path);
 }
 document.getElementById("dLinks").addEventListener("click", async e => {
@@ -4481,6 +4428,44 @@ async function loadKeyLines(w) {
   } catch (e) { wf.lines = { error: "Couldn't reach Code City's server." }; }
   redraw();
 }
+// The merge map: each workflow a line in its colour, left to right in the order the work flows. Where workflows
+// pass through the same file their lines pinch together into one station, and split again after, so you see at
+// a glance where the walks join. Files go in columns by the longest walk that reaches them.
+function mergeMapSvg(t) {
+  const ws = t.workflows, col = new Map(), next = new Map(), order = [];
+  ws.forEach(w => w.steps.forEach((st, j) => {
+    if (!col.has(st.path)) { col.set(st.path, 0); order.push(st.path); next.set(st.path, new Set()); }
+    if (j && w.steps[j - 1].path !== st.path) next.get(w.steps[j - 1].path).add(st.path);
+  }));
+  const state = new Map(), topo = [];   // depth-first, skipping edges that close a loop, so the columns always settle
+  const visit = p => { state.set(p, 1); for (const q of next.get(p)) if (!state.has(q)) visit(q); state.set(p, 2); topo.push(p); };
+  order.forEach(p => { if (!state.has(p)) visit(p); });
+  const rank = new Map(topo.reverse().map((p, i) => [p, i]));
+  for (const p of topo) for (const q of next.get(p)) if (rank.get(q) > rank.get(p)) col.set(q, Math.max(col.get(q), col.get(p) + 1));
+  const cols = Math.max(...col.values()) + 1;
+  const LANE = 30, STEP = Math.max(34, Math.min(64, 300 / Math.max(1, cols - 1))), PAD = 22, BUNDLE = 4;
+  const W = PAD * 2 + (cols - 1) * STEP, H = PAD * 2 + (ws.length - 1) * LANE + 12;
+  const laneY = k => PAD + 6 + k * LANE, X = p => PAD + col.get(p) * STEP;
+  const centerY = p => { const ks = t.shared.get(p) || []; return ks.reduce((a, k) => a + laneY(k), 0) / ks.length; };
+  const at = (p, k) => { const ks = t.shared.get(p) || [k], i = ks.indexOf(k); return [X(p), centerY(p) + (i - (ks.length - 1) / 2) * BUNDLE]; };
+  const lines = ws.map((w, k) => {
+    const pts = w.steps.map(st => at(st.path, k)).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]);
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], h = (x1 - x0) / 2 || 18; d += ` C${x0 + h},${y0} ${x1 - h},${y1} ${x1},${y1}`; }
+    const c = WF_COLORS[k % WF_COLORS.length];
+    return `<path class="mm-line" d="${d}" pathLength="1" stroke="${c}" style="animation-delay:${k * 0.25}s" data-wf="${k}"><title>${esc(w.name)}</title></path>`;
+  });
+  const stations = order.map((p, i) => {
+    const ks = t.shared.get(p) || [], x = X(p), name = p.slice(p.lastIndexOf("/") + 1);
+    const tip = `${p}${ks.length > 1 ? ` — where ${ks.map(k => ws[k].name).join(", ")} meet` : ` — in ${ws[ks[0]].name}`}`;
+    if (ks.length < 2) { const [, y] = at(p, ks[0]); return `<g class="mm-stop" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title><circle cx="${x}" cy="${y}" r="4" fill="${WF_COLORS[ks[0] % WF_COLORS.length]}"/></g>`; }
+    const y = centerY(p), h = (ks.length - 1) * BUNDLE + 12, above = i % 2 === 0;
+    return `<g class="mm-stop mm-join" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title>
+      <rect x="${x - 7}" y="${y - h / 2}" width="14" height="${h}" rx="7"/>
+      <text x="${x}" y="${above ? y - h / 2 - 5 : y + h / 2 + 12}" text-anchor="middle">${esc(clip(name, 16))}</text></g>`;
+  });
+  return `<svg class="merge-map" viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="group" aria-label="How the workflows merge: ${t.shared.size} files, ${[...t.shared.values()].filter(ks => ks.length > 1).length} where workflows meet">${lines.join("")}${stations.join("")}</svg>`;
+}
 function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k % WF_COLORS.length]}" aria-hidden="true"></span>`; }
 function renderTour() {
   const t = tourState;
@@ -4492,9 +4477,10 @@ function renderTour() {
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
       <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
+      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow; where lines pinch together they pass through the same file. Pick a station to open its file, or a line to walk it.</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
-        <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
+        <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
         <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
       <div class="side-actions">
@@ -4517,6 +4503,7 @@ function renderTour() {
           <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
           <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
+          ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">Merges here with ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
           ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
@@ -4533,6 +4520,10 @@ function renderTour() {
   }
   if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the panel was redrawn; keep keyboard focus
 }
+sideBody.addEventListener("keydown", e => {   // the merge map's stations are SVG, which has no button to press
+  const stop = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest(".mm-stop");
+  if (stop) { e.preventDefault(); stop.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+});
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");

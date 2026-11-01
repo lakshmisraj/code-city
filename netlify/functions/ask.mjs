@@ -32,7 +32,7 @@ const PREFER_MS = 5 * 60 * 1000;
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
 const MAX_TRIES = 4;
-const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
+const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, read by the page (it sends at most this)
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
@@ -96,10 +96,32 @@ const TOUR_SCHEMA = {
   required: ["title", "overview", "workflows"],
 };
 
+// Two workflows that walk mostly the same files are one walk told twice: the shorter folds into the longer, which
+// keeps the earlier one's place and lists the other under merged. Feeds that named it now name the one it joined.
+const FOLD_SHARE = 0.75;   // of the shorter workflow's files
+export function foldOverlapping(workflows) {   // again until nothing folds: a fold can make a workflow that overlaps another
+  for (let n = -1; n !== workflows.length;) { n = workflows.length; workflows = foldOnce(workflows); }
+  return workflows;
+}
+function foldOnce(workflows) {
+  const kept = [], into = new Map();   // name -> the name it was folded into
+  for (const w of workflows) {
+    const files = new Set(w.steps.map(st => st.path));
+    const k = kept.findIndex(u => { const theirs = new Set(u.steps.map(st => st.path)); let n = 0; for (const p of files) if (theirs.has(p)) n++; return n / Math.min(files.size, theirs.size) >= FOLD_SHARE; });
+    if (k < 0) { kept.push({ ...w, merged: w.merged || [] }); continue; }
+    const u = kept[k], [big, small] = w.steps.length > u.steps.length ? [w, u] : [u, w];
+    kept[k] = { ...big, name: big.name, merged: [...u.merged, ...(w.merged || []), small.name], feeds: [...u.feeds, ...w.feeds] };
+    into.set(small.name, big.name);
+    for (const [from, to] of into) if (to === small.name) into.set(from, big.name);
+  }
+  for (const w of kept) w.feeds = [...new Set(w.feeds.map(f => into.get(f) || f))].filter(f => f !== w.name);
+  return kept;
+}
+
 const TOUR_SYSTEM = `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
 Split the software into its main workflows: two to ${MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words, a one or two sentence summary, and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
-Workflows often share files; reuse the same path when they do. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
+Workflows often share files; reuse the same path when they do, since that is where they meet. Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
 Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
 You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.
 It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).
@@ -508,6 +530,7 @@ async function handle(event) {
     })).filter(w => w.name && w.steps.length).slice(0, MAX_WORKFLOWS);
     const names = new Set(workflows.map(w => w.name));
     workflows.forEach(w => { w.feeds = w.feeds.filter(f => f !== w.name && names.has(f)); });   // only workflows that are in the tour
+    workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
     return done({ title: String(reply.title || "A tour of the city").slice(0, 100), overview: String(reply.overview || "").slice(0, 1000), workflows });
   }

@@ -97,7 +97,7 @@
   <section class="segment" data-seg="understand">
     <p class="seg-note">Start here, then take the tour.</p>
     <div class="seg-actions">
-      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts, its key files, and how the parts connect</span></button>
+      <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts and the main paths through it</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
       <form id="tourForm" class="tour-topic" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
     </div>
@@ -120,7 +120,6 @@
       <div class="seg" role="group" aria-label="Color buildings by">
         <button type="button" id="cLang" aria-pressed="true">Language</button>
         <button type="button" id="hotBtn" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
-        <button type="button" id="cImp" aria-pressed="false">Imports</button>
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
@@ -137,50 +136,28 @@
   </section>
 
   <section class="segment guide" data-seg="info">
-    <div><h3>What this is</h3><p>Code City draws a code repository as a city, so you can see its shape at a glance: where it starts, which files everything leans on, how its workflows run, and how it grew.</p></div>
+    <div><h3>What this is</h3><p>Code City shows a code project as a city, so you can see its shape at a glance.</p></div>
     <div><h3>Reading the city</h3><ul>
-      <li><b>Building</b> = one file. <b>Height</b> = lines of code. <b>Width</b> = number of functions.</li>
-      <li><b>Districts</b> = folders, raised one step per level.</li>
-      <li><b>Fire</b> on a roof = TODO, FIXME or HACK comments.</li>
-      <li><b>Lit buildings</b> show what the open panel is about: <span class="gk" style="background:#f2a541"></span>entry points and the file you picked, <span class="gk" style="background:#ffc46b"></span>core files, answers and tour steps, <span class="gk" style="background:#8ff5d2"></span>search matches. Everything else dims.</li>
-      <li><b>Lines between buildings</b> are imports: which file brings in which.</li>
-      <li><b>Hotspots</b> colours each file by how many commits touched it, from dark blue (rarely) to orange-red (constantly), and lists the big files that keep changing, where bugs tend to live.</li>
+      <li>Each <b>building</b> is a file. Taller means more lines of code.</li>
+      <li>Each <b>district</b> is a folder.</li>
+      <li><b>Fire</b> on a roof means a TODO note in the code.</li>
+      <li><b>Lines</b> between buildings show which file uses which.</li>
+      <li><b>Lit</b> buildings are the ones the open panel is about. The rest dim.</li>
     </ul></div>
-    <div><h3>Reading the panels</h3><ul>
-      <li><b>Code structure</b> is read from the code itself, with no AI; tests, docs and examples aren't counted. <b>Main paths</b> go from each starting point the way the code goes; click a step to trace it. In <b>How the parts connect</b> each folder is a part: parts that use others come first, then the ones they rely on, then parts with no links to the rest. Point at a part to light its files.</li>
-      <li><b>Tangles</b> are parts or files that import each other, so none of them can be changed or tested on its own. Imports inside functions, under <code>if TYPE_CHECKING:</code> or <code>import type</code> don't count, since they don't run when a file loads.</li>
-      <li><b>Hotspots</b> are ranked by <b>commits × lines</b>: big files that keep changing, where bugs tend to cluster and refactoring pays off first.</li>
-      <li><b>Commits and branches</b>: newest first; each lane is a line of work and a hollow dot is a merge. Click a commit to see what it changed in the city.</li>
-      <li><b>Explanations</b>: select lines in a code window and press its <b>Explain</b> to explain just those (with nothing selected it explains the whole file); <b>Explain the whole file</b> at the top of that explanation does the rest. Names, files and line numbers in an explanation are clickable. Connections marked <b>imports</b> come from the code's import lines; <b>inferred</b> ones are Gemini's reading. <b>Follow</b> explains a connected file next.</li>
-      <li><b>Ask</b>: Gemini picks the files from the repo's structure; explaining reads their code and opens it in its own window.</li>
-      <li><b>Workflows tour</b>: the map shows every workflow at once, one colour each; the brightest buildings are files the workflows share. Gemini plans them from the README, imports and functions. Important lines come from Gemini reading the code; hand-off lines are the import lines that lead to the next step.</li>
-    </ul></div>
-    <div><h3>Limits</h3><p>Without signing in, GitHub allows 60 requests an hour. Signing in raises it to 5,000 and unlocks Ask, tours and explanations, which have a daily limit per person.</p></div>
+    <div><h3>Good to know</h3><p>Ask, tours and explanations are written by AI, so check them against the code. Signing in to GitHub turns them on and lets you load more.</p></div>
   </section>
 
   <section class="segment guide" data-seg="guide">
     <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick look around, one part at a time.</p></div>
-    <div><h3>Start here</h3><ul>
-      <li><b>Repo</b>: paste a public GitHub repo (or open a folder). Pick how much history to load, or keep today's files.</li>
-      <li><b>Understand &rsaquo; Code structure</b> opens by itself: what the project says it is, where it starts, the most-used files, and how its parts connect.</li>
-      <li>Click any file to see its role, its functions, what it imports and what uses it. <b>Explain this code</b> reads it for you; <b>View code</b> opens it.</li>
-      <li><b>Trace</b> next to a function follows what it calls, file to file, and what calls it. Click a name in a trace to open every step's code side by side. The <b>Main paths</b> in Code structure start you at the entry points.</li>
-    </ul></div>
-    <div><h3>The tools</h3><ul>
-      <li><b>Ask</b> (top bar): a question about the code; the files that answer it light up.</li>
-      <li><b>Understand</b>: the <b>Code structure</b> (where it starts, the most-used files, main paths, how the parts connect, and tangles) and the workflows tour.</li>
-      <li><b>Find</b>: a file by name.</li>
-      <li><b>Repo</b>: also shows a pull request's changes on the city.</li>
-      <li><b>Commits and branches</b> (Display, or the commit count in the top bar): the history as a graph, one lane per line of work, merges joining back. Click a commit to see what it changed; the city goes back to that moment when it's in the loaded history.</li>
-      <li><b>Display</b>: colour by language, <b>Hotspots</b> (how often files change, with a ranked list) or imports; show or hide connections.</li>
-      <li><b>Trace</b> (Python, JavaScript, TypeScript, Go): function-level links read with a parser, no AI. Each says how it was found: <b>sure</b>, <b>self</b>, <b>likely</b>, <b>passes</b> (a callback), or <b>run time</b> (where the trace has to stop).</li>
-      <li><b>Windows</b>: explanations and code open in windows you can move, resize, fold to a tab and close. <b>Follow</b> on a connection explains the next file in the chain.</li>
-    </ul></div>
+    <div><h3>Start here</h3><ol>
+      <li><b>Repo</b>: paste a GitHub link, or open a folder.</li>
+      <li><b>Understand</b>: see where the code starts and how it flows.</li>
+      <li>Click a building to see what that file does.</li>
+      <li><b>Ask</b> at the top: ask a question about the code.</li>
+    </ol></div>
     <div><h3>Moving around</h3><ul>
-      <li>Drag to orbit, scroll (or pinch) to zoom, right-drag (or two fingers) to pan.</li>
-      <li>Click a building or a folder for details; shift-click a building to view its code.</li>
-      <li>Esc folds the front window, then closes the file panel, then the side panel.</li>
-      <li>Panels: click a rail icon again (or &laquo;) to fold the left panel; &raquo; folds a right panel. Drag a panel's edge to resize it.</li>
+      <li>Drag to turn, scroll to zoom, right-drag to move.</li>
+      <li>Esc closes what's open.</li>
     </ul></div>
   </section>
 

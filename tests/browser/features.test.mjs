@@ -80,10 +80,11 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
     assert.match(await page.textContent("#sideSub"), /^3 files · \d+ lines · \d+% of the code$/);
     await page.click('#legend [data-lang="py"]');
     assert.ok(await page.evaluate(() => document.getElementById("side").hidden), "clicking it again clears it");
-    // ...and picking another colour closes Hotspots' list
+    // ...and picking another colour closes Hotspots' list; Display has no Imports colour any more
     await page.click("#hotBtn");
     await page.waitForFunction(() => document.getElementById("sideTitle").textContent === "Hotspots");
-    await page.click("#cImp");
+    assert.equal(await page.$("#cImp"), null);
+    await page.click("#cLang");
     assert.ok(await page.evaluate(() => document.getElementById("side").hidden));
 
     // Explaining selected lines: only those, marked, with the whole file one press away
@@ -154,6 +155,15 @@ test("on the hosted site the tour shows on every visit until sign-in, then once 
     await page.waitForTimeout(2500);   // the tour waits for the first panels to settle
     return page;
   };
+  const reopen = async page => {   // a later visit: as long a wait as the first, since the tour waits for sign-in
+    await page.reload();
+    await page.waitForFunction(() => +document.getElementById("sFiles").textContent.replace(/\D/g, "") > 0);
+    await page.waitForTimeout(2500);
+  };
+  const signedInAs = async (page, who) => {   // the tour waits for sign-in to learn the account, which is slow on a busy machine
+    await page.waitForFunction(who => document.getElementById("ghLogin").textContent === "@" + who, who);
+    await page.waitForTimeout(1500);   // it starts 900 ms after
+  };
   try {
     // signed out: every visit, until closed for that visit
     const out = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -161,7 +171,7 @@ test("on the hosted site the tour shows on every visit until sign-in, then once 
     assert.equal(await tourShown(a), true, "a signed-out visitor sees it");
     assert.ok(await a.$$eval("#siteTour [data-st]", () => true));
     await a.click('#siteTour [data-st="close"]');
-    await a.reload(); await a.waitForTimeout(3500);
+    await reopen(a);
     assert.equal(await tourShown(a), false, "closed: not again in this visit");
     const b = await open(out);
     assert.equal(await tourShown(b), true, "a new visit shows it again");
@@ -170,12 +180,12 @@ test("on the hosted site the tour shows on every visit until sign-in, then once 
     // signed in: once per GitHub account
     const signedIn = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await signedIn.addInitScript(() => { try { if (!localStorage.getItem("codecity.githubOAuth")) localStorage.setItem("codecity.githubOAuth", "stand-in-token"); } catch (e) {} });
-    const c = await open(signedIn);
+    const c = await open(signedIn); await signedInAs(c, "first-account");
     assert.equal(await tourShown(c), true, "the first sign-in sees it");
-    await c.reload(); await c.waitForTimeout(3500);
+    await reopen(c); await signedInAs(c, "first-account");
     assert.equal(await tourShown(c), false, "not again for the same account");
     login = "second-account";
-    await c.reload(); await c.waitForTimeout(3500);
+    await reopen(c); await signedInAs(c, "second-account");
     assert.equal(await tourShown(c), true, "another account sees it once too");
     await signedIn.close();
   } finally {
