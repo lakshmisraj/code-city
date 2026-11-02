@@ -38,7 +38,7 @@ test("tour returns workflows of real files, with feeds between them", async () =
     { name: "Start", feature: "Lets people start it.", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "nope.js", title: "x", narration: "x" }, { path: "b.js", title: "t2", narration: "n2" }], feeds: ["Serve", "Ghost", "Start"] },
     { name: "Serve", summary: "S2", steps: [{ path: "b.js", title: "t", narration: "n" }, { path: "c/d.js", title: "t", narration: "n" }], feeds: [] },
     { name: "Empty", summary: "x", steps: [{ path: "zzz", title: "t", narration: "n" }], feeds: [] }] };
-  const [st, out] = await call({ mode: "tour", files, digest: "README: hello" });
+  const [st, out] = await call({ mode: "tour", files, digest: "README: hello", plain: true });
   assert.equal(st, 200);
   assert.deepEqual(out.workflows.map(w => w.name), ["Start", "Serve"]);
   assert.deepEqual(out.workflows[0].steps.map(s => s.path), ["a.js", "b.js"]);
@@ -50,6 +50,16 @@ test("tour returns workflows of real files, with feeds between them", async () =
   assert.match(lastInput.input, /What the code itself shows[^\n]*\nREADME: hello/);
   assert.match(lastInput.system_instruction, /workflows/);
   assert.match(lastInput.system_instruction, /plain English on what it lets people do/);
+});
+test("only a Beginner tour (plain) comes in plain English", async () => {
+  reply = { title: "T", story: "A story.", overview: "O", workflows: [{ name: "Start", feature: "F", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }], feeds: [] }] };
+  for (const extra of [{}, { every: true, plain: true }]) {
+    const [st, out] = await call({ mode: "tour", files, digest: "README: plain " + JSON.stringify(extra), ...extra });
+    assert.equal(st, 200);
+    assert.equal(out.story, undefined);
+    assert.equal(out.workflows[0].feature, undefined);
+    assert.doesNotMatch(lastInput.system_instruction, /end to end in simple English|plain English on what it lets people do/);
+  }
 });
 test("workflows that walk mostly the same files become one, and feeds follow it", async () => {
   const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));

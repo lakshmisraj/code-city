@@ -2050,6 +2050,7 @@ function setAudience(a, quiet) {
   document.body.classList.toggle("locked", !!LOCKED_FOR);
   const others = Object.keys(AUDIENCES).filter(k => k !== a && SITE_URLS[k]);
   $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
+  understandOrder();
   if (quiet) return;
   if (a === "beginner" && ["commits", "hot", "pr", "report"].includes(sideMode)) closeSide();   // panels this version doesn't have
   if (a === "beginner" && colorMode === "heat") setColorMode("lang");
@@ -2057,6 +2058,16 @@ function setAudience(a, quiet) {
   else if (sideMode) renderSide();
   syncUrl();
 }
+// Beginner starts Understand with the workflows tour; the others with Code structure, the tour after it. Without
+// the tour (no Gemini here), Code structure leads in every version.
+function understandOrder() {
+  const tourFirst = audience === "beginner" && !$("tourBtn2").hidden, box = $("mapBtn").parentNode;
+  if (tourFirst) box.prepend($("tourBtn2"), $("tourForm")); else box.append($("tourBtn2"), $("tourForm"));
+  $("tourBtn2").classList.toggle("primary", tourFirst);
+  $("mapBtn").classList.toggle("primary", !tourFirst);
+  $("understandNote").textContent = tourFirst ? "Start with the tour, then see how the code is built." : "Start here, then take the tour.";
+}
+const plainTour = () => audience === "beginner";   // the tour in plain English as well is Beginner's
 setAudience(audience, true);
 $("forSel").onchange = e => setAudience(e.target.value);
 document.querySelector(".for-seg").addEventListener("click", e => { const b = e.target.closest("[data-for]"); if (b) setAudience(b.dataset.for); });
@@ -2197,6 +2208,7 @@ function langSummary() {
   return Object.keys(lines).filter(l => !["md", "cfg", "other"].includes(l)).sort((a, b) => lines[b] - lines[a]).slice(0, 3).map(l => LANGS[l].name).join(", ");
 }
 function renderMap() {
+  const plain = audience === "beginner";   // Beginner reads it in plain English
   const st = mapState, f = st && st.facts, live = buildings.filter(b => b.userData.lines > 0);
   $("sideTitle").textContent = "Code structure";
   $("sideSub").textContent = `${currentRepo || cityName} · ${fmt(live.length)} files · ${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines`;
@@ -2209,17 +2221,20 @@ function renderMap() {
   else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
     : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
   if (f && f.scanned) {
-    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>Lit: where it starts</span></p>`;
-    const starts = f.entries.filter(e => !e.loose), loose = f.entries.filter(e => e.loose);
-    html += starts.length || loose.length ? `<div><h3>Where it starts</h3><ol class="rank">${(starts.length ? starts : loose).map(e => row(e.path, "▶", esc(e.reason))).join("")}</ol></div>`
-      : `<p class="side-note">No clear starting point: this looks like a library other code imports.</p>`;
-    if (starts.length && loose.length) html += `<details class="more"><summary>Scripts that run on their own · ${fmt(loose.length)}</summary><ol class="rank">${loose.map(e => row(e.path, "·", esc(e.reason))).join("")}</ol></details>`;
+    if (plain) html += `<p class="side-note">A program is split into files. It begins in a starting file and hands the work on from one part to the next. Here's where this one starts, and what it does in order.</p>`;
+    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>${plain ? "Glowing: where the program starts" : "Lit: where it starts"}</span></p>`;
+    const starts = f.entries.filter(e => !e.loose), loose = f.entries.filter(e => e.loose), reason = e => esc(plain ? plainReason(e.reason) : e.reason);
+    html += starts.length || loose.length ? `<div><h3>${plain ? "Where the program starts" : "Where it starts"}</h3><ol class="rank">${(starts.length ? starts : loose).map(e => row(e.path, "▶", reason(e))).join("")}</ol></div>`
+      : `<p class="side-note">${plain ? "There's no single starting point: this is a toolkit that other programs use." : "No clear starting point: this looks like a library other code imports."}</p>`;
+    if (starts.length && loose.length) html += `<details class="more"><summary>${plain ? "Other files you can run on their own" : "Scripts that run on their own"} · ${fmt(loose.length)}</summary><ol class="rank">${loose.map(e => row(e.path, "·", reason(e))).join("")}</ol></details>`;
     const idx = callsReady(), mp = mapPaths(f, idx);
-    const step = (p, i) => idx && i >= 0 ? `<button type="button" class="flink" data-fn-trace="${esc(p)}" data-fn-i="${i}" title="Trace from here">${esc(fnName(idx, p, i))}</button>` : fileLink(p, shortFile(p));
-    if (mp.paths.length) html += `<div><h3>Main paths</h3><ol class="paths">${mp.paths.map((pth, k) =>
+    const step = (p, i) => idx && i >= 0 ? `<button type="button" class="flink" data-fn-trace="${esc(p)}" data-fn-i="${i}" title="${plain ? `${esc(fnName(idx, p, i))} in the code · ` : ""}Trace from here">${esc(plain ? words(idx.def(p, i)?.name || "?") : fnName(idx, p, i))}</button>` : fileLink(p, shortFile(p));
+    if (mp.paths.length && plain) html += `<div><h3>What happens, step by step</h3><p class="side-note">Each line follows the code from where it starts through what it does next, named as the code names it, in words.</p><ol class="paths">${mp.paths.map((pth, k) =>
+      `<li style="--wf:${WF_COLORS[k % WF_COLORS.length]}"><p class="pth-plain">In ${fileLink(pth.entry.path, shortFile(pth.entry.path))}, ${esc(plainWhy(whyText(pth.entry.why)))}: ${(pth.entry.i >= 0 ? pth.steps : pth.steps.slice(1)).map(st => step(st.path, st.i)).join(", then ")}.</p></li>`).join("")}</ol></div>`;
+    else if (mp.paths.length) html += `<div><h3>Main paths</h3><ol class="paths">${mp.paths.map((pth, k) =>
       `<li style="--wf:${WF_COLORS[k % WF_COLORS.length]}"><div class="pth-head">${step(pth.entry.path, pth.entry.i)}<span class="meta">${esc(whyText(pth.entry.why))}</span></div><div class="pth-steps">${pth.steps.slice(1).map(st => `<span>→</span>${step(st.path, st.i)}`).join("")}</div>` +
       (idx ? `<button type="button" class="mini" data-path-open="${k}" title="Open each step's code, side by side">Open side by side</button>` : "") + `</li>`).join("")}</ol></div>`;
-    if (mp.meet.length) html += `<div><h3>Where paths meet</h3><ol class="rank">${mp.meet.map(m => `<li><button type="button" ${idx && m.i >= 0 ? `data-fn-trace="${esc(m.path)}" data-fn-i="${m.i}"` : `data-path="${esc(m.path)}"`}><span class="n">⋈</span><span class="path">${idx && m.i >= 0 ? esc(fnName(idx, m.path, m.i)) : pathHtml(m.path)}</span><span class="meta">on ${fmt(m.n)} paths · ${esc(shortFile(m.path))}</span></button></li>`).join("")}</ol></div>`;
+    if (mp.meet.length) html += `<div><h3>${plain ? "Steps they share" : "Where paths meet"}</h3>${plain ? `<p class="side-note">Parts of the code more than one of those lines goes through.</p>` : ""}<ol class="rank">${mp.meet.map(m => `<li><button type="button" ${idx && m.i >= 0 ? `data-fn-trace="${esc(m.path)}" data-fn-i="${m.i}"` : `data-path="${esc(m.path)}"`}><span class="n">⋈</span><span class="path">${idx && m.i >= 0 ? esc(plain ? words(idx.def(m.path, m.i)?.name || "?") : fnName(idx, m.path, m.i)) : pathHtml(m.path)}</span><span class="meta">on ${fmt(m.n)} paths · ${esc(shortFile(m.path))}</span></button></li>`).join("")}</ol></div>`;
     if (idx) {
       const all = idx.entries.filter(e => idx.def(e.path, e.i) || e.i < 0), main = all.filter(e => !aside(e.path)), list = (main.length ? main : all).slice(0, 12);
       if (list.length) html += `<details class="more not-beginner not-manager"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(whyText(e.why))} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
@@ -2234,6 +2249,24 @@ function renderMap() {
 sideBody.addEventListener("click", e => {
   if (sideMode === "map" && e.target.closest("[data-map-md]")) { e.stopPropagation(); downloadOverview(); }
 }, true);
+// Code structure in plain English, for Beginner: why a file is a starting point, how a path begins, and a function's
+// name spelled out as words ("handleRequest" → "handle request").
+function plainReason(r) {
+  if (r === "package.json main") return "the project names it as its main file";
+  if (r === "package.json bin" || r === "Cargo [[bin]]") return "the project's own program you can run";
+  let m = /^command "(.+)"$/.exec(r); if (m) return `runs when you type "${m[1]}"`;
+  m = /^npm run (.+)$/.exec(r); if (m) return `runs when you type "npm run ${m[1]}"`;
+  return r;
+}
+function plainWhy(w) {
+  if (/__main__|^func main$/.test(w)) return "when you run it";
+  if (/URL route|route|\b(get|post|put|patch|delete)\b|HandleFunc|add_url_rule/i.test(w)) return "when someone visits a web address";
+  if (/command|click|argparse|typer/i.test(w)) return "when you type a command";
+  if (/addEventListener|\bon\b/i.test(w)) return "when something happens on screen";
+  if (/main file|program|loads|starts|creates|runs|command line/i.test(w)) return "when it starts";
+  return "when it's called";
+}
+const words = name => name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_$]+/g, " ").trim().toLowerCase() || name;
 function whyText(w) { return /^(\w+\.)?(re_)?path\(…\)$/.test(w) ? "URL route" : w; }   // how a starting function was found, readably
 function mapPaths(facts, idx) {
   const st = mapState;
@@ -2289,9 +2322,9 @@ async function overviewMarkdown() {
   }
   const tour = takenTour();
   if (tour) {
-    out.push(`## Workflows: ${text(tour.title)}`, "", `> Written by Gemini from the code's structure, so check it against the code.`, "", ...(tour.story ? ["**In plain English:** " + text(tour.story), ""] : []), text(tour.overview), "");
+    out.push(`## Workflows: ${text(tour.title)}`, "", `> Written by Gemini from the code's structure, so check it against the code.`, "", ...(plainTour() && tour.story ? ["**In plain English:** " + text(tour.story), ""] : []), text(tour.overview), "");
     tour.workflows.forEach((w, k) => {
-      out.push(`### ${k + 1}. ${text(w.name)}`, "", ...(w.feature ? [text(w.feature), "", `**In the code:** ${text(w.summary)}`] : [text(w.summary)]), "", ...w.steps.map((st, i) => `${i + 1}. ${bmap.has(st.path) ? file(st.path) : `\`${st.path}\``}: **${text(st.title)}**. ${text(st.narration)}`));
+      out.push(`### ${k + 1}. ${text(w.name)}`, "", ...(plainTour() && w.feature ? [text(w.feature), "", `**In the code:** ${text(w.summary)}`] : [text(w.summary)]), "", ...w.steps.map((st, i) => `${i + 1}. ${bmap.has(st.path) ? file(st.path) : `\`${st.path}\``}: **${text(st.title)}**. ${text(st.narration)}`));
       if (w.feeds && w.feeds.length) out.push("", `Leads into: ${w.feeds.map(text).join(", ")}.`);
       out.push("");
     });
@@ -2456,7 +2489,7 @@ async function initAsk() {
   catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
   $("tourBtn2").hidden = $("tourForm").hidden = !askEnabled;
-  $("mapBtn").classList.toggle("primary", !askEnabled);   // without the tour, Code structure is where to start
+  understandOrder();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
 // The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
@@ -4506,7 +4539,7 @@ async function startTour(topic) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced" }),
+      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced", plain: plainTour() }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
@@ -4683,15 +4716,16 @@ function renderTour() {
   const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
     ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
+  const plain = plainTour(), story = plain && t.story;
   if (t.w < 0) {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
-      ${t.story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(t.story)}</p></div>` : ""}
-      <div class="tour-stop"><h3>${t.story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
+      ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
+      <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
       <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a stop to open its file, or a line to walk it.</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${w.feature ? `<span class="wf-plain">${esc(w.feature)}</span>` : ""}<span class="wf-sum">${w.feature ? `<b>In the code:</b> ` : ""}${esc(w.summary)}</span>
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${plain && w.feature ? `<span class="wf-plain">${esc(w.feature)}</span>` : ""}<span class="wf-sum">${plain && w.feature ? `<b>In the code:</b> ` : ""}${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
         <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
@@ -4706,7 +4740,7 @@ function renderTour() {
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
         ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
         ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p>
         ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
       ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
       <ol class="wf-steps">${w.steps.map((st, k) => {

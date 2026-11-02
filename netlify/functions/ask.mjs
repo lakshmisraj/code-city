@@ -69,11 +69,11 @@ You may also get what the code itself shows: the README, project manifests, whic
 If nothing in the list answers the question, say so and return no files.
 ${VOICE}`;
 
-const tourSchema = max => ({
+const tourSchema = (max, plain) => ({
   type: "object",
   properties: {
     title: { type: "string" },
-    story: { type: "string" },
+    ...(plain ? { story: { type: "string" } } : {}),
     overview: { type: "string" },
     workflows: {
       type: "array",
@@ -82,7 +82,7 @@ const tourSchema = max => ({
         type: "object",
         properties: {
           name: { type: "string" },
-          feature: { type: "string" },
+          ...(plain ? { feature: { type: "string" } } : {}),
           summary: { type: "string" },
           steps: {
             type: "array",
@@ -91,11 +91,11 @@ const tourSchema = max => ({
           },
           feeds: { type: "array", items: { type: "string" } },
         },
-        required: ["name", "feature", "summary", "steps", "feeds"],
+        required: ["name", ...(plain ? ["feature"] : []), "summary", "steps", "feeds"],
       },
     },
   },
-  required: ["title", "story", "overview", "workflows"],
+  required: ["title", ...(plain ? ["story"] : []), "overview", "workflows"],
 });
 
 // Two workflows that walk mostly the same files are one walk told twice: the shorter folds into the longer, which
@@ -120,13 +120,14 @@ function foldOnce(workflows) {
   return kept;
 }
 
-// every: all the workflows, overlapping or not (Advanced asks for this); otherwise a few that don't repeat each other
-const tourSystem = every => `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
+// every: all the workflows, overlapping or not (Advanced asks for this); otherwise a few that don't repeat each other.
+// plain: the whole system and each workflow also in plain English, for readers new to code (Beginner asks for this).
+const tourSystem = (every, plain) => `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); a one or two sentence technical summary of how the code does it; and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
+Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words; ${plain ? `a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); a one or two sentence technical summary of how the code does it;` : "a one or two sentence summary;"} and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
 Workflows often share files; reuse the same path when they do, since that is where they meet.${every ? "" : " Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one."} Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
-Then write the story: the whole system end to end in simple English that anyone can follow, whether or not they code, in four to seven short sentences. Say what the software is for and who uses it, then follow one person or one piece of data through it from the first thing that happens to the end result, touching each workflow in the order they happen. No file names, function names or jargon; when a technical idea is needed, say what it does instead (not "an API" but "the part that answers the app's requests").
-Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
+${plain ? `Then write the story: the whole system end to end in simple English that anyone can follow, whether or not they code, in four to seven short sentences. Say what the software is for and who uses it, then follow one person or one piece of data through it from the first thing that happens to the end result, touching each workflow in the order they happen. No file names, function names or jargon; when a technical idea is needed, say what it does instead (not "an API" but "the part that answers the app's requests").
+` : ""}Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
 You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.
 It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).
 ${VOICE} Narrate each step as if walking the reader through it ("here the request lands in…, which hands it to…").`;
@@ -347,7 +348,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([SYSTEM, tourSystem(false), tourSystem(true), LINES_SYSTEM, EXPLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), LINES_SYSTEM, EXPLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -393,7 +394,7 @@ async function handle(event) {
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch (e) { return json(400, { error: "That request wasn't valid JSON." }); }
-  const tour = body.mode === "tour", every = tour && body.every === true, explain = body.mode === "explain", keyLines = body.mode === "lines", changed = body.mode === "change";
+  const tour = body.mode === "tour", every = tour && body.every === true, plain = tour && !every && body.plain === true, explain = body.mode === "explain", keyLines = body.mode === "lines", changed = body.mode === "change";
   const question = (String(body.question || "").trim() || (tour ? DEFAULT_TOUR : explain ? DEFAULT_EXPLAIN : keyLines ? "This workflow." : changed ? "(no message)" : "")).slice(0, keyLines || changed ? 600 : MAX_QUESTION);   // lines: a workflow's name and summary; change: the commit message
   const repo = String(body.repo || "this repository").slice(0, 120);
   const digest = typeof body.digest === "string" ? body.digest.slice(0, MAX_DIGEST) : "";   // what the page read from the code itself
@@ -420,7 +421,7 @@ async function handle(event) {
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
   const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : changed ? "change" : "ask";
-  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs]);
+  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : "") + (plain ? "/plain" : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs]);
   const saved = await cacheGet(ckey);
   if (saved) { console.log(`ask: ${mode} answered from a saved copy`); return json(200, { ...saved, cached: true }); }
   const done = async body => { await cachePut(ckey, body); return json(200, body); };
@@ -446,8 +447,8 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? tourSystem(every) : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? tourSchema(every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS) : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const system = tour ? tourSystem(every, plain) : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : changed ? CHANGE_SYSTEM : SYSTEM;
+    const schema = tour ? tourSchema(every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS, plain) : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
@@ -527,7 +528,7 @@ async function handle(event) {
     if (!reply || !Array.isArray(reply.workflows)) return json(502, { error: "Gemini's tour came back in an unexpected shape. Try again." });
     const workflows = reply.workflows.filter(w => w && Array.isArray(w.steps)).map(w => ({
       name: String(w.name || "").slice(0, 60),
-      feature: String(w.feature || "").slice(0, 400),
+      ...(plain ? { feature: String(w.feature || "").slice(0, 400) } : {}),
       summary: String(w.summary || "").slice(0, 400),
       steps: w.steps.filter(st => st && known.has(st.path))
         .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, 500) })).slice(0, MAX_WORKFLOW_STEPS),
@@ -538,7 +539,7 @@ async function handle(event) {
     if (!every) workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
     else workflows.forEach(w => { w.merged = []; });
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
-    return done({ title: String(reply.title || "A tour of the city").slice(0, 100), story: String(reply.story || "").slice(0, 1500), overview: String(reply.overview || "").slice(0, 1000), workflows });
+    return done({ title: String(reply.title || "A tour of the city").slice(0, 100), ...(plain ? { story: String(reply.story || "").slice(0, 1500) } : {}), overview: String(reply.overview || "").slice(0, 1000), workflows });
   }
   if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   return done({
