@@ -315,6 +315,27 @@ details.more[open] summary { margin-bottom: 8px; }
 #dActions:empty, #dLinks:empty, #dTodos:empty, #dCode:empty { display: none; }
 body:not(.for-beginner) .d-more > summary { display: none; }   /* only Beginner folds these away */
 body.for-beginner .d-more > .d-stack { margin-top: 10px; }
+/* Beginner: More information as cards */
+body.for-beginner #dMore > summary { font: 600 13px var(--f-body); color: var(--ink); }
+body.for-beginner #dLinks > div, body.for-beginner #dOutline > details, body.for-beginner #dTodos:not(:empty) { padding: 10px 12px; border-radius: 10px; background: var(--night); box-shadow: inset 0 0 0 1px var(--line); }
+body.for-beginner #dMore h3, body.for-beginner #dOutline > details > summary { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font: 600 12px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink); }
+body.for-beginner #dMore h3 .count { margin-left: 0; padding: 0 7px; border-radius: 999px; font: 600 11px var(--f-mono); color: var(--ink-dim); background: var(--street-2); }
+body.for-beginner #dMore h3 .mini { margin-left: auto; }
+.links.easy button:not(.mini) { align-items: center; padding: 6px; }
+.links.easy .lf-icon { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font: 12px var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--sodium) 14%, transparent); }
+.links.easy.in .lf-icon { color: var(--changed); background: color-mix(in srgb, var(--changed) 14%, transparent); }
+.links.easy .lf-text { display: flex; flex-direction: column; min-width: 0; }
+.links.easy .lf-text b { font: 600 13px var(--f-body); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.links.easy .lf-text i { font: 11px var(--f-mono); font-style: normal; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.for-beginner #dOutline .oline { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0; border-radius: 6px; }
+body.for-beginner #dOutline .oline b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--f-mono); color: var(--ink); }
+body.for-beginner #dOutline .oline em { order: 3; margin-left: auto; font: 10px var(--f-mono); font-style: normal; color: var(--ink-dim); }
+body.for-beginner #dOutline .kind { flex: none; margin: 0; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--f-body); opacity: 1; color: var(--ink-dim); background: var(--street-2); }
+body.for-beginner #dOutline .kind[data-kind="class"] { color: #a97bff; background: color-mix(in srgb, #a97bff 14%, transparent); }
+body.for-beginner #dOutline .kind[data-kind="function"] { color: #7ed49b; background: color-mix(in srgb, #7ed49b 14%, transparent); }
+body.for-beginner #dOutline .kind[data-kind="method"] { color: #6fd0e0; background: color-mix(in srgb, #6fd0e0 14%, transparent); }
+body.for-beginner #dTodos .todos li { display: flex; gap: 8px; font-family: var(--f-body); font-size: 12.5px; }
+body.for-beginner #dTodos .todos li em { flex: none; padding: 0 6px; border-radius: 999px; font: 10px var(--f-mono); line-height: 18px; background: color-mix(in srgb, var(--fire) 14%, transparent); color: var(--fire); }
 /* With a list open in the side panel, file details sit beside it where there's room, and on top of it where there isn't. */
 @media (min-width: 1150px) { body.side-open #drawer { right: calc(max(16px, env(safe-area-inset-right, 0px)) + var(--side-occ, 380px) + 12px); } }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }

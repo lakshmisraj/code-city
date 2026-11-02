@@ -1081,7 +1081,7 @@ function openDrawer(b) {
     (viewNow && f.todos.length ? stat("Fires", fmt(f.todos.length), "fire") : "") +
     (hist ? (commits ? stat("Commits", fmt(commits)) : "") : stat("Floors", Math.max(1, Math.round(b.userData.target))));
   document.getElementById("dTodos").innerHTML = viewNow && f.todos.length
-    ? `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
+    ? `<h3>${audience === "beginner" ? "Notes to fix" : "Fires to put out"}</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
   const fromGitHub = ghRepo && f.nowLines && f.text == null;
   if (fromGitHub && !f.failed) {
     document.getElementById("dTodos").innerHTML = "";
@@ -1121,18 +1121,19 @@ async function renderOutline(path) {
   if (!fx && callGrammar(path) && !(callIdx && callIdx.city === buildings && callIdx.error)) loadCalls();   // renders this again once functions are read
   if (fx && fx.defs.some(d => d.kind !== "alias")) {
     const defs = fx.defs.map((d, i) => ({ d, i })).filter(x => x.d.kind !== "alias");
-    box.innerHTML = `<details class="more"${defs.length <= 25 ? " open" : ""}><summary>Functions · ${fmt(defs.length)}</summary><ul class="todos parts outline fnlist">${defs.map(({ d, i }) => {
+    const easy = audience === "beginner";
+    box.innerHTML = `<details class="more"${defs.length <= 25 || easy ? " open" : ""}><summary>${easy ? "What's inside" : "Functions"} · ${fmt(defs.length)}</summary><ul class="todos parts outline fnlist">${defs.map(({ d, i }) => {
       const n = idx.counts(path, i);
-      return `<li class="${d.parent >= 0 ? "nested" : ""}"><button type="button" class="oline" data-oline="${d.line}" title="Open the code at line ${d.line}"><em>L${d.line}</em><b>${esc(d.name)}</b><span class="kind">${esc(d.kind === "function" && d.inline ? "handler" : d.kind)}</span></button>` +
+      return `<li class="${d.parent >= 0 ? "nested" : ""}"><button type="button" class="oline" data-oline="${d.line}" title="Open the code at line ${d.line}"><em>L${d.line}</em><b>${esc(d.name)}</b><span class="kind" data-kind="${esc(d.kind)}">${esc(d.kind === "function" && d.inline ? "handler" : d.kind)}</span></button>` +
         (d.kind === "class" ? "" : (n.calls || n.callers ? `<span class="fn-n not-beginner not-manager" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">${n.calls ? `→${n.calls}` : ""}${n.calls && n.callers ? " " : ""}${n.callers ? `←${n.callers}` : ""}</span>` : "") + `<button type="button" class="mini not-beginner not-manager" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
-    }).join("")}</ul>${defs.some(({ i }) => { const n = idx.counts(path, i); return n.calls || n.callers; }) ? `<p class="note">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p>` : ""}</details>` +
+    }).join("")}</ul>${defs.some(({ i }) => { const n = idx.counts(path, i); return n.calls || n.callers; }) ? `<p class="note not-beginner">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p>` : ""}</details>` +
       `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
     return;
   }
   const items = outlineItems(path, c.text);
   box.innerHTML = (items.length
-    ? `<details class="more"${items.length <= 12 ? " open" : ""}><summary>Outline · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
-        `<li class="${i.nested ? "nested" : ""}"><button type="button" class="oline" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind">${esc(i.kind)}</span></button></li>`).join("")}</ul>` +
+    ? `<details class="more"${items.length <= 12 || audience === "beginner" ? " open" : ""}><summary>${audience === "beginner" ? "What's inside" : "Outline"} · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
+        `<li class="${i.nested ? "nested" : ""}"><button type="button" class="oline" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind" data-kind="${esc(i.kind)}">${esc(i.kind)}</span></button></li>`).join("")}</ul>` +
       (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</details>`
     : "") + `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
 }
@@ -4514,8 +4515,11 @@ function commitFollow() {
 async function renderFileLinks(path) {
   const box = $("dLinks");
   if (!canImport(path)) { box.innerHTML = ""; return; }
-  const list = (title, paths, cls) => !paths.length ? "" : `<div><h3>${title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, 6)))}">View with this file</button>` : ""}</h3>${paths.length
-    ? `<ol class="rank links ${cls}">${paths.map(p => `<li><button type="button" data-file="${esc(p)}"><span class="n">${cls === "in" ? "←" : "→"}</span><span class="path">${pathHtml(p)}</span></button></li>`).join("")}</ol>`
+  const easy = audience === "beginner";   // Beginner: each file by name, its folder under it
+  const row = (p, cls) => easy ? `<li><button type="button" data-file="${esc(p)}"><span class="lf-icon" aria-hidden="true">${cls === "in" ? "←" : "→"}</span><span class="lf-text"><b>${esc(p.slice(p.lastIndexOf("/") + 1))}</b>${p.includes("/") ? `<i>${esc(p.slice(0, p.lastIndexOf("/") + 1))}</i>` : ""}</span></button></li>`
+    : `<li><button type="button" data-file="${esc(p)}"><span class="n">${cls === "in" ? "←" : "→"}</span><span class="path">${pathHtml(p)}</span></button></li>`;
+  const list = (title, paths, cls) => !paths.length ? "" : `<div><h3>${easy ? (cls === "in" ? "Used by these files" : "Uses these files") : title} <span class="count">${fmt(paths.length)}</span>${paths.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify([path, ...paths].slice(0, 6)))}">${easy ? "Open together" : "View with this file"}</button>` : ""}</h3>${paths.length
+    ? `<ol class="rank links ${cls}${easy ? " easy" : ""}">${paths.map(p => row(p, cls)).join("")}</ol>`
     : ""}</div>`;
   box.innerHTML = `<p class="note">Reading its imports…</p>`;
   const out = await loadDeps(path);
@@ -4524,7 +4528,7 @@ async function renderFileLinks(path) {
   const lists = list("Imports", out, "out") + (g && g.usedBy ? list("Used by", [...(g.usedBy.get(path) || [])].sort(), "in")
     : `<div><h3>Used by</h3><button type="button" class="mini" data-scan>Find the files that use this</button></div>`);
   box.innerHTML = lists + (out.length || (g && g.usedBy && (g.usedBy.get(path) || new Set()).size)
-    ? `<p class="note links-key"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>` : "");
+    ? `<p class="note links-key not-beginner"><span class="k out">→ imports</span> <span class="k in">← used by</span> Read from the code's import lines.</p>` : "");
   $("dRole").innerHTML = fileRole(path);
 }
 document.getElementById("dLinks").addEventListener("click", async e => {
