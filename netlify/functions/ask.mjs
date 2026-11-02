@@ -210,9 +210,8 @@ const EXPLAIN_BLOCKS_SCHEMA = {
         properties: {
           path: { type: "string" },
           explanation: { type: "string" },
-          blocks: {
+          blocks: {   // no maxItems: with the links' limit as well, Gemini rejects the schema (400). The reply keeps only blocks it was sent.
             type: "array",
-            maxItems: MAX_BLOCKS,
             items: { type: "object", properties: { from: { type: "integer" }, name: { type: "string" }, explanation: { type: "string" } }, required: ["from", "name", "explanation"] },
           },
           links: EXPLAIN_SCHEMA.properties.files.items.properties.links,
