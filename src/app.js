@@ -4679,7 +4679,10 @@ function mergeMapSvg(t) {
   const reaches = (from, to, seen = new Set()) => from === to || (!seen.has(from) && (seen.add(from), [...next.get(from)].some(q => reaches(q, to, seen))));
   // An arrow from the end of one workflow to the start of the one it leads to, drawn only when it agrees with the
   // walks: if the second already runs into the first through files they share, the pinch shows it instead.
-  const feeds = ws.flatMap((w, k) => (w.feeds || []).map(n => ws.findIndex(x => x.name === n)).filter(j => j >= 0 && j !== k).map(j => [k, j]))
+  const asked = ws.flatMap((w, k) => (w.feeds || []).map(n => ws.findIndex(x => x.name === n)).filter(j => j >= 0 && j !== k).map(j => [k, j]));
+  const via = (a, b, seen = new Set([a])) => asked.some(([x, y]) => x === a && !seen.has(y) && (y === b || (seen.add(y), via(y, b, seen))));
+  // only direct links: A → C goes when A → B → C already says it, so a chain draws as a chain
+  const feeds = asked.filter(([a, b]) => !asked.some(([x, y]) => x === a && y !== b && via(y, b)))
     .filter(([a, b]) => { const p = ws[a].steps[ws[a].steps.length - 1].path, q = ws[b].steps[0].path; return !reaches(q, p) && (link(p, q), true); });
   const state = new Map(), topo = [];   // depth-first, skipping edges that close a loop, so the columns always settle
   const visit = p => { state.set(p, 1); for (const q of next.get(p)) if (!state.has(q)) visit(q); state.set(p, 2); topo.push(p); };
@@ -4723,11 +4726,12 @@ function mergeMapSvg(t) {
   });
   const stations = order.map((p, i) => {
     const ks = t.shared.get(p) || [], x = X(p), file = p.slice(p.lastIndexOf("/") + 1);
-    const tip = `${p}${ks.length > 1 ? ` — where ${ks.map(k => ws[k].name).join(", ")} meet` : ` — step ${ws[ks[0]].steps.findIndex(st => st.path === p) + 1} of ${ws[ks[0]].name}`}`;
-    const open = `<g class="mm-stop${ks.length > 1 ? " mm-join" : ""}" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title>`;
+    const k0 = ks[0], j0 = ws[k0].steps.findIndex(st => st.path === p);   // a stop only names itself on hover; clicking it does nothing
+    const tip = `${ks.length > 1 ? `${file}, where ${ks.map(k => ws[k].name).join(", ")} meet: ` : ""}step ${j0 + 1} of ${ws[k0].name}`;
+    const open = `<g class="mm-stop${ks.length > 1 ? " mm-join" : ""}"><title>${esc(tip)}</title>`;
     if (ks.length < 2) {
-      const [, y] = at(p, ks[0]), n = ws[ks[0]].steps.findIndex(st => st.path === p) + 1;
-      return `${open}<circle cx="${x}" cy="${y}" r="${R}" fill="${color(ks[0])}"/><text class="mm-n" x="${x}" y="${y + 3.2}" text-anchor="middle">${n}</text></g>`;
+      const [, y] = at(p, k0);
+      return `${open}<circle cx="${x}" cy="${y}" r="${R}" fill="${color(k0)}"/><text class="mm-n" x="${x}" y="${y + 3.2}" text-anchor="middle">${j0 + 1}</text></g>`;
     }
     const y = centerY(p), h = (ks.length - 1) * BUNDLE + R * 2, below = i % 2 === 0;
     return `${open}<rect x="${x - R - 1}" y="${y - h / 2}" width="${R * 2 + 2}" height="${h}" rx="${R + 1}"/>
@@ -4778,10 +4782,9 @@ function renderTour() {
         <button type="button" class="primary" data-wf="0">Start the tour</button>
         <button type="button" data-tour="play" title="Goes through every step by itself">Play it for me</button>
       </div>
-      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a stop to open its file, or a line to walk it.</p></div>
-      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${plain && w.feature ? `<span class="wf-plain">${esc(w.feature)}</span>` : ""}<span class="wf-sum">${plain && w.feature ? `<b>In the code:</b> ` : ""}${esc(w.summary)}</span>
-        <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
+      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a line to walk that workflow.</p></div>
+      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
         <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
       ${coverageHtml(t)}`;
@@ -4828,10 +4831,6 @@ document.addEventListener("keydown", e => {   // ← and → step through an ope
   if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable], .viewer, .pane")) return;
   const b = e.key === "ArrowRight" ? sideBody.querySelector('[data-tour="next"]') : e.key === "ArrowLeft" ? sideBody.querySelector('[data-tour="back"]') : null;
   if (b && !b.disabled) { e.preventDefault(); b.click(); }
-});
-sideBody.addEventListener("keydown", e => {   // the merge map's stations are SVG, which has no button to press
-  const stop = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest(".mm-stop");
-  if (stop) { e.preventDefault(); stop.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
 });
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
