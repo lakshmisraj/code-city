@@ -4605,43 +4605,76 @@ async function loadKeyLines(w) {
   } catch (e) { wf.lines = { error: "Couldn't reach Code City's server." }; }
   redraw();
 }
-// The merge map: each workflow a line in its colour, left to right in the order the work flows. Where workflows
-// pass through the same file their lines pinch together into one station, and split again after, so you see at
-// a glance where the walks join. Files go in columns by the longest walk that reaches them.
+// The merge map: each workflow a line in its colour, named where it starts and running left to right in the order
+// the work flows, with its stops numbered as in its steps. Where one workflow leads into another, a dashed arrow
+// joins the end of one to the start of the next; where workflows pass through the same file their lines pinch
+// together into one station. Files go in columns by the longest walk that reaches them.
 function mergeMapSvg(t) {
   const ws = t.workflows, col = new Map(), next = new Map(), order = [];
+  const link = (a, b) => { if (a !== b) next.get(a).add(b); };
   ws.forEach(w => w.steps.forEach((st, j) => {
     if (!col.has(st.path)) { col.set(st.path, 0); order.push(st.path); next.set(st.path, new Set()); }
-    if (j && w.steps[j - 1].path !== st.path) next.get(w.steps[j - 1].path).add(st.path);
+    if (j) link(w.steps[j - 1].path, st.path);
   }));
+  const reaches = (from, to, seen = new Set()) => from === to || (!seen.has(from) && (seen.add(from), [...next.get(from)].some(q => reaches(q, to, seen))));
+  // An arrow from the end of one workflow to the start of the one it leads to, drawn only when it agrees with the
+  // walks: if the second already runs into the first through files they share, the pinch shows it instead.
+  const feeds = ws.flatMap((w, k) => (w.feeds || []).map(n => ws.findIndex(x => x.name === n)).filter(j => j >= 0 && j !== k).map(j => [k, j]))
+    .filter(([a, b]) => { const p = ws[a].steps[ws[a].steps.length - 1].path, q = ws[b].steps[0].path; return !reaches(q, p) && (link(p, q), true); });
   const state = new Map(), topo = [];   // depth-first, skipping edges that close a loop, so the columns always settle
   const visit = p => { state.set(p, 1); for (const q of next.get(p)) if (!state.has(q)) visit(q); state.set(p, 2); topo.push(p); };
   order.forEach(p => { if (!state.has(p)) visit(p); });
   const rank = new Map(topo.reverse().map((p, i) => [p, i]));
   for (const p of topo) for (const q of next.get(p)) if (rank.get(q) > rank.get(p)) col.set(q, Math.max(col.get(q), col.get(p) + 1));
-  const cols = Math.max(...col.values()) + 1;
-  const LANE = 30, STEP = Math.max(34, Math.min(64, 300 / Math.max(1, cols - 1))), PAD = 22, BUNDLE = 4;
-  const W = PAD * 2 + (cols - 1) * STEP, H = PAD * 2 + (ws.length - 1) * LANE + 12;
-  const laneY = k => PAD + 6 + k * LANE, X = p => PAD + col.get(p) * STEP;
+  // Lanes: of every order of the workflows (five at most, so 120), the one that keeps workflows sharing a file and
+  // workflows joined by an arrow closest together, so a workflow two others lead into sits between them; ties keep
+  // the tour's order.
+  const groups = [...t.shared.values()].filter(ks => ks.length > 1);
+  const cost = perm => {
+    const at = new Map(perm.map((k, i) => [k, i]));
+    return groups.reduce((c, ks) => c + Math.max(...ks.map(k => at.get(k))) - Math.min(...ks.map(k => at.get(k))), 0)
+      + feeds.reduce((c, [a, b]) => c + Math.abs(at.get(a) - at.get(b)), 0) + perm.reduce((c, k, i) => c + Math.abs(k - i) * 0.01, 0);
+  };
+  const perms = a => a.length < 2 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [x, ...r]));
+  const best = perms(ws.map((w, k) => k)).reduce((b, p) => cost(p) < cost(b) ? p : b);
+  const lane = new Map(best.map((k, i) => [k, i]));
+  const cols = Math.max(...col.values()) + 1, PAD = 16, TOP = 30, LANE = 46, BUNDLE = 4, R = 7;
+  const STEP = cols > 1 ? Math.max(22, Math.min(70, 340 / (cols - 1))) : 0;
+  const W = Math.max(300, PAD * 2 + (cols - 1) * STEP), H = TOP + (ws.length - 1) * LANE + 26;
+  const laneY = k => TOP + lane.get(k) * LANE, X = p => PAD + col.get(p) * STEP;
   const centerY = p => { const ks = t.shared.get(p) || []; return ks.reduce((a, k) => a + laneY(k), 0) / ks.length; };
   const at = (p, k) => { const ks = t.shared.get(p) || [k], i = ks.indexOf(k); return [X(p), centerY(p) + (i - (ks.length - 1) / 2) * BUNDLE]; };
-  const lines = ws.map((w, k) => {
+  const color = k => WF_COLORS[k % WF_COLORS.length];
+  const curve = pts => pts.slice(1).reduce((d, [x1, y1], i) => { const [x0, y0] = pts[i], h = (x1 - x0) / 2 || 18; return d + ` C${x0 + h},${y0} ${x1 - h},${y1} ${x1},${y1}`; }, `M${pts[0][0]},${pts[0][1]}`);
+  const flows = ws.map((w, k) => {
     const pts = w.steps.map(st => at(st.path, k)).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]);
-    let d = `M${pts[0][0]},${pts[0][1]}`;
-    for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], h = (x1 - x0) / 2 || 18; d += ` C${x0 + h},${y0} ${x1 - h},${y1} ${x1},${y1}`; }
-    const c = WF_COLORS[k % WF_COLORS.length];
-    return `<path class="mm-line" d="${d}" pathLength="1" stroke="${c}" style="animation-delay:${k * 0.25}s" data-wf="${k}"><title>${esc(w.name)}</title></path>`;
+    const line = pts.length > 1 ? `<path class="mm-line" d="${curve(pts)}" pathLength="1" stroke="${color(k)}" style="animation-delay:${k * 0.25}s"/>` : "";
+    const own = w.steps.find(st => (t.shared.get(st.path) || []).length < 2) || w.steps[0];   // named at its first file of its own, clear of the pinches
+    const label = clip(w.name, Math.floor((W - PAD * 2) / 6.2)), nx = Math.max(PAD - R, Math.min(X(own.path) - R, W - PAD - label.length * 6.2));   // slides left to fit
+    const name = `<text class="mm-name" x="${nx}" y="${laneY(k) - 13}" fill="${color(k)}">${esc(label)}</text>`;
+    const out = feeds.filter(([a]) => a === k).map(([, b]) => {   // the arrow into each workflow this one leads to
+      const [x0, y0] = at(w.steps[w.steps.length - 1].path, k), [x1, y1] = at(ws[b].steps[0].path, b);
+      if (x1 - x0 < R * 3) return "";
+      const tip = x1 - R - 2;
+      return `<path class="mm-feed" d="${curve([[x0 + R, y0], [tip - 5, y1]])}" stroke="${color(k)}" style="animation-delay:${ws.length * 0.25 + 0.3}s"/>
+        <path class="mm-arrow" d="M${tip - 6},${y1 - 4} L${tip},${y1} L${tip - 6},${y1 + 4}Z" fill="${color(k)}" style="animation-delay:${ws.length * 0.25 + 0.3}s"/>`;
+    }).join("");
+    return `<g class="mm-wf" data-wf="${k}"><title>${esc(w.name)}${w.feeds && w.feeds.length ? ` — leads to ${esc(w.feeds.join(", "))}` : ""}</title>${line}${out}${name}</g>`;
   });
   const stations = order.map((p, i) => {
-    const ks = t.shared.get(p) || [], x = X(p), name = p.slice(p.lastIndexOf("/") + 1);
-    const tip = `${p}${ks.length > 1 ? ` — where ${ks.map(k => ws[k].name).join(", ")} meet` : ` — in ${ws[ks[0]].name}`}`;
-    if (ks.length < 2) { const [, y] = at(p, ks[0]); return `<g class="mm-stop" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title><circle cx="${x}" cy="${y}" r="4" fill="${WF_COLORS[ks[0] % WF_COLORS.length]}"/></g>`; }
-    const y = centerY(p), h = (ks.length - 1) * BUNDLE + 12, above = i % 2 === 0;
-    return `<g class="mm-stop mm-join" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title>
-      <rect x="${x - 7}" y="${y - h / 2}" width="14" height="${h}" rx="7"/>
-      <text x="${x}" y="${above ? y - h / 2 - 5 : y + h / 2 + 12}" text-anchor="middle">${esc(clip(name, 16))}</text></g>`;
+    const ks = t.shared.get(p) || [], x = X(p), file = p.slice(p.lastIndexOf("/") + 1);
+    const tip = `${p}${ks.length > 1 ? ` — where ${ks.map(k => ws[k].name).join(", ")} meet` : ` — step ${ws[ks[0]].steps.findIndex(st => st.path === p) + 1} of ${ws[ks[0]].name}`}`;
+    const open = `<g class="mm-stop${ks.length > 1 ? " mm-join" : ""}" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title>`;
+    if (ks.length < 2) {
+      const [, y] = at(p, ks[0]), n = ws[ks[0]].steps.findIndex(st => st.path === p) + 1;
+      return `${open}<circle cx="${x}" cy="${y}" r="${R}" fill="${color(ks[0])}"/><text class="mm-n" x="${x}" y="${y + 3.2}" text-anchor="middle">${n}</text></g>`;
+    }
+    const y = centerY(p), h = (ks.length - 1) * BUNDLE + R * 2, below = i % 2 === 0;
+    return `${open}<rect x="${x - R - 1}" y="${y - h / 2}" width="${R * 2 + 2}" height="${h}" rx="${R + 1}"/>
+      <text class="mm-file" x="${x}" y="${below ? y + h / 2 + 12 : y - h / 2 - 5}" text-anchor="middle">${esc(clip(file, 16))}</text></g>`;
   });
-  return `<svg class="merge-map" viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="group" aria-label="How the workflows merge: ${t.shared.size} files, ${[...t.shared.values()].filter(ks => ks.length > 1).length} where workflows meet">${lines.join("")}${stations.join("")}</svg>`;
+  const meets = [...t.shared.values()].filter(ks => ks.length > 1).length;
+  return `<svg class="merge-map" viewBox="0 0 ${W} ${H}" role="group" aria-label="How the workflows merge: ${feeds.length} lead into another, ${meets} file${meets === 1 ? "" : "s"} where workflows meet">${flows.join("")}${stations.join("")}</svg>`;
 }
 function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k % WF_COLORS.length]}" aria-hidden="true"></span>`; }
 function renderTour() {
@@ -4654,7 +4687,7 @@ function renderTour() {
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
       <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
-      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow; where lines pinch together they pass through the same file. Pick a station to open its file, or a line to walk it.</p></div>
+      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a stop to open its file, or a line to walk it.</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
