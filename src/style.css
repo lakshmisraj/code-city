@@ -329,7 +329,7 @@ body.for-beginner #dMore h3 .mini { margin-left: auto; }
 .links.easy .lf-text i { font: 11px var(--f-mono); font-style: normal; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.for-beginner #dOutline .oline { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0; border-radius: 6px; }
 body.for-beginner #dOutline .oline b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--f-mono); color: var(--ink); }
-body.for-beginner #dOutline .oline em { order: 3; margin-left: auto; font: 10px var(--f-mono); font-style: normal; color: var(--ink-dim); }
+body.for-beginner #dOutline .oline em { order: 3; margin-left: auto; white-space: nowrap; font: 10px var(--f-mono); font-style: normal; color: var(--ink-dim); }
 body.for-beginner #dOutline .kind { flex: none; margin: 0; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--f-body); opacity: 1; color: var(--ink-dim); background: var(--street-2); }
 body.for-beginner #dOutline .kind[data-kind="class"] { color: #a97bff; background: color-mix(in srgb, #a97bff 14%, transparent); }
 body.for-beginner #dOutline .kind[data-kind="function"] { color: #7ed49b; background: color-mix(in srgb, #7ed49b 14%, transparent); }
@@ -656,3 +656,19 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   .tl-main { order: 3; flex-basis: 100%; }
   #playBtn { flex: 1; }
 }
+
+/* Beginner: the first-step card, and one heading style in the tour panel */
+.start-hint { position: fixed; z-index: 30; top: 84px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: 14px;
+  background: color-mix(in srgb, var(--street) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 0 0 1px color-mix(in srgb, var(--sodium) 45%, var(--line)); }
+.start-hint[hidden] { display: none; }
+.start-hint p { margin: 0; flex: 1; font-size: 13px; line-height: 1.45; color: var(--ink-dim); }
+.start-hint p b { color: var(--ink); }
+.start-hint .primary { flex: none; }
+@media (max-width: 760px) { .start-hint { top: auto; bottom: 84px; } }
+body.for-beginner #sideBody h3, body.for-beginner #sideBody .tour-stop h3 { margin: 0 0 6px; font: 600 15px var(--f-display); letter-spacing: .01em; text-transform: none; color: var(--ink); }
+body.for-beginner #sideBody details h3 { font-size: 13px; }
+body.for-beginner #sideBody .tour-stop:has(> h3 > .wf-dot) h3 { font-size: 18px; }   /* a workflow's own page: its name is the title */
+.tour-more > summary, .cover-line > summary { font: 600 13px var(--f-body); color: var(--ink); }
+.tour-more > .d-stack { margin-top: 10px; }

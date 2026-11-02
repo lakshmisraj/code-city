@@ -133,12 +133,12 @@ Like asking, tours need Sign in with GitHub and count towards the same hourly li
 - **Open this workflow's files** opens one code window per step, tiled; as you step through, the current step's window comes to the front at its important line.
 - **Back / Next** step through, **Auto-play** runs through every workflow, and **All workflows** returns to the overview.
 
-**The Beginner tour** is made for people new to code; Advanced and Manager keep the tour above.
+**The Beginner tour** is made for people new to code; Advanced and Manager keep the tour above. When a repo opens, a small card says **New here? Take the tour** until you take it or close it, and the top bar leaves out the fires count and the repo type.
 - **One button.** Understand has just **Workflows tour**. Its overview shows where the program starts; where there's no tour to take (no sign-in, or no Gemini), the button shows Code structure in plain English instead.
 - **In plain English.** The tour opens with the whole system end to end in simple words: what the software is for, then one person's or one piece of data's journey through it. Each workflow says in plain English what it lets people do, above the technical summary ("In the code").
 - **Covers the whole system.** Gemini is given the product's main areas (top folders by lines of source code; tests, docs, vendored and built folders aside; a folder that is a project of its own always counts) as a checklist the workflows must cover, unless you named one topic. The overview ends with **What the tour covers**: each area ticked or not, and **Tour this part** on any it missed. The narration is asked to vary from step to step.
-- **A simpler overview.** The workflows are listed by name (pick one to walk it), and the map, which is only a picture, names each workflow on its line, numbers its stops, and draws a dashed arrow only for direct links between workflows, so a chain reads as a chain.
-- **One step at a time.** A row of numbered dots shows where you are (click one to jump), the ← and → keys step back and forward (or **Back** and **Next**), and each step shows its file as a card (**View code** opens it), with the code details (lines to look at, where it passes on to the next step) folded away under **Show the code behind this step**.
+- **A simpler overview.** After the story come the workflows, listed by name (pick one to walk it), and one line on how much of the code the tour covers (open it for the list). The rest folds under **More detail**: where the program starts, how the code fits together, and the map, which is only a picture: it names each workflow on its line, numbers its stops, and draws a dashed arrow only for direct links between workflows, so a chain reads as a chain.
+- **One step at a time.** Only the current step shows; a row of numbered dots shows where you are (click one to jump), and the ← and → keys step back and forward (or **Back** and **Next**), and each step shows its file as a card (**View code** opens it), with the code details (lines to look at, where it passes on to the next step) folded away under **Show the code behind this step**.
 
 ### Timelapse video
 

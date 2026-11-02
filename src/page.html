@@ -27,15 +27,21 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.5-6 8-6s6.4 2 8 6"/></svg><span class="rail-label" aria-hidden="true">Account</span></button>
 </nav>
 
+<h1 id="pageH1" class="sr" hidden>Code City</h1>
+<div id="startHint" class="start-hint" hidden role="region" aria-label="Getting started">
+  <p><b>New here?</b> Take the tour to see what this code does, step by step, in plain English.</p>
+  <button type="button" class="primary" id="startHintGo">Take the tour</button>
+  <button type="button" class="mini" id="startHintClose" aria-label="Don't show this again" title="Don't show this again">✕</button>
+</div>
 <header id="topbar" aria-label="Repository on screen">
-  <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag" id="mode">Sample</span></div>
+  <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag not-beginner" id="mode">Sample</span></div>
   <label class="tb-for" title="Who Code City is set up for: Beginner shows the basics, Advanced every tool, Manager a status report"><span class="sr">Show Code City for</span><select id="forSel"><option value="beginner">Beginner</option><option value="advanced">Advanced</option><option value="manager">Manager</option></select></label>
   <div id="askSlot"></div>
   <dl class="tb-stats">
     <div><dt>files</dt><dd id="sFiles">0</dd></div>
     <div><dt>lines</dt><dd id="sLines">0</dd></div>
     <div id="tbCommits" class="tb-link not-beginner" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
-    <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
+    <div class="not-beginner"><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>

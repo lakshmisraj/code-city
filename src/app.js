@@ -1077,7 +1077,7 @@ function openDrawer(b) {
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   const stat = (dt, dd, cls) => `<div><dt>${dt}</dt><dd${cls ? ` class="${cls}"` : ""}>${dd}</dd></div>`;   // only what the file has: no rows of zeros
   document.getElementById("dStats").innerHTML = stat("Lines", (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines)) +
-    (!(ghRepo && f.text == null) && f.funcs ? stat("Functions", fmt(f.funcs)) : "") +
+    (!(ghRepo && f.text == null) && f.funcs && audience !== "beginner" ? stat("Functions", fmt(f.funcs)) : "") +   // Beginner: What's inside lists them
     (viewNow && f.todos.length ? stat("Fires", fmt(f.todos.length), "fire") : "") +
     (hist ? (commits ? stat("Commits", fmt(commits)) : "") : stat("Floors", Math.max(1, Math.round(b.userData.target))));
   document.getElementById("dTodos").innerHTML = viewNow && f.todos.length
@@ -1926,6 +1926,7 @@ function onCityBuilt() {
   else if (sideMode === "report") openReport();   // the new city's report
   else if (citySource !== "sample" && audience !== "beginner") { if (audience === "manager") openReport(); else openSide("map"); }   // first look: the status report, or how the repo is built
   else if (citySource !== "sample") loadMap();   // Beginner starts with just the city; read the code meanwhile so its tour opens ready
+  showStartHint();
   if (audience !== "beginner" && citySource !== "sample" && segOpen && !phoneMQ.matches && !(citySource === "github" && !hist && ghProbe)) openSeg("understand");
   autoRead();
 }
@@ -2055,6 +2056,11 @@ function setAudience(a, quiet) {
   $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
   understandOrder();
   $("dMore").open = a !== "beginner";
+  if (a !== "beginner") $("startHint").hidden = true;
+  $("pageH1").hidden = a !== "beginner";   // Beginner: a heading for screen readers, and the browser's bar in the page's colour
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (a === "beginner" && !tc) document.head.append(Object.assign(document.createElement("meta"), { name: "theme-color", content: "#0b1020" }));
+  else if (a !== "beginner" && tc) tc.remove();
   if (quiet) return;
   if (a === "beginner" && ["commits", "hot", "pr", "report"].includes(sideMode)) closeSide();   // panels this version doesn't have
   if (a === "beginner" && colorMode === "heat") setColorMode("lang");
@@ -4547,7 +4553,22 @@ document.getElementById("dLinks").addEventListener("click", async e => {
 const TOUR_STEP_MS = 7000;   // auto-play pace
 const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
 let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
+// Beginner's first step: once a repo is on screen, a card points at the tour until it's taken or dismissed
+function showStartHint() {
+  let seen = false;
+  try { seen = !!localStorage.getItem("codecity.startHint"); } catch (e) { /* storage blocked: show it */ }
+  const show = audience === "beginner" && !seen && citySource !== "sample";
+  if (show && !$("siteTour").hidden) return void setTimeout(showStartHint, 1000);   // after the site's own tour
+  $("startHint").hidden = !show;
+}
+function doneStartHint() {
+  $("startHint").hidden = true;
+  try { localStorage.setItem("codecity.startHint", "1"); } catch (e) { /* storage blocked */ }
+}
+$("startHintGo").onclick = () => $("tourBtn2").click();
+$("startHintClose").onclick = doneStartHint;
 $("tourBtn2").onclick = () => {   // a workflow named below focuses the tour
+  if (audience === "beginner") doneStartHint();
   if (audience === "beginner") {   // Beginner's one way in: Code structure in plain English at once, then the tour if there is one
     if (sideMode !== "map") openSide("map");
     if (!askEnabled || !canAsk()) return;
@@ -4771,8 +4792,8 @@ function coverageHtml(t) {
   if (areas.length < 2) return "";
   const walked = new Set([...t.paths].map(area)), files = live.filter(f => t.paths.has(f.path)).length;
   const missed = areas.filter(a => !walked.has(a.key));
-  return `<div><h3>What the tour covers</h3><p class="side-note">${fmt(areas.length - missed.length)} of ${fmt(areas.length)} main areas · ${fmt(files)} of ${fmt(live.length)} source files${missed.length ? "" : " · every main area is in it"}</p>
-    <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></div>`;
+  return `<details class="more cover-line"><summary>${missed.length ? `Covers ${fmt(areas.length - missed.length)} of ${fmt(areas.length)} parts of the code` : `Covers every part of the code`} · ${fmt(files)} of ${fmt(live.length)} files</summary>
+    <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></details>`;
 }
 // Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
 // line in its colour, left to right in the order the work flows. Where workflows
@@ -4824,16 +4845,19 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   if (t.w < 0) {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
+    // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
-      ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
-      <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
-      <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
-      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span></button></li>`).join("")}</ol></div>
-      ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
-        <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
-      ${coverageHtml(t)}`;
+      ${coverageHtml(t)}
+      <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
+        ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
+        <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
+        <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
+        ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
+          <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
+      </div></details>`;
   } else {
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
@@ -4845,7 +4869,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
-        if (k !== t.i) return `<li class="wf-step" data-stop-box="${k}"><button type="button" class="wf-step-head" data-stop="${k}"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button></li>`;   // one step open at a time
+        if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
         const guess = !hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path;
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
           ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
