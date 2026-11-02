@@ -10,7 +10,7 @@ mock.module("@netlify/blobs", { namedExports: { getStore: () => ({
 globalThis.fetch = async () => new Response(JSON.stringify({ id: 7, login: "t" }), { status: 200 });
 process.env.GEMINI_API_KEY = "x"; process.env.ASK_HEDGE_MS = "100"; process.env.ASK_RETRY_MS = "20";
 process.env.ASK_EXPLAIN_MODELS = "strong-model,gemini-3.5-flash-lite";   // explanations try these first
-const { default: handler } = await import(FN);
+const { default: handler, mainAreas } = await import(FN);
 const call = async body => { const r = await handler(new Request("http://x/", { method: "POST", headers: { authorization: "Bearer t" }, body: JSON.stringify(body) })); return [r.status, await r.json()]; };
 const files = [{ path: "a.js", lines: 10 }, { path: "b.js", lines: 5 }, { path: "c/d.js", lines: 3 }];
 test("explain keeps only real files, lines and links", async () => {
@@ -50,6 +50,21 @@ test("tour returns workflows of real files, with feeds between them", async () =
   assert.match(lastInput.input, /What the code itself shows[^\n]*\nREADME: hello/);
   assert.match(lastInput.system_instruction, /workflows/);
   assert.match(lastInput.system_instruction, /plain English on what it lets people do/);
+});
+test("a tour is asked to cover every main area of the product, tests and docs aside", async () => {
+  const many = [{ path: "src/a/x.js", lines: 500 }, { path: "src/a/y.js", lines: 300 }, { path: "src/b/z.js", lines: 400 }, { path: "src/main.js", lines: 50 },
+    { path: "cli/run.py", lines: 200 }, { path: "tests/t.py", lines: 900 }, { path: "docs/d.md", lines: 300 }, { path: "tiny/q.js", lines: 5 },
+    { path: "site/vendor/lib.js", lines: 9000 }, { path: "site/index.html", lines: 6000 }, { path: "package-lock.json", lines: 2000 },
+    { path: "ext/extension.js", lines: 20 }, { path: "ext/package.json", lines: 30 }];   // small, but a project of its own
+  // only source code counts: vendored code, markup and data are left out, as are tests, docs and a folder under 3%;
+  // src/ holds most of what's left, so it splits a level down
+  assert.deepEqual(mainAreas(many).map(a => a.name), ["src/a/", "src/b/", "cli/", "src/", "ext/"]);
+  reply = { title: "T", overview: "O", workflows: [{ name: "Start", summary: "S", steps: [{ path: "cli/run.py", title: "t", narration: "n" }], feeds: [] }] };
+  const [st] = await call({ mode: "tour", files: many, digest: "README: areas" });
+  assert.equal(st, 200);
+  assert.match(lastInput.input, /Main areas of the product, by lines of source code \(each should appear in at least one workflow's steps\): src\/a\/ 800 lines, src\/b\/ 400 lines, cli\/ 200 lines, src\/ 50 lines, ext\/ 20 lines/);
+  assert.match(lastInput.system_instruction, /must cover the whole product[\s\S]*checklist/);
+  assert.match(lastInput.system_instruction, /must not sound the same twice/);   // the narration varies from step to step
 });
 test("only a Beginner tour (plain) comes in plain English", async () => {
   reply = { title: "T", story: "A story.", overview: "O", workflows: [{ name: "Start", feature: "F", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }], feeds: [] }] };

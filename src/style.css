@@ -380,6 +380,10 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .wf-step:not(.current) { padding-block: 4px; }
 .wf-step:not(.current) .wf-step-head { font-size: 13px; color: var(--ink-dim); }
 .wf-step:not(.current) .wf-step-head:hover { color: var(--ink); }
+.rank.cover li { display: flex; align-items: center; gap: 6px; }
+.rank.cover li > button[data-area] { flex: 1; min-width: 0; }
+.rank.cover li.missed .n { color: var(--ink-dim); }
+.rank.cover li:not(.missed) .n { color: #7ed49b; }
 .wf-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin: 2px 0 4px; }
 .wf-progress > span { flex: 0 1 14px; height: 2px; background: var(--line); }
 .wf-dot-step { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--f-mono); color: var(--ink-dim); border: 2px solid var(--line); background: var(--street); }

@@ -4209,11 +4209,11 @@ function reportMarkdown() {
   if (r.hot.length || r.tangles) out.push("## Worth a look", "", ...r.hot.map(h => `- \`${h.b.userData.f.path}\`: big, and changed in ${plural(h.c, "commit")}`), ...(r.tangles ? [`- ${plural(r.tangles, "tangle")}: code that imports itself in a loop`] : []), "");
   return out.join("\n").trimEnd() + "\n";
 }
-sideBody.addEventListener("click", e => {
-  if (sideMode !== "report" || !reportState) return;
+sideBody.addEventListener("click", e => {   // a folder in the status report, or in what a tour covers
+  if (!(sideMode === "report" && reportState) && !(sideMode === "tour" && tourState)) return;
   const a = e.target.closest("[data-area]");
   if (a) { const dir = a.dataset.area; if (dir !== "(top)" && districts.some(d => d.userData.dir === dir)) openFolder(dir); return; }
-  if (!e.target.closest("[data-report-md]")) return;
+  if (sideMode !== "report" || !e.target.closest("[data-report-md]")) return;
   const url = URL.createObjectURL(new Blob([reportMarkdown()], { type: "text/markdown;charset=utf-8" }));
   const link = Object.assign(document.createElement("a"), { href: url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-status.md` });
   document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -4736,6 +4736,30 @@ function mergeMapSvg(t) {
   const meets = [...t.shared.values()].filter(ks => ks.length > 1).length;
   return `<svg class="merge-map" viewBox="0 0 ${W} ${H}" role="group" aria-label="How the workflows merge: ${feeds.length} lead into another, ${meets} file${meets === 1 ? "" : "s"} where workflows meet">${flows.join("")}${stations.join("")}</svg>`;
 }
+// The product's main areas (as the server's mainAreas in netlify/functions/ask.mjs works them out: top folders by
+// lines of source code, a folder with most of the code split one level down), and which of them a tour reaches.
+const AREA_PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
+const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
+function mainAreas() {   // by lines of source code: no markup, data, lock files or minified code; tests, docs, vendored and built folders aside
+  const live = buildings.map(b => ({ path: b.userData.f.path, lines: b.userData.lines }))
+    .filter(f => f.lines > 0 && SOURCE_FILE.test(f.path) && !/\.min\.js$/.test(f.path) && !aside(f.path) && !AREA_ASIDE.test(f.path));
+  const total = live.reduce((n, f) => n + f.lines, 0);
+  const top = p => p.includes("/") ? p.slice(0, p.indexOf("/") + 1) : "";
+  const sizes = key => { const m = new Map(); for (const f of live) m.set(key(f.path), (m.get(key(f.path)) || 0) + f.lines); return m; };
+  const [big] = [...sizes(top)].find(([k, n]) => k && n > total / 2 && live.some(f => f.path.startsWith(k) && f.path.slice(k.length).includes("/"))) || [];
+  const area = p => { const t = top(p), rest = p.slice(t.length); return t === big && rest.includes("/") ? t + rest.slice(0, rest.indexOf("/") + 1) : t; };
+  const own = new Set(buildings.map(b => b.userData.f.path).filter(p => AREA_PROJECT.test(p) && p.split("/").length === 2).map(top));   // a project of its own counts however small
+  const areas = [...sizes(area)].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, lines]) => ({ key, lines, name: key || "top-level files" }));
+  return { areas, area, live };
+}
+function coverageHtml(t) {
+  const { areas, area, live } = mainAreas();
+  if (areas.length < 2) return "";
+  const walked = new Set([...t.paths].map(area)), files = live.filter(f => t.paths.has(f.path)).length;
+  const missed = areas.filter(a => !walked.has(a.key));
+  return `<div><h3>What the tour covers</h3><p class="side-note">${fmt(areas.length - missed.length)} of ${fmt(areas.length)} main areas · ${fmt(files)} of ${fmt(live.length)} source files${missed.length ? "" : " · every main area is in it"}</p>
+    <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></div>`;
+}
 function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k % WF_COLORS.length]}" aria-hidden="true"></span>`; }
 function renderTour() {
   const t = tourState;
@@ -4759,7 +4783,8 @@ function renderTour() {
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${plain && w.feature ? `<span class="wf-plain">${esc(w.feature)}</span>` : ""}<span class="wf-sum">${plain && w.feature ? `<b>In the code:</b> ` : ""}${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
-        <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}`;
+        <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
+      ${coverageHtml(t)}`;
   } else {
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
@@ -4810,6 +4835,8 @@ sideBody.addEventListener("keydown", e => {   // the merge map's stations are SV
 });
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
+  const part = e.target.closest("[data-tour-area]");
+  if (part) { e.stopPropagation(); return startTour(`the ${part.dataset.tourArea} part of the code`); }   // a tour of a part the first one missed
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
   if (wf) { e.stopPropagation(); return goToWorkflow(+wf.dataset.wf, 0); }
   if (stop) { e.stopPropagation(); return goToStop(+stop.dataset.stop); }
