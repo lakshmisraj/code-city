@@ -44,7 +44,7 @@ test("in VS Code, the page reveals files it's sent and hands files to the editor
     await page.goto(`http://127.0.0.1:${host.address().port}/`, { waitUntil: "domcontentloaded" });
     const frame = await (await page.waitForSelector("#city", { state: "attached" })).contentFrame();
     // The frame may still be blank when it's first found, so the checks allow for the page not being there yet.
-    await frame.waitForFunction(name => (document.getElementById("repoName") || {}).textContent?.startsWith(name), path.basename(repo));
+    await frame.waitForFunction(name => (document.getElementById("sideSub") || {}).textContent?.startsWith(name), path.basename(repo));
     await page.evaluate(() => window.reveal("shop/cart.py"));
     await frame.waitForFunction(() => (document.getElementById("dName") || {}).textContent === "cart.py");
     assert.match(await frame.evaluate(() => location.search), /host=vscode/, "the page keeps ?host=vscode in its address");

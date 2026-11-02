@@ -896,15 +896,17 @@ document.getElementById("tbCommits").onkeydown = e => { if (e.key === "Enter" ||
 // Each rail icon opens its segment in the panel beside the rail; clicking the open one (or «) collapses the
 // panel. The panel's edge drags to resize it. Which segment, and the width, are remembered.
 const SEG_TITLES = { repo: "Repository", understand: "Understand", find: "Find", display: "Display", info: "Info", guide: "Guide", account: "GitHub account" };
-let segOpen = null;   // the page starts with just the city; the icons on the left open the tools
-try { const w = +localStorage.getItem("codecity.segW"); if (w) document.body.style.setProperty("--seg-w", w + "px"); } catch (e) { /* storage blocked */ }
-function openSeg(name, focus) {
+let segOpen = "guide";   // a first visit opens the guide (Beginner starts with just the city: see start)
+try { const saved = localStorage.getItem("codecity.seg"); if (saved !== null) segOpen = saved === "" ? null : saved;
+  const w = +localStorage.getItem("codecity.segW"); if (w) document.body.style.setProperty("--seg-w", w + "px"); } catch (e) { /* storage blocked */ }
+function openSeg(name, focus, keep) {   // keep: don't remember this (the phone layout closing it for another panel)
   if (name && !SEG_TITLES[name]) name = "repo";
   segOpen = name;
   document.body.classList.toggle("seg-closed", !name);
   document.querySelectorAll("#segPanel .segment").forEach(el => el.classList.toggle("active", el.dataset.seg === name));
   document.querySelectorAll("#rail [data-seg]").forEach(b => b.setAttribute("aria-pressed", b.dataset.seg === name));
   if (name) document.getElementById("segTitle").textContent = SEG_TITLES[name];
+  if (!keep) try { localStorage.setItem("codecity.seg", name || ""); } catch (e) { /* storage blocked */ }
   if (focus && name) { const first = document.querySelector(`#segPanel .segment[data-seg="${name}"] input, #segPanel .segment[data-seg="${name}"] button`); if (first) first.focus(); }
   if (typeof renderViewer === "function" && panes.length) renderViewer();   // windows keep clear of the panel
 }
@@ -1920,7 +1922,9 @@ function onCityBuilt() {
   mapState = null;
   if (sideMode === "map") openSide("map");   // the new city's facts
   else if (sideMode === "report") openReport();   // the new city's report
-  else if (citySource !== "sample") loadMap();   // read while the city shows, so Code structure opens ready; nothing opens by itself
+  else if (citySource !== "sample" && audience !== "beginner") { if (audience === "manager") openReport(); else openSide("map"); }   // first look: the status report, or how the repo is built
+  else if (citySource !== "sample") loadMap();   // Beginner starts with just the city; read the code meanwhile so its tour opens ready
+  if (audience !== "beginner" && citySource !== "sample" && segOpen && !phoneMQ.matches && !(citySource === "github" && !hist && ghProbe)) openSeg("understand");
   autoRead();
 }
 
@@ -4656,7 +4660,7 @@ async function loadKeyLines(w) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "lines", question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
+      body: JSON.stringify({ mode: "lines", plain: plainTour(), question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
         files: [{ path: send[0].path, lines: 1 }], code: send }),
     });
     const data = await r.json().catch(() => ({}));
@@ -4669,7 +4673,7 @@ async function loadKeyLines(w) {
 // the work flows, with its stops numbered as in its steps. Where one workflow leads into another, a dashed arrow
 // joins the end of one to the start of the next; where workflows pass through the same file their lines pinch
 // together into one station. Files go in columns by the longest walk that reaches them.
-function mergeMapSvg(t) {
+function metroMapSvg(t) {   // Beginner
   const ws = t.workflows, col = new Map(), next = new Map(), order = [];
   const link = (a, b) => { if (a !== b) next.get(a).add(b); };
   ws.forEach(w => w.steps.forEach((st, j) => {
@@ -4764,8 +4768,48 @@ function coverageHtml(t) {
   return `<div><h3>What the tour covers</h3><p class="side-note">${fmt(areas.length - missed.length)} of ${fmt(areas.length)} main areas · ${fmt(files)} of ${fmt(live.length)} source files${missed.length ? "" : " · every main area is in it"}</p>
     <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></div>`;
 }
+// Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
+// line in its colour, left to right in the order the work flows. Where workflows
+// pass through the same file their lines pinch together into one station, and split again after, so you see at
+// a glance where the walks join. Files go in columns by the longest walk that reaches them.
+function classicMapSvg(t) {
+  const ws = t.workflows, col = new Map(), next = new Map(), order = [];
+  ws.forEach(w => w.steps.forEach((st, j) => {
+    if (!col.has(st.path)) { col.set(st.path, 0); order.push(st.path); next.set(st.path, new Set()); }
+    if (j && w.steps[j - 1].path !== st.path) next.get(w.steps[j - 1].path).add(st.path);
+  }));
+  const state = new Map(), topo = [];   // depth-first, skipping edges that close a loop, so the columns always settle
+  const visit = p => { state.set(p, 1); for (const q of next.get(p)) if (!state.has(q)) visit(q); state.set(p, 2); topo.push(p); };
+  order.forEach(p => { if (!state.has(p)) visit(p); });
+  const rank = new Map(topo.reverse().map((p, i) => [p, i]));
+  for (const p of topo) for (const q of next.get(p)) if (rank.get(q) > rank.get(p)) col.set(q, Math.max(col.get(q), col.get(p) + 1));
+  const cols = Math.max(...col.values()) + 1;
+  const LANE = 30, STEP = Math.max(34, Math.min(64, 300 / Math.max(1, cols - 1))), PAD = 22, BUNDLE = 4;
+  const W = PAD * 2 + (cols - 1) * STEP, H = PAD * 2 + (ws.length - 1) * LANE + 12;
+  const laneY = k => PAD + 6 + k * LANE, X = p => PAD + col.get(p) * STEP;
+  const centerY = p => { const ks = t.shared.get(p) || []; return ks.reduce((a, k) => a + laneY(k), 0) / ks.length; };
+  const at = (p, k) => { const ks = t.shared.get(p) || [k], i = ks.indexOf(k); return [X(p), centerY(p) + (i - (ks.length - 1) / 2) * BUNDLE]; };
+  const lines = ws.map((w, k) => {
+    const pts = w.steps.map(st => at(st.path, k)).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]);
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], h = (x1 - x0) / 2 || 18; d += ` C${x0 + h},${y0} ${x1 - h},${y1} ${x1},${y1}`; }
+    const c = WF_COLORS[k % WF_COLORS.length];
+    return `<path class="mm-line" d="${d}" pathLength="1" stroke="${c}" style="animation-delay:${k * 0.25}s" data-wf="${k}"><title>${esc(w.name)}</title></path>`;
+  });
+  const stations = order.map((p, i) => {
+    const ks = t.shared.get(p) || [], x = X(p), name = p.slice(p.lastIndexOf("/") + 1);
+    const tip = `${p}${ks.length > 1 ? ` — where ${ks.map(k => ws[k].name).join(", ")} meet` : ` — in ${ws[ks[0]].name}`}`;
+    if (ks.length < 2) { const [, y] = at(p, ks[0]); return `<g class="mm-stop" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title><circle cx="${x}" cy="${y}" r="4" fill="${WF_COLORS[ks[0] % WF_COLORS.length]}"/></g>`; }
+    const y = centerY(p), h = (ks.length - 1) * BUNDLE + 12, above = i % 2 === 0;
+    return `<g class="mm-stop mm-join" data-path="${esc(p)}" tabindex="0" role="button" aria-label="${esc(tip)}"><title>${esc(tip)}</title>
+      <rect x="${x - 7}" y="${y - h / 2}" width="14" height="${h}" rx="7"/>
+      <text x="${x}" y="${above ? y - h / 2 - 5 : y + h / 2 + 12}" text-anchor="middle">${esc(clip(name, 16))}</text></g>`;
+  });
+  return `<svg class="merge-map classic" viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="group" aria-label="How the workflows merge: ${t.shared.size} files, ${[...t.shared.values()].filter(ks => ks.length > 1).length} where workflows meet">${lines.join("")}${stations.join("")}</svg>`;
+}
 function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k % WF_COLORS.length]}" aria-hidden="true"></span>`; }
-function renderTour() {
+function renderTour() {   // Beginner's tour panel; Advanced and Manager keep the one from when the sites split
+  if (!plainTour()) return renderTourClassic();
   const t = tourState;
   const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
     ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
@@ -4782,7 +4826,7 @@ function renderTour() {
         <button type="button" class="primary" data-wf="0">Start the tour</button>
         <button type="button" data-tour="play" title="Goes through every step by itself">Play it for me</button>
       </div>
-      <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a line to walk that workflow.</p></div>
+      <div><h3>How they merge</h3>${metroMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a line to walk that workflow.</p></div>
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
@@ -4826,8 +4870,66 @@ function renderTour() {
   }
   if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the panel was redrawn; keep keyboard focus
 }
-document.addEventListener("keydown", e => {   // ← and → step through an open workflow, unless you're typing
-  if (sideMode !== "tour" || !tourState || tourState.w < 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+function renderTourClassic() {   // Advanced and Manager: the tour panel as it was when the sites split
+
+  const t = tourState;
+  const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
+    ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
+  $("sideTitle").textContent = t.title;
+  if (t.w < 0) {
+    const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
+    $("sideSub").textContent = `${t.workflows.length} workflows`;
+    sideBody.innerHTML = `
+      <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
+      <div><h3>How they merge</h3>${classicMapSvg(t)}<p class="side-note">Each line is a workflow; where lines pinch together they pass through the same file. Pick a station to open its file, or a line to walk it.</p></div>
+      <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
+        <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
+      ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
+        <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
+      <div class="side-actions">
+        <button type="button" class="primary" data-wf="0">Start the first workflow</button>
+        <button type="button" data-tour="play">Auto-play all</button>
+      </div>`;
+  } else {
+    const w = t.workflows[t.w], L = w.lines || {};
+    $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
+    sideBody.innerHTML = `
+      <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
+        ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
+        ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3><p class="ask-answer">${rich(w.summary)}</p>
+        ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
+      ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
+      <ol class="wf-steps">${w.steps.map((st, k) => {
+        const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
+        return `<li class="wf-step${k === t.i ? " current" : ""}" data-stop-box="${k}">
+          <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
+          <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
+          <p class="explain-text">${rich(st.narration)}</p>
+          ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">Merges here with ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
+          ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
+            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
+          ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
+          ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
+        </li>`; }).join("")}</ol>
+      <div class="side-actions">
+        <button type="button" data-tour="back" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
+        <button type="button" class="primary" data-tour="next">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
+        <button type="button" data-tour="play" aria-pressed="${t.playing}">${t.playing ? "Pause" : "Auto-play"}</button>
+        <button type="button" data-tour="files">Open this workflow's files</button>
+      </div>`;
+    const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
+    if (cur && !again) cur.scrollIntoView({ block: "nearest" });
+  }
+  if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the panel was redrawn; keep keyboard focus
+}
+sideBody.addEventListener("keydown", e => {   // the classic merge map's stations are SVG, which has no button to press
+  const stop = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest(".mm-stop[tabindex]");
+  if (stop) { e.preventDefault(); stop.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+});
+document.addEventListener("keydown", e => {   // Beginner: ← and → step through an open workflow, unless you're typing
+  if (!plainTour() || sideMode !== "tour" || !tourState || tourState.w < 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
   if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable], .viewer, .pane")) return;
   const b = e.key === "ArrowRight" ? sideBody.querySelector('[data-tour="next"]') : e.key === "ArrowLeft" ? sideBody.querySelector('[data-tour="back"]') : null;
   if (b && !b.disabled) { e.preventDefault(); b.click(); }
@@ -5098,7 +5200,7 @@ function siteTourOnLoad() {
 }
 const start = () => {
   const link = readLink();
-  openSeg(segOpen);
+  openSeg(audience === "beginner" ? null : segOpen, false, true);   // Beginner starts with just the city
   buildCity(sampleCity()); frame();
   initSignin().then(siteTourOnLoad, siteTourOnLoad);
   initAsk();
