@@ -1067,6 +1067,7 @@ const drawer = document.getElementById("drawer");
 function openDrawer(b) {
   setFolder(null);
   const prevPicked = picked;   // reopened after a file loads: don't fly again
+  if (b !== prevPicked) $("dMore").open = audience !== "beginner";   // Beginner: imports, functions and the first lines start folded under More information
   picked = b;
   const f = b.userData.f;
   const parts = f.path.split("/");
@@ -2052,6 +2053,7 @@ function setAudience(a, quiet) {
   const others = Object.keys(AUDIENCES).filter(k => k !== a && SITE_URLS[k]);
   $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
   understandOrder();
+  $("dMore").open = a !== "beginner";
   if (quiet) return;
   if (a === "beginner" && ["commits", "hot", "pr", "report"].includes(sideMode)) closeSide();   // panels this version doesn't have
   if (a === "beginner" && colorMode === "heat") setColorMode("lang");
@@ -4726,7 +4728,7 @@ function metroMapSvg(t) {   // Beginner
       return `<path class="mm-feed" d="${curve([[x0 + R, y0], [tip - 5, y1]])}" stroke="${color(k)}" style="animation-delay:${ws.length * 0.25 + 0.3}s"/>
         <path class="mm-arrow" d="M${tip - 6},${y1 - 4} L${tip},${y1} L${tip - 6},${y1 + 4}Z" fill="${color(k)}" style="animation-delay:${ws.length * 0.25 + 0.3}s"/>`;
     }).join("");
-    return `<g class="mm-wf" data-wf="${k}"><title>${esc(w.name)}${w.feeds && w.feeds.length ? ` — leads to ${esc(w.feeds.join(", "))}` : ""}</title>${line}${out}${name}</g>`;
+    return `<g class="mm-wf"><title>${esc(w.name)}${w.feeds && w.feeds.length ? ` — leads to ${esc(w.feeds.join(", "))}` : ""}</title>${line}${out}${name}</g>`;
   });
   const stations = order.map((p, i) => {
     const ks = t.shared.get(p) || [], x = X(p), file = p.slice(p.lastIndexOf("/") + 1);
@@ -4822,11 +4824,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
       <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
-      <div class="side-actions">
-        <button type="button" class="primary" data-wf="0">Start the tour</button>
-        <button type="button" data-tour="play" title="Goes through every step by itself">Play it for me</button>
-      </div>
-      <div><h3>How they merge</h3>${metroMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a line to walk that workflow.</p></div>
+      <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
@@ -4839,10 +4837,9 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
         ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
         ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p>
-        ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p></div>
       <div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>
-      <ol class="wf-steps">${w.steps.map((st, k) => {
+      <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
         if (k !== t.i) return `<li class="wf-step" data-stop-box="${k}"><button type="button" class="wf-step-head" data-stop="${k}"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button></li>`;   // one step open at a time
         const guess = !hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path;
@@ -4853,7 +4850,10 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
           ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
         return `<li class="wf-step current" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" aria-current="step"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
-          <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
+          <div class="wf-file"><button type="button" class="wf-file-main" data-path="${esc(st.path)}" title="Show this file in the city">
+            <span class="wf-file-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 2.5h8l4.5 4.5v14.5h-12.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 2.5v4.5h4.5M9 12.5h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            <span class="wf-file-text"><b>${esc(st.path.slice(st.path.lastIndexOf("/") + 1))}</b>${st.path.includes("/") ? `<i>${esc(st.path.slice(0, st.path.lastIndexOf("/") + 1))}</i>` : ""}</span></button>
+            <button type="button" class="wf-file-view" data-view="${esc(st.path)}">View code</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${plain ? (code.trim() ? `<details class="more"><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
@@ -4861,8 +4861,6 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div class="side-actions">
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
         <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
-        <button type="button" data-tour="play" aria-pressed="${t.playing}" title="Goes through the steps by itself">${t.playing ? "Pause" : "Play it for me"}</button>
-        <button type="button" data-tour="files">Open its files side by side</button>
       </div>
       <p class="side-note">Tip: the ← and → keys step through the tour.</p>`;
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);

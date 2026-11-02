@@ -98,7 +98,7 @@ Explanations form a chain: **Follow** on any connected file explains it next, as
 
 ### Connections between files
 
-Arcs over the city show which files import which, read from the code's import lines (JavaScript and TypeScript, Python, Go, Ruby, Java and Kotlin, C and C++, CSS, Rust and PHP), never guessed. They show one file at a time: the file whose panel is open, the row you point at in a list, the explained files, or the tour stop. Sparks travel along each arc: orange from a file to what it imports, blue from the files that use it. A file's panel lists its **Imports**, and **Find the files that use this** reads the whole repo's imports once to list its **Used by** (one GitHub download per source file). Turn arcs off with **Show connections between files**.
+Arcs over the city show which files import which, read from the code's import lines (JavaScript and TypeScript, Python, Go, Ruby, Java and Kotlin, C and C++, CSS, Rust and PHP), never guessed. They show one file at a time: the file whose panel is open, the row you point at in a list, the explained files, or the tour stop. Sparks travel along each arc: orange from a file to what it imports, blue from the files that use it. A file's panel lists its **Imports**, and **Find the files that use this** reads the whole repo's imports once to list its **Used by** (one GitHub download per source file). Turn arcs off with **Show connections between files**. In Beginner, a file's panel shows its main facts, with its imports, users, functions and first lines folded under **More information**.
 
 ### Function-level links (Trace)
 
@@ -137,8 +137,8 @@ Like asking, tours need Sign in with GitHub and count towards the same hourly li
 - **One button.** Understand has just **Workflows tour**. Its overview shows where the program starts; where there's no tour to take (no sign-in, or no Gemini), the button shows Code structure in plain English instead.
 - **In plain English.** The tour opens with the whole system end to end in simple words: what the software is for, then one person's or one piece of data's journey through it. Each workflow says in plain English what it lets people do, above the technical summary ("In the code").
 - **Covers the whole system.** Gemini is given the product's main areas (top folders by lines of source code; tests, docs, vendored and built folders aside; a folder that is a project of its own always counts) as a checklist the workflows must cover, unless you named one topic. The overview ends with **What the tour covers**: each area ticked or not, and **Tour this part** on any it missed. The narration is asked to vary from step to step.
-- **A simpler overview.** **Start the tour** sits near the top, the workflows are listed by name, and the map names each workflow on its line, numbers its stops, and draws a dashed arrow only for direct links between workflows, so a chain reads as a chain. Click a line to walk that workflow.
-- **One step at a time.** A row of numbered dots shows where you are (click one to jump), the ← and → keys step back and forward, and the code details (lines to look at, where it passes on to the next step) fold away under **Show the code behind this step**. **Play it for me** runs through every step.
+- **A simpler overview.** The workflows are listed by name (pick one to walk it), and the map, which is only a picture, names each workflow on its line, numbers its stops, and draws a dashed arrow only for direct links between workflows, so a chain reads as a chain.
+- **One step at a time.** A row of numbered dots shows where you are (click one to jump), the ← and → keys step back and forward (or **Back** and **Next**), and each step shows its file as a card (**View code** opens it), with the code details (lines to look at, where it passes on to the next step) folded away under **Show the code behind this step**.
 
 ### Timelapse video
 
