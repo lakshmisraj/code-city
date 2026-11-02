@@ -73,6 +73,7 @@ const tourSchema = max => ({
   type: "object",
   properties: {
     title: { type: "string" },
+    story: { type: "string" },
     overview: { type: "string" },
     workflows: {
       type: "array",
@@ -81,6 +82,7 @@ const tourSchema = max => ({
         type: "object",
         properties: {
           name: { type: "string" },
+          feature: { type: "string" },
           summary: { type: "string" },
           steps: {
             type: "array",
@@ -89,11 +91,11 @@ const tourSchema = max => ({
           },
           feeds: { type: "array", items: { type: "string" } },
         },
-        required: ["name", "summary", "steps", "feeds"],
+        required: ["name", "feature", "summary", "steps", "feeds"],
       },
     },
   },
-  required: ["title", "overview", "workflows"],
+  required: ["title", "story", "overview", "workflows"],
 });
 
 // Two workflows that walk mostly the same files are one walk told twice: the shorter folds into the longer, which
@@ -121,8 +123,9 @@ function foldOnce(workflows) {
 // every: all the workflows, overlapping or not (Advanced asks for this); otherwise a few that don't repeat each other
 const tourSystem = every => `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words, a one or two sentence summary, and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
+Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); a one or two sentence technical summary of how the code does it; and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
 Workflows often share files; reuse the same path when they do, since that is where they meet.${every ? "" : " Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one."} Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
+Then write the story: the whole system end to end in simple English that anyone can follow, whether or not they code, in four to seven short sentences. Say what the software is for and who uses it, then follow one person or one piece of data through it from the first thing that happens to the end result, touching each workflow in the order they happen. No file names, function names or jargon; when a technical idea is needed, say what it does instead (not "an API" but "the part that answers the app's requests").
 Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
 You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.
 It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).
@@ -524,6 +527,7 @@ async function handle(event) {
     if (!reply || !Array.isArray(reply.workflows)) return json(502, { error: "Gemini's tour came back in an unexpected shape. Try again." });
     const workflows = reply.workflows.filter(w => w && Array.isArray(w.steps)).map(w => ({
       name: String(w.name || "").slice(0, 60),
+      feature: String(w.feature || "").slice(0, 400),
       summary: String(w.summary || "").slice(0, 400),
       steps: w.steps.filter(st => st && known.has(st.path))
         .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, 500) })).slice(0, MAX_WORKFLOW_STEPS),
@@ -534,7 +538,7 @@ async function handle(event) {
     if (!every) workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
     else workflows.forEach(w => { w.merged = []; });
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
-    return done({ title: String(reply.title || "A tour of the city").slice(0, 100), overview: String(reply.overview || "").slice(0, 1000), workflows });
+    return done({ title: String(reply.title || "A tour of the city").slice(0, 100), story: String(reply.story || "").slice(0, 1500), overview: String(reply.overview || "").slice(0, 1000), workflows });
   }
   if (!reply || typeof reply.answer !== "string" || !Array.isArray(reply.files)) return json(502, { error: "Gemini's answer came back in an unexpected shape. Try again." });
   return done({

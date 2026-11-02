@@ -34,8 +34,8 @@ test("explain counts separately from asks", async () => {
   assert.ok(![...counts.keys()].some(k => /^user\/7\/\d/.test(k)));
 });
 test("tour returns workflows of real files, with feeds between them", async () => {
-  reply = { title: "T", overview: "O", workflows: [
-    { name: "Start", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "nope.js", title: "x", narration: "x" }, { path: "b.js", title: "t2", narration: "n2" }], feeds: ["Serve", "Ghost", "Start"] },
+  reply = { title: "T", story: "People open it and it shows them their code.", overview: "O", workflows: [
+    { name: "Start", feature: "Lets people start it.", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "nope.js", title: "x", narration: "x" }, { path: "b.js", title: "t2", narration: "n2" }], feeds: ["Serve", "Ghost", "Start"] },
     { name: "Serve", summary: "S2", steps: [{ path: "b.js", title: "t", narration: "n" }, { path: "c/d.js", title: "t", narration: "n" }], feeds: [] },
     { name: "Empty", summary: "x", steps: [{ path: "zzz", title: "t", narration: "n" }], feeds: [] }] };
   const [st, out] = await call({ mode: "tour", files, digest: "README: hello" });
@@ -43,9 +43,13 @@ test("tour returns workflows of real files, with feeds between them", async () =
   assert.deepEqual(out.workflows.map(w => w.name), ["Start", "Serve"]);
   assert.deepEqual(out.workflows[0].steps.map(s => s.path), ["a.js", "b.js"]);
   assert.deepEqual(out.workflows[0].feeds, ["Serve"]);
+  assert.deepEqual(out.workflows.map(w => w.feature), ["Lets people start it.", ""]);   // plain English beside the technical summary
   assert.equal(out.overview, "O");
+  assert.equal(out.story, "People open it and it shows them their code.");   // the whole system in simple English
+  assert.match(lastInput.system_instruction, /end to end in simple English/);
   assert.match(lastInput.input, /What the code itself shows[^\n]*\nREADME: hello/);
   assert.match(lastInput.system_instruction, /workflows/);
+  assert.match(lastInput.system_instruction, /plain English on what it lets people do/);
 });
 test("workflows that walk mostly the same files become one, and feeds follow it", async () => {
   const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));

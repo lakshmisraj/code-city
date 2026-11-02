@@ -2289,9 +2289,9 @@ async function overviewMarkdown() {
   }
   const tour = takenTour();
   if (tour) {
-    out.push(`## Workflows: ${text(tour.title)}`, "", `> Written by Gemini from the code's structure, so check it against the code.`, "", text(tour.overview), "");
+    out.push(`## Workflows: ${text(tour.title)}`, "", `> Written by Gemini from the code's structure, so check it against the code.`, "", ...(tour.story ? ["**In plain English:** " + text(tour.story), ""] : []), text(tour.overview), "");
     tour.workflows.forEach((w, k) => {
-      out.push(`### ${k + 1}. ${text(w.name)}`, "", text(w.summary), "", ...w.steps.map((st, i) => `${i + 1}. ${bmap.has(st.path) ? file(st.path) : `\`${st.path}\``}: **${text(st.title)}**. ${text(st.narration)}`));
+      out.push(`### ${k + 1}. ${text(w.name)}`, "", ...(w.feature ? [text(w.feature), "", `**In the code:** ${text(w.summary)}`] : [text(w.summary)]), "", ...w.steps.map((st, i) => `${i + 1}. ${bmap.has(st.path) ? file(st.path) : `\`${st.path}\``}: **${text(st.title)}**. ${text(st.narration)}`));
       if (w.feeds && w.feeds.length) out.push("", `Leads into: ${w.feeds.map(text).join(", ")}.`);
       out.push("");
     });
@@ -2456,6 +2456,7 @@ async function initAsk() {
   catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
   $("tourBtn2").hidden = $("tourForm").hidden = !askEnabled;
+  $("mapBtn").classList.toggle("primary", !askEnabled);   // without the tour, Code structure is where to start
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
 // The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
@@ -4519,7 +4520,7 @@ async function startTour(topic) {
     endTour();   // an old tour's auto-play timer must not drive the new one
     const shared = new Map();
     data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
-    tourState = { title: data.title, overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
+    tourState = { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
       w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
     openSide("tour");
     showOverview();
@@ -4557,7 +4558,7 @@ function goToStop(i) {
   }
 }
 function endTour() {
-  if (tourState) { clearTimeout(tourState.timer); lastTour = { city: buildings, title: tourState.title, overview: tourState.overview, workflows: tourState.workflows }; }
+  if (tourState) { clearTimeout(tourState.timer); lastTour = { city: buildings, title: tourState.title, story: tourState.story, overview: tourState.overview, workflows: tourState.workflows }; }
   tourState = null;
 }
 let lastTour = null;   // the last tour's text, kept for the Markdown overview once the tour panel closes
@@ -4686,10 +4687,11 @@ function renderTour() {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
-      <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
+      ${t.story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(t.story)}</p></div>` : ""}
+      <div class="tour-stop"><h3>${t.story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
       <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a stop to open its file, or a line to walk it.</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${w.feature ? `<span class="wf-plain">${esc(w.feature)}</span>` : ""}<span class="wf-sum">${w.feature ? `<b>In the code:</b> ` : ""}${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
         <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
@@ -4704,7 +4706,7 @@ function renderTour() {
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
         ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
         ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3><p class="ask-answer">${rich(w.summary)}</p>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p>
         ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
       ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
       <ol class="wf-steps">${w.steps.map((st, k) => {
