@@ -2931,11 +2931,15 @@ function setAudience(a, quiet) {
 // Beginner starts Understand with the workflows tour; the others with Code structure, the tour after it. Without
 // the tour (no Gemini here), Code structure leads in every version.
 function understandOrder() {
-  const tourFirst = audience === "beginner" && !$("tourBtn2").hidden, box = $("mapBtn").parentNode;
-  if (tourFirst) box.prepend($("tourBtn2"), $("tourForm")); else box.append($("tourBtn2"), $("tourForm"));
-  $("tourBtn2").classList.toggle("primary", tourFirst);
-  $("mapBtn").classList.toggle("primary", !tourFirst);
-  $("understandNote").textContent = tourFirst ? "Start with the tour, then see how the code is built." : "Start here, then take the tour.";
+  const beginner = audience === "beginner", ai = !$("tourForm").hidden, box = $("mapBtn").parentNode;   // the box shows once Gemini is here
+  $("mapBtn").hidden = beginner;   // Beginner has one way in, the Workflows tour, which shows where the program starts
+  $("tourBtn2").hidden = !ai && !beginner;
+  if (beginner) box.prepend($("tourBtn2"), $("tourForm")); else box.append($("tourBtn2"), $("tourForm"));
+  $("tourBtn2").classList.toggle("primary", beginner);
+  $("mapBtn").classList.toggle("primary", !beginner);
+  $("tourBtn2").querySelector("span").textContent = beginner ? "What the code does and where it starts, in plain English. For one workflow, write its name below."
+    : "A guided walk through what the code does. For a custom workflow, write its name below.";
+  $("understandNote").textContent = beginner ? "Start here." : "Start here, then take the tour.";
 }
 const plainTour = () => audience === "beginner";   // the tour in plain English as well is Beginner's
 setAudience(audience, true);
@@ -3064,10 +3068,11 @@ function hotspotRows(limit) {
 // Opens by itself when a repo loads: what the project says it is, where execution starts and its core files,
 // all read from the code (no AI, no sign-in). Pointing at a row shows that file's connections over the city.
 let mapState = null;   // { facts, n, total, error } for the city on screen
+let tourLoading = false;   // a tour is being planned (Beginner shows Code structure meanwhile)
 function loadMap() {
   if (mapState && mapState.city === buildings) return;
   const st = mapState = { city: buildings, facts: null, n: 0, total: 0 };
-  const redraw = () => { if (mapState === st && sideMode === "map") renderSide(); };
+  const redraw = () => { if (mapState === st && (sideMode === "map" || (sideMode === "tour" && tourState && tourState.w < 0 && plainTour()))) renderSide(); };
   let last = 0;
   systemFacts((n, total) => { st.n = n; st.total = total; if (Date.now() - last > 300) { last = Date.now(); redraw(); } })
     .then(f => { st.facts = f; redraw(); if (picked) $("dRole").innerHTML = fileRole(picked.userData.f.path); if (codeRepo() || buildings.some(b => b.userData.f.text != null)) loadCalls(); }, () => { st.error = true; redraw(); });
@@ -3077,26 +3082,36 @@ function langSummary() {
   for (const b of buildings) if (b.userData.lines > 0) { const l = b.userData.f.lang; count[l] = (count[l] || 0) + 1; lines[l] = (lines[l] || 0) + b.userData.lines; }
   return Object.keys(lines).filter(l => !["md", "cfg", "other"].includes(l)).sort((a, b) => lines[b] - lines[a]).slice(0, 3).map(l => LANGS[l].name).join(", ");
 }
+// Beginner has no Code structure button: its Workflows tour opens this panel (in plain English) when there's no tour
+// to take here, or while one is planned, and the tour's overview shows where the program starts.
 function renderMap() {
-  const plain = audience === "beginner";   // Beginner reads it in plain English
-  const st = mapState, f = st && st.facts, live = buildings.filter(b => b.userData.lines > 0);
-  $("sideTitle").textContent = "Code structure";
+  const plain = audience === "beginner", live = buildings.filter(b => b.userData.lines > 0);
+  $("sideTitle").textContent = plain ? "Workflows tour" : "Code structure";
   $("sideSub").textContent = `${currentRepo || cityName} · ${fmt(live.length)} files · ${fmt(live.reduce((n, b) => n + b.userData.lines, 0))} lines`;
+  const note = !plain ? "" : tourLoading ? "Planning the tour of what it does… this can take up to half a minute. Meanwhile, here's where it starts."
+    : askEnabled && !canAsk() ? needSignin("get the tour of what it does, in plain English") : "";
+  sideBody.innerHTML = (note ? `<p class="side-note">${note}</p>` : "") + structureHtml(plain, false);
+  drawLinks();
+}
+function structureHtml(plain, inTour) {   // inTour: only where the program starts, for the tour's overview
+  const st = mapState, f = st && st.facts;
   const row = (path, n, meta) => `<li><button type="button" data-path="${esc(path)}"><span class="n">${n}</span><span class="path">${pathHtml(path)}</span><span class="meta">${meta}</span></button></li>`;
   const langs = langSummary();
   let html = "";
-  if (f && (f.intro || f.description)) html += `<div><p class="ask-answer">${rich(f.intro || f.description)}</p><p class="side-note">From ${f.intro ? `the ${fileLink(f.readme.path, "README")}` : "the project's manifest"}${langs ? ` · written in ${esc(langs)}` : ""}</p></div>`;
+  if (inTour) { /* the tour's story already says what it is */ } else if (f && (f.intro || f.description)) html += `<div><p class="ask-answer">${rich(f.intro || f.description)}</p><p class="side-note">From ${f.intro ? `the ${fileLink(f.readme.path, "README")}` : "the project's manifest"}${langs ? ` · written in ${esc(langs)}` : ""}</p></div>`;
   else if (langs) html += `<p class="side-note">Written in ${esc(langs)}.</p>`;
+  if (inTour && !(f && f.scanned)) return "";
   if (citySource === "sample") html += `<p class="side-note">This is the example city, which has no code to read. Build a repo to see how it's built.</p>`;
   else if (!f || !f.scanned) html += (st && st.error) ? `<p class="side-note">Couldn't read this repo's code.</p>`
     : `<p class="side-note">Reading imports${st && st.total ? `… ${fmt(st.n)} of ${fmt(st.total)} files` : "…"}</p>`;
   if (f && f.scanned) {
-    if (plain) html += `<p class="side-note">A program is split into files. It begins in a starting file and hands the work on from one part to the next. Here's where this one starts, and what it does in order.</p>`;
-    html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>${plain ? "Glowing: where the program starts" : "Lit: where it starts"}</span></p>`;
+    if (plain && !inTour) html += `<p class="side-note">A program is split into files. It begins in a starting file and hands the work on from one part to the next. Here's where this one starts, and what it does in order.</p>`;
+    if (!inTour) html += `<p class="map-key"><span><i style="background:#${PICKED.color.getHexString()}"></i>${plain ? "Glowing: where the program starts" : "Lit: where it starts"}</span></p>`;
     const starts = f.entries.filter(e => !e.loose), loose = f.entries.filter(e => e.loose), reason = e => esc(plain ? plainReason(e.reason) : e.reason);
     html += starts.length || loose.length ? `<div><h3>${plain ? "Where the program starts" : "Where it starts"}</h3><ol class="rank">${(starts.length ? starts : loose).map(e => row(e.path, "▶", reason(e))).join("")}</ol></div>`
       : `<p class="side-note">${plain ? "There's no single starting point: this is a toolkit that other programs use." : "No clear starting point: this looks like a library other code imports."}</p>`;
     if (starts.length && loose.length) html += `<details class="more"><summary>${plain ? "Other files you can run on their own" : "Scripts that run on their own"} · ${fmt(loose.length)}</summary><ol class="rank">${loose.map(e => row(e.path, "·", reason(e))).join("")}</ol></details>`;
+    if (inTour) return html;   // the tour takes only where the program starts; its workflows tell the rest
     const idx = callsReady(), mp = mapPaths(f, idx);
     const step = (p, i) => idx && i >= 0 ? `<button type="button" class="flink" data-fn-trace="${esc(p)}" data-fn-i="${i}" title="${plain ? `${esc(fnName(idx, p, i))} in the code · ` : ""}Trace from here">${esc(plain ? words(idx.def(p, i)?.name || "?") : fnName(idx, p, i))}</button>` : fileLink(p, shortFile(p));
     if (mp.paths.length && plain) html += `<div><h3>What happens, step by step</h3><p class="side-note">Each line follows the code from where it starts through what it does next, named as the code names it, in words.</p><ol class="paths">${mp.paths.map((pth, k) =>
@@ -3111,10 +3126,9 @@ function renderMap() {
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += systemHtml();
     if (f.partial) html += `<p class="side-note">Only the first ${fmt(MAX_SCAN)} source files were read.</p>`;
-    html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, main paths, tangles and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
+    if (!inTour) html += `<div class="side-actions"><button type="button" data-map-md title="Entry points, main paths, tangles and hotspots${takenTour() ? ", and the workflows tour" : ""}, as a Markdown page for your docs or wiki">Download as Markdown</button></div>`;
   }
-  sideBody.innerHTML = html;
-  drawLinks();
+  return html;
 }
 sideBody.addEventListener("click", e => {
   if (sideMode === "map" && e.target.closest("[data-map-md]")) { e.stopPropagation(); downloadOverview(); }
@@ -3358,7 +3372,7 @@ async function initAsk() {
   try { const r = await fetch(ASK_URL, { cache: "no-store" }), d = r.ok ? await r.json() : {}; askEnabled = !!d.enabled; askOpen = askEnabled && !!d.open; }
   catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
-  $("tourBtn2").hidden = $("tourForm").hidden = !askEnabled;
+  $("tourForm").hidden = !askEnabled;
   understandOrder();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
@@ -5393,13 +5407,24 @@ document.getElementById("dLinks").addEventListener("click", async e => {
 const TOUR_STEP_MS = 7000;   // auto-play pace
 const WF_COLORS = ["#6fd0e0", "#f2a541", "#a97bff", "#7ed49b", "#ff7a9a"];
 let tourState = null;   // { title, overview, workflows: [{ name, summary, steps, feeds, lines, handoff }], w (-1 = overview), i, playing, timer, paths, shared }
-$("tourBtn2").onclick = () => startTour($("tourTopic").value.trim());   // a workflow named below focuses the tour
+$("tourBtn2").onclick = () => {   // a workflow named below focuses the tour
+  if (audience === "beginner") {   // Beginner's one way in: Code structure in plain English at once, then the tour if there is one
+    if (sideMode !== "map") openSide("map");
+    if (!askEnabled || !canAsk()) return;
+  }
+  startTour($("tourTopic").value.trim());
+};
 $("tourForm").addEventListener("submit", e => { e.preventDefault(); startTour($("tourTopic").value.trim()); });
 async function startTour(topic) {
   const gen = cityGen;
   const status = $("askStatus");
   if (!canAsk()) { status.innerHTML = needSignin("take a tour"); return; }
   if (!okToSendPrivate()) return;
+  tourLoading = true;
+  if (sideMode === "map") renderSide();
+  try { await planTour(topic, gen, status); } finally { tourLoading = false; if (sideMode === "map") renderSide(); }
+}
+async function planTour(topic, gen, status) {
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
   if (gen !== cityGen) { status.textContent = ""; return; }
@@ -5425,6 +5450,7 @@ async function startTour(topic) {
     data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
     tourState = { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
       w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
+    if (plainTour()) loadMap();   // Beginner's tour shows where the program starts
     openSide("tour");
     showOverview();
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
@@ -5592,6 +5618,7 @@ function renderTour() {
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
+      ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
       <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
       <div><h3>How they merge</h3>${mergeMapSvg(t)}<p class="side-note">Each line is a workflow, with its steps numbered. A dashed arrow shows one leading into the next; where lines pinch together they pass through the same file. Pick a stop to open its file, or a line to walk it.</p></div>
       <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
