@@ -1096,7 +1096,7 @@ function openDrawer(b) {
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
   document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button>${IN_VSCODE ? `<button type="button" data-open-editor>Open in editor</button>` : ""}</div>`;
-  roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
+  opened(drawer); roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
 }
@@ -1137,7 +1137,11 @@ async function renderOutline(path) {
       (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</details>`
     : "") + `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
 }
-function closeDrawer() { const had = picked; drawer.hidden = true; document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
+// Beginner: when a panel closes with keyboard focus in it, focus goes back to the button that opened it.
+const openers = new Map();
+function opened(panel) { const a = document.activeElement; if (panel.hidden && a && a !== document.body && !panel.contains(a)) openers.set(panel, a); }
+function giveFocusBack(panel, had) { const el = openers.get(panel); openers.delete(panel); if (had && audience === "beginner" && el && el.isConnected && el.offsetParent) el.focus(); }
+function closeDrawer() { const had = picked, inside = drawer.contains(document.activeElement); drawer.hidden = true; giveFocusBack(drawer, inside); document.body.classList.remove("drawer-open"); picked = null; setFolder(null); if (had) { syncUrl(); drawLinks(); } }
 
 // ---------- folders ----------
 // Clicking a district (or its label) opens the folder: everything outside it dims, its platforms glow, and the
@@ -1182,7 +1186,7 @@ function openFolder(dir) {
       ? `<div class="side-actions"><button type="button" class="primary" data-explain-dir>Explain this folder</button></div>` : "") +
     `<h3>Biggest files${biggest.length > 1 ? ` <button type="button" class="mini" data-view-all="${esc(JSON.stringify(biggest.slice(0, 6).map(b => b.userData.f.path)))}">View ${Math.min(biggest.length, 6)} side by side</button>` : ""}</h3><ol class="rank">${biggest.slice(0, 12).map((b, i) => row("data-file", b.userData.f.path, i + 1, pathHtml(b.userData.f.path.slice(dir.length + 1)), `${fmt(b.userData.lines)} lines`)).join("")}</ol>` +
     (biggest.length > 12 ? `<p class="note">and ${fmt(biggest.length - 12)} more</p>` : "");
-  roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
+  opened(drawer); roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   const p = districts.find(d => d.userData.dir === dir);
   if (p) {
     const target = p.getWorldPosition(new THREE.Vector3()), size = Math.max(p.scale.x, p.scale.z);
@@ -2093,7 +2097,7 @@ function openSide(mode) {
     if (sideMode === "lang") { langSel = null; renderLegend(); }
   }
   if (mode !== "commits") commitSel = null;
-  roomFor(); sideMode = mode; sidePanel.hidden = false; sidePanel.classList.toggle("compact", mode === "lang"); document.body.classList.add("side-open");
+  opened(sidePanel); roomFor(); sideMode = mode; sidePanel.hidden = false; sidePanel.classList.toggle("compact", mode === "lang"); document.body.classList.add("side-open");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
   $("commitsBtn").setAttribute("aria-pressed", mode === "commits");
   $("reportBtn").setAttribute("aria-pressed", mode === "report");
@@ -2106,7 +2110,9 @@ function closeSide(quiet) {
   if (sideMode === "tour") endTour();
   if (sideMode === "lang") { langSel = null; renderLegend(); }
   commitSel = null;
+  const inside = sidePanel.contains(document.activeElement);
   sideMode = null; sidePanel.hidden = true; sidePanel.classList.remove("compact"); document.body.classList.remove("side-open");
+  giveFocusBack(sidePanel, inside);
   drawLinks();
   $("mapBtn").setAttribute("aria-pressed", "false");
   $("commitsBtn").setAttribute("aria-pressed", "false");
@@ -2577,11 +2583,37 @@ function renderAsk() {
     }).join("")}</ol>` : "") +
     (askState.order.length ? `<div class="side-actions"><button type="button" class="primary" data-explain-answer>Explain the code of the top ${Math.min(MAX_EXPLAIN, askState.order.length)} files</button></div>` : "");
 }
+function linkChip(x, from, path) {   // how sure a connection is: an import line in one of the two files, or Gemini's reading
+  const g = graph, real = x.real && x.real.get(from) && x.real.get(from).has(path), user = g && g.usedBy && (g.usedBy.get(from) || new Set()).has(path);
+  return real ? `<span class="chip real" title="Found in this file's import lines">imports</span>` : user ? `<span class="chip real" title="Found in that file's import lines">used by</span>`
+    : `<span class="chip guess" title="Gemini's reading of the code, not an import line">inferred</span>`;
+}
+// Beginner: an explanation as a stack of blocks, each saying what it's for. One file's own paragraph is its
+// summary (the two said the same thing), and a connection opens the line that uses the other file, explained.
+function explainBlocks(x) {
+  const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
+  const one = x.files.length === 1, f0 = x.files[0];
+  const parts = f => !f.parts.length ? "" : block("xb-parts", "Key parts", "The lines that matter most. Click one to see it in the code.",
+    `<ul class="xb-list">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><div>` +
+      `<button type="button" class="flink pname" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">${esc(pt.name)}</button><p>${rich(pt.note, f.path)}</p></div></li>`).join("")}</ul>`);
+  const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "Other files this one works with. Click one to see the line where it uses that file, explained.",
+    `<ul class="xb-list">${f.links.map(l => { const b = bmap.get(l.path), live = b && b.userData.lines > 0;
+      return `<li><button type="button" class="xb-conn" ${live ? `data-connect="${esc(l.path)}" data-from="${esc(f.path)}" title="Show the line in ${esc(f.path.split("/").pop())} that uses it, explained"` : "disabled"}>` +
+        `<span class="xb-conn-head"><span class="path">${pathHtml(l.path)}</span>${linkChip(x, f.path, l.path)}</span><span class="xb-conn-how">${esc(l.how)}</span></button></li>`; }).join("")}</ul>`);
+  const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
+  const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
+    x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.",
+    `<p class="ask-answer">${one && f0.explanation ? rich(f0.explanation, f0.path) : rich(x.summary)}</p>` + (one ? partial(f0) : "") +
+    (x.files.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(x.files.slice(0, 6).map(f => f.path)))}">View these ${Math.min(x.files.length, 6)} files side by side</button></div>` : ""));
+  if (!x.files.length) return what;
+  if (one) return what + parts(f0) + links(f0);
+  return what + x.files.map(f => `<div class="xb-file"><div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>` +
+    block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + parts(f) + links(f) + `</div>`).join("");
+}
 function explainHtml(x) {
+  if (audience === "beginner") return explainBlocks(x);
   const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
-    const g = graph, real = x.real && x.real.get(from) && x.real.get(from).has(path), user = g && g.usedBy && (g.usedBy.get(from) || new Set()).has(path);
-    const chip = real ? `<span class="chip real" title="Found in this file's import lines">imports</span>` : user ? `<span class="chip real" title="Found in that file's import lines">used by</span>`
-      : `<span class="chip guess" title="Gemini's reading of the code, not an import line">inferred</span>`;
+    const chip = linkChip(x, from, path);
     return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
       (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
   const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
@@ -2599,6 +2631,8 @@ function explainHtml(x) {
 // View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
 function explainClicks(e) {
   const all = e.target.closest("[data-view-all]"), view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]");
+  const connect = e.target.closest("[data-connect]");
+  if (connect) { explainConnection(connect.dataset.from, connect.dataset.connect); return true; }
   const change = changeOf(e);
   if (change && (line || view)) { openDiff(change, line ? line.dataset.file : view.dataset.view, line ? +line.dataset.line : 0); return true; }
   if (all) viewFiles(JSON.parse(all.dataset.viewAll));
@@ -2685,6 +2719,19 @@ async function followLink(from, path) {
   if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
   if (panes.filter(p => p.st).length >= MAX_CHAIN) { toast(`${MAX_CHAIN} explanations are open. Close some to follow more.`); return; }
   explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
+}
+// Beginner's Connects to: this file opens at the line that uses the other one (or else imports it), and only that
+// line is explained beside it. The explanation it replaces comes back with Back, without asking again.
+async function explainConnection(from, to) {
+  const c = await pullCode(from);
+  await getGraph().ready;
+  const link = c && connectionMarks(from, c.text, to), at = link && (link.uses[0] || link.imports[0]);
+  if (!at) return followLink(from, to);   // no line here names it: the two files and how they connect, as before
+  const was = (codePane(from) || explainWindowFor(from) || {}).st;
+  if (!await viewFile(from, at, link)) return;
+  const how = link.byLine.get(at).kind === "use" ? "uses" : "imports";
+  explainCode(explainState, [from], `Explain only line ${at} of ${from}, where it ${how} ${to}: what this line does with ${to}, and why it needs it. ` +
+    `Use the rest of the file just as context, and keep the key parts within the lines around it.`, null, { from: at, to: at, back: was && !was.loading ? was : null });
 }
 // Lines selected in a code window when Explain is pressed: only those are explained, beside them; the rest of the
 // file is sent too, as context and so the line numbers stay true.
@@ -2856,7 +2903,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
   renderViewer();
 }
 function explainCol(st) {
-  return `${st.range ? `<div class="explain-range"><span>Lines ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
+  return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
     ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
 `;
 }
@@ -3040,6 +3087,7 @@ $("viewerPanes").addEventListener("click", e => {
   if (e.target.closest("[data-pane-close]")) { panes.splice(panes.indexOf(p), 1); renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-explain]")) { const r = p.sel; p.sel = null; return r ? explainLines(p.path, r) : explainFile(p.path); }
   if (e.target.closest("[data-explain-full]")) return explainFile(p.path);
+  if (e.target.closest("[data-explain-back]") && p.st && p.st.range && p.st.range.back) { p.st = p.st.range.back; p.line = 0; p.link = null; p.dirty = true; renderViewer(); drawLinks(); return; }
   if (e.target.closest("[data-pane-editor]")) return openInEditor(p.path, p.line);
   if (e.target.closest("[data-diff-explain]")) return explainChange(p.sha, p.path);
   if (e.target.closest("[data-pane-collapse]")) { p.collapsed = true; renderViewer(); return; }
@@ -4612,6 +4660,7 @@ async function planTour(topic, gen, status) {
     tourState = { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
       w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
     if (plainTour()) loadMap();   // Beginner's tour shows where the program starts
+    if (plainTour() && !drawer.hidden) closeDrawer();   // Beginner: the tour has the right edge to itself, not squeezed under a file
     openSide("tour");
     showOverview();
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
@@ -4838,7 +4887,7 @@ function wfDot(k) { return `<span class="wf-dot" style="background:${WF_COLORS[k
 function renderTour() {   // Beginner's tour panel; Advanced and Manager keep the one from when the sites split
   if (!plainTour()) return renderTourClassic();
   const t = tourState;
-  const f = document.activeElement, again = f && sideBody.contains(f) && f.dataset
+  const f = document.activeElement, wasIn = !!f && sideBody.contains(f), again = wasIn && f.dataset
     ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
   const plain = plainTour(), story = plain && t.story;
@@ -4894,7 +4943,10 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
     if (cur && !again) cur.scrollIntoView({ block: "nearest" });
   }
-  if (again) { const el = sideBody.querySelector(again); if (el && !el.disabled) el.focus(); }   // the panel was redrawn; keep keyboard focus
+  // the panel was redrawn: keep keyboard focus, or when its button is gone (a workflow was opened, or the
+  // overview), move it on to Next, or the first workflow
+  if (wasIn) { const el = again && sideBody.querySelector(again), on = el && !el.disabled ? el : again ? sideBody.querySelector(t.w < 0 ? ".wf-card" : '[data-tour="next"]') : null; if (on) on.focus(); }
+  $("sideSub").setAttribute("aria-live", "polite");   // "Workflow 2 of 3 · step 1 of 2" is read out as it changes
 }
 function renderTourClassic() {   // Advanced and Manager: the tour panel as it was when the sites split
 
