@@ -70,14 +70,12 @@ test("a Beginner tour is asked to cover every main area of the product, tests an
   assert.doesNotMatch(lastInput.system_instruction, /must cover the whole product|must not sound the same twice/);
   assert.match(lastInput.system_instruction, /here the request lands in/);
 });
-test("a key Gemini rejects: Beginner hears that trying again won't help; the others keep the old message", async () => {
+test("a key Gemini rejects says so, and that trying again won't help", async () => {
   badKey = true;
   try {
-    const [st, out] = await call({ for: "beginner", question: "where is the key? (beginner)", files });
+    const [st, out] = await call({ question: "where is the key?", files });
     assert.equal(st, 502);
     assert.match(out.error, /didn't accept this site's API key[\s\S]*Trying again won't help/);
-    const [, other] = await call({ for: "advanced", question: "where is the key? (advanced)", files });
-    assert.match(other.error, /couldn't answer just now \(error 400\)\. Try again in a minute/);
   } finally { badKey = false; }
 });
 test("only a Beginner tour (plain) comes in plain English", async () => {

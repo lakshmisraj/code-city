@@ -512,7 +512,7 @@ async function handle(event) {
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && e.cutShort) return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
-    if (body.for === "beginner" && e && (e.status === 400 || e.status === 403)) {   // Beginner: say plainly when trying again won't help
+    if (e && (e.status === 400 || e.status === 403)) {   // say plainly when trying again won't help
       const msg = String(e.message);
       if (/API key not valid|API_KEY_INVALID|API key expired/i.test(msg)) return json(502, { error: LOCAL
         ? "Gemini didn't accept your API key. Check GEMINI_API_KEY (in .env or your shell), then start Code City again."
