@@ -3472,7 +3472,7 @@ async function askCity(question) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ question: q, repo: currentRepo || cityName, files, digest }),
+      body: JSON.stringify({ for: audience, question: q, repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
@@ -3582,7 +3582,7 @@ async function explainCode(state, paths, question, from, range) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
+      body: JSON.stringify({ for: audience, mode: "explain", question, repo: currentRepo || cityName, files, code }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) return;
@@ -5395,7 +5395,7 @@ async function explainChange(sha, onlyPath) {
   const redraw = () => { win.dirty = true; renderViewer(); };
   try {
     const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(),
-      body: JSON.stringify({ mode: "change", question: message, repo: currentRepo || cityName, files: buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines })),
+      body: JSON.stringify({ for: audience, mode: "change", question: message, repo: currentRepo || cityName, files: buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines })),
         change: pick.map(f => ({ path: f.path, status: f.status, patch: numberedPatch(f.patch).slice(0, MAX_PATCH_CHARS) })) }) });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) return;
@@ -5500,7 +5500,7 @@ async function planTour(topic, gen, status) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced", plain: plainTour() }),
+      body: JSON.stringify({ for: audience, mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced", plain: plainTour() }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
@@ -5592,7 +5592,7 @@ async function loadKeyLines(w) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "lines", plain: plainTour(), question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
+      body: JSON.stringify({ for: audience, mode: "lines", plain: plainTour(), question: `${wf.name}: ${wf.summary}`, repo: currentRepo || cityName,
         files: [{ path: send[0].path, lines: 1 }], code: send }),
     });
     const data = await r.json().catch(() => ({}));

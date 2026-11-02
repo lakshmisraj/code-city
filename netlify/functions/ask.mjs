@@ -512,6 +512,14 @@ async function handle(event) {
     if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
     if (e && e.cutShort) return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
+    if (body.for === "beginner" && e && (e.status === 400 || e.status === 403)) {   // Beginner: say plainly when trying again won't help
+      const msg = String(e.message);
+      if (/API key not valid|API_KEY_INVALID|API key expired/i.test(msg)) return json(502, { error: LOCAL
+        ? "Gemini didn't accept your API key. Check GEMINI_API_KEY (in .env or your shell), then start Code City again."
+        : "Gemini didn't accept this site's API key, so it can't answer right now. Trying again won't help until the site owner fixes the key." });
+      if (e.status === 403 || /PERMISSION_DENIED|billing/i.test(msg)) return json(502, { error: "Gemini turned this down: its API key isn't allowed to do this, or has run out of credit. Trying again won't help until that's fixed." });
+      return json(502, { error: "Gemini couldn't take this request (error 400). Trying again won't help; try a shorter question or a different topic." });
+    }
     // Google's own wording can name the project or its billing state, so it goes to the timing notes and the log, not the page.
     return json(502, { error: `Gemini couldn't answer just now${e && e.status ? ` (error ${e.status})` : ""}. Try again in a minute.` });
   }

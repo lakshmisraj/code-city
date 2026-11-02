@@ -1,8 +1,8 @@
 import { test, mock } from "node:test";
 import assert from "node:assert";
 const FN = new URL("../netlify/functions/ask.mjs", import.meta.url).href;   // the function under test
-let reply, lastInput, rejectThinking = false, calls = [], models = [], busyTimes = 0, slowTimes = 0, cutTimes = 0, aborted = 0;
-mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
+let reply, lastInput, badKey = false, rejectThinking = false, calls = [], models = [], busyTimes = 0, slowTimes = 0, cutTimes = 0, aborted = 0;
+mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (badKey) throw Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
 const counts = new Map();
 mock.module("@netlify/blobs", { namedExports: { getStore: () => ({
   getWithMetadata: async k => counts.has(k) ? { data: { n: counts.get(k) }, etag: "e" } : null,
@@ -69,6 +69,16 @@ test("a Beginner tour is asked to cover every main area of the product, tests an
   assert.doesNotMatch(lastInput.input, /Main areas of the product/);
   assert.doesNotMatch(lastInput.system_instruction, /must cover the whole product|must not sound the same twice/);
   assert.match(lastInput.system_instruction, /here the request lands in/);
+});
+test("a key Gemini rejects: Beginner hears that trying again won't help; the others keep the old message", async () => {
+  badKey = true;
+  try {
+    const [st, out] = await call({ for: "beginner", question: "where is the key? (beginner)", files });
+    assert.equal(st, 502);
+    assert.match(out.error, /didn't accept this site's API key[\s\S]*Trying again won't help/);
+    const [, other] = await call({ for: "advanced", question: "where is the key? (advanced)", files });
+    assert.match(other.error, /couldn't answer just now \(error 400\)\. Try again in a minute/);
+  } finally { badKey = false; }
 });
 test("only a Beginner tour (plain) comes in plain English", async () => {
   reply = { title: "T", story: "A story.", overview: "O", workflows: [{ name: "Start", feature: "F", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }], feeds: [] }] };
