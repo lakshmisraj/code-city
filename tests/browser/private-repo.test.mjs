@@ -63,6 +63,8 @@ test("a private repo opens with a pasted token, reading files through the API", 
       document.getElementById("repoInput").value = "acme/secret";
       [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "Build").click();
     }, TOKEN);
+    await page.waitForFunction(() => document.getElementById("repoName").textContent.startsWith("acme/secret"));
+    await page.evaluate(() => document.getElementById("mapBtn").click());   // the page starts with just the city
     await page.waitForFunction(() => document.getElementById("sideSub").textContent.startsWith("acme/secret"));
     await page.waitForFunction(() => /Where it starts|No clear starting point/.test(document.getElementById("sideBody").textContent));   // the code was read
     assert.ok(seen.contents.some(c => c.path === "shop/cart.py"), "files were read through the API");

@@ -377,6 +377,16 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .wf-step-head { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: baseline; font: 700 14px var(--f-display); color: var(--ink); }
 .wf-step-head .n { font: 12px var(--f-mono); color: var(--ink-dim); }
 .wf-step-head:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
+.wf-step:not(.current) { padding-block: 4px; }
+.wf-step:not(.current) .wf-step-head { font-size: 13px; color: var(--ink-dim); }
+.wf-step:not(.current) .wf-step-head:hover { color: var(--ink); }
+.wf-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin: 2px 0 4px; }
+.wf-progress > span { flex: 0 1 14px; height: 2px; background: var(--line); }
+.wf-dot-step { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--f-mono); color: var(--ink-dim); border: 2px solid var(--line); background: var(--street); }
+.wf-dot-step.done { border-color: color-mix(in srgb, var(--sodium) 55%, var(--line)); color: var(--ink); }
+.wf-dot-step.current { border-color: var(--sodium); background: var(--sodium); color: #1a1205; }
+.wf-dot-step:hover { border-color: var(--sodium); }
+.wf-dot-step:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
 .outline .oline { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; }
 .outline .oline:hover, .outline .oline:focus-visible { background: var(--street-2); }
 .outline .oline:focus-visible, .lnum:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }

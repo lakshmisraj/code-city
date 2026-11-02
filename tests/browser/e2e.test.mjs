@@ -37,6 +37,8 @@ test("code-city <folder> opens its city, and the overview downloads as Markdown"
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(url);
+    await page.waitForFunction(name => document.getElementById("repoName").textContent.startsWith(name), path.basename(repo));
+    await page.evaluate(() => document.getElementById("mapBtn").click());   // the page starts with just the city
     await page.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo));
     await page.locator("[data-map-md]").waitFor();   // shows once the imports are read
     const [download] = await Promise.all([page.waitForEvent("download"), page.locator("[data-map-md]").click()]);

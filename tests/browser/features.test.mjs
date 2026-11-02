@@ -52,7 +52,7 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
         parts: [3, 4, 5, 8, 9].map((line, i) => ({ line, name: `Part ${i + 1}`, note: "A part of the file, described at some length so the list scrolls." })) }] });
     });
     await page.goto(url);
-    await page.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo));
+    await page.waitForFunction(name => document.getElementById("repoName").textContent.startsWith(name), path.basename(repo));   // the page starts with just the city
 
     // The site tour: shown by itself on the first visit here (no sign-in in the local app), never again after
     await page.waitForFunction(() => !document.getElementById("siteTour").hidden);
@@ -64,7 +64,7 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
     await page.keyboard.press("Escape");
     assert.equal(await tourShown(page), false);
     await page.reload();
-    await page.waitForFunction(name => document.getElementById("sideSub").textContent.startsWith(name), path.basename(repo));
+    await page.waitForFunction(name => document.getElementById("repoName").textContent.startsWith(name), path.basename(repo));   // the page starts with just the city
     await page.waitForTimeout(2500);
     assert.equal(await tourShown(page), false, "not again on a later visit");
     await page.click('.rail-btn[data-seg="guide"]');
@@ -135,8 +135,10 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
     assert.match(await page.textContent("#sideBody"), /Commits\s*2[\s\S]*Who did the work\s*t\s*2 commits/i);
     assert.match(await page.textContent("#sideBody"), /shop\//, "the folder that changed");
     await page.reload();
-    await page.waitForFunction(() => document.getElementById("sideTitle").textContent === "Status report");   // remembered, and it opens by itself
-    assert.equal(await page.inputValue("#forSel"), "manager");
+    await page.waitForFunction(name => document.getElementById("repoName").textContent.startsWith(name), path.basename(repo));
+    await page.waitForTimeout(1500);
+    assert.equal(await page.inputValue("#forSel"), "manager", "remembered");
+    assert.equal(await page.evaluate(() => document.body.classList.contains("side-open") || !document.body.classList.contains("seg-closed")), false, "the page starts with just the city");
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
