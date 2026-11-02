@@ -177,6 +177,8 @@ All three versions build from this repo; `netlify.toml` runs `python3 codecity.p
 
 To link the three from each other's Guide, set `CODECITY_SITES` on all three, for example `beginner=https://code-city-view.netlify.app/,advanced=https://code-city-advanced.netlify.app/,manager=https://code-city-manager.netlify.app/`, then redeploy.
 
+Each push to `main` rebuilds all three, unless it changes nothing the sites are made from (`src/`, `site/`, `netlify/`, `netlify.toml`, `codecity.py`, the package files): a push of only tests, docs, the VS Code extension or CI skips all three builds (the `ignore` rule in `netlify.toml`).
+
 ## Run it on your own code
 
 Needs Python 3.8+ and git. Install the `code-city` command once:

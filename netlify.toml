@@ -4,6 +4,10 @@
   # builds the page as its own version from two settings made per site in Netlify: CODECITY_FOR (beginner,
   # the default, advanced or manager) and CODECITY_SITES, the other two's addresses for the Guide's links.
   command = "python3 codecity.py build --for \"${CODECITY_FOR:-beginner}\" --sites \"${CODECITY_SITES:-}\""
+  # A push that changes nothing the sites are made from (only tests, docs, the VS Code extension or CI)
+  # skips the build on all three. Exit 0 skips. A first build, a redeploy of the same commit (to pick up
+  # changed settings) or a commit git can't find all build.
+  ignore = "test -n \"$CACHED_COMMIT_REF\" && test \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- src site netlify netlify.toml codecity.py package.json package-lock.json"
 
 [functions]
   directory = "netlify/functions"
