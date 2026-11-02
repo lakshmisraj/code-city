@@ -274,6 +274,9 @@ function makeResolver(paths) {
 // ---------- analysis (folders opened in the browser) ----------
 const FN_RE = /\b(function|def|func|fn|fun)\b|=>|\bclass\b|\b(public|private|protected|static)\s+[\w<>\[\],\s]+\s+\w+\s*\(/g;
 const TODO_RE = /\b(TODO|FIXME|HACK|XXX)\b/;
+// Beginner lists only real notes: the tag opening a comment or the line, not code that merely names it
+const NOTE_RE = /(^|\/\/|#|\/\*|^\s*\*|<!--|--|;)\s*(TODO|FIXME|HACK|XXX)\b/;
+const noteText = t => t.replace(/^(\/\/+|#+|\/\*+|\*+|<!--|--|;+)\s*/, "").replace(/\s*(\*\/|-->)$/, "");
 // A notebook's code cells, joined like a "# %%" script. Falls back to the raw text if it isn't valid JSON.
 function notebookCode(text) {
   try {
@@ -1076,12 +1079,18 @@ function openDrawer(b) {
   document.getElementById("dRole").innerHTML = fileRole(f.path);
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   const stat = (dt, dd, cls) => `<div><dt>${dt}</dt><dd${cls ? ` class="${cls}"` : ""}>${dd}</dd></div>`;   // only what the file has: no rows of zeros
+  const easy = audience === "beginner", todos = easy ? f.todos.filter(t => NOTE_RE.test(t.text)) : f.todos;
+  const floors = !hist && !easy;   // Beginner: floors are just lines again, so they aren't shown
   document.getElementById("dStats").innerHTML = stat("Lines", (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines)) +
-    (!(ghRepo && f.text == null) && f.funcs && audience !== "beginner" ? stat("Functions", fmt(f.funcs)) : "") +   // Beginner: What's inside lists them
-    (viewNow && f.todos.length ? stat("Fires", fmt(f.todos.length), "fire") : "") +
-    (hist ? (commits ? stat("Commits", fmt(commits)) : "") : stat("Floors", Math.max(1, Math.round(b.userData.target))));
-  document.getElementById("dTodos").innerHTML = viewNow && f.todos.length
-    ? `<h3>${audience === "beginner" ? "Notes to fix" : "Fires to put out"}</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
+    (!(ghRepo && f.text == null) && f.funcs && !easy ? stat("Functions", fmt(f.funcs)) : "") +   // Beginner: What's inside lists them
+    (viewNow && todos.length ? stat(easy ? "Notes" : "Fires", fmt(todos.length), "fire") : "") +
+    (hist ? (commits ? stat("Commits", fmt(commits)) : "") : floors ? stat("Floors", Math.max(1, Math.round(b.userData.target))) : "");
+  // Beginner: what the numbers mean, in one line
+  document.getElementById("dStatsKey").textContent = !easy ? "" : ["Lines: how long the file is", hist && commits ? "Commits: how many times it was changed" : "",
+    viewNow && todos.length ? "Notes: to-do comments the authors left in it" : ""].filter(Boolean).join(". ") + ".";
+  document.getElementById("dTodos").innerHTML = viewNow && todos.length
+    ? easy ? `<h3>Notes the authors left</h3><p class="note">Comments marked TODO, FIXME or HACK: things someone meant to come back to.</p><ul class="todos">${todos.slice(0, 40).map(t => `<li><button type="button" class="lnum" data-oline="${t.line}" title="Open the code at line ${t.line}">L${t.line}</button><span>${esc(noteText(t.text))}</span></li>`).join("")}</ul>`
+      : `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
   const fromGitHub = ghRepo && f.nowLines && f.text == null;
   if (fromGitHub && !f.failed) {
     document.getElementById("dTodos").innerHTML = "";
@@ -1132,7 +1141,7 @@ async function renderOutline(path) {
   }
   const items = outlineItems(path, c.text);
   box.innerHTML = (items.length
-    ? `<details class="more"${items.length <= 12 || audience === "beginner" ? " open" : ""}><summary>${audience === "beginner" ? "What's inside" : "Outline"} · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
+    ? `<details class="more"${items.length <= 12 || audience === "beginner" ? " open" : ""}><summary>${audience === "beginner" ? (c.partial ? `What's inside the first ${fmt(c.text.split("\n").length)} lines` : "What's inside") : "Outline"} · ${fmt(items.length)}</summary><ul class="todos parts outline">${items.map(i =>
         `<li class="${i.nested ? "nested" : ""}"><button type="button" class="oline" data-oline="${i.line}" title="Open the code at line ${i.line}"><em>L${i.line}</em><b>${esc(i.name)}</b><span class="kind" data-kind="${esc(i.kind)}">${esc(i.kind)}</span></button></li>`).join("")}</ul>` +
       (c.partial ? `<p class="note">From the first ${fmt(c.text.split("\n").length)} lines, all that's stored for this city.</p>` : "") + `</details>`
     : "") + `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
@@ -1245,7 +1254,7 @@ function applySearch() {
   }
   const score = b => { const p = b.userData.f.path.toLowerCase(), name = p.split("/").pop(); return name.startsWith(query) ? 0 : name.includes(query) ? 1 : 2; };
   qHits.sort((a, b) => score(a) - score(b) || a.userData.f.path.length - b.userData.f.path.length);
-  qInfo.textContent = query ? (n ? `${n} building${n === 1 ? "" : "s"} lit up` : "No files match") : "";
+  qInfo.textContent = query ? (n ? `${n} building${n === 1 ? "" : "s"} lit up` : audience === "beginner" ? "No file names match. Try part of a name, like app or test." : "No files match") : "";
   qActive = -1; qShown = 12;
   renderQList();
 }
@@ -1748,7 +1757,7 @@ async function loadRepo(src) {
   busy.hidden = false;
   try {
     if (LOCAL) {
-      busyText.textContent = `Cloning and reading ${key}… big repos can take a minute.`;
+      busyText.textContent = audience === "beginner" ? `Reading ${key.split(/[\\/]/).filter(Boolean).pop() || key}… a big project can take a minute.` : `Cloning and reading ${key}… big repos can take a minute.`;
       const r = await fetch("/api/repo?src=" + encodeURIComponent(src.trim()), { signal, headers: { "X-Code-City": "1" } });   // the local server refuses requests without it
       const data = await r.json();
       if (!r.ok) throw new Error(esc(data.error || "Could not build that repo."));
@@ -2904,7 +2913,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
 }
 function explainCol(st) {
   return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
-    ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : ""}
+    ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : audience === "beginner" ? `<p class="side-note">Gemini's answer came back in a shape Code City couldn't read. Close this and try again.</p>` : ""}
 `;
 }
 function paneHtml(p) {
@@ -4666,10 +4675,10 @@ async function planTour(topic, gen, status) {
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function tourStep() { const t = tourState; return t && t.w >= 0 ? t.workflows[t.w].steps[t.i] : null; }
-function showOverview() {
+function showOverview(end) {   // end: Beginner's closing card instead of the overview
   const t = tourState;
   if (!t) return;
-  clearTimeout(t.timer); t.w = -1; t.playing = false;
+  clearTimeout(t.timer); t.w = -1; t.playing = false; t.end = end === true;
   resetView(true);
   renderTour(); drawLinks();
 }
@@ -4841,7 +4850,8 @@ function coverageHtml(t) {
   if (areas.length < 2) return "";
   const walked = new Set([...t.paths].map(area)), files = live.filter(f => t.paths.has(f.path)).length;
   const missed = areas.filter(a => !walked.has(a.key));
-  return `<details class="more cover-line"><summary>${missed.length ? `Covers ${fmt(areas.length - missed.length)} of ${fmt(areas.length)} parts of the code` : `Covers every part of the code`} · ${fmt(files)} of ${fmt(live.length)} files</summary>
+  const sum = missed.length ? `Covers ${fmt(areas.length - missed.length)} of ${fmt(areas.length)} parts of the code` : `Covers every part of the code`;
+  return `<details class="more cover-line"><summary>${sum}${audience === "beginner" ? "" : ` · ${fmt(files)} of ${fmt(live.length)} files`}</summary>
     <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></details>`;
 }
 // Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
@@ -4890,15 +4900,29 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   const f = document.activeElement, wasIn = !!f && sideBody.contains(f), again = wasIn && f.dataset
     ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
-  const plain = plainTour(), story = plain && t.story;
-  if (t.w < 0) {
+  const plain = plainTour(), story = plain && t.story, view = `${t.w}:${t.i}:${!!t.end}`;
+  if (t.view !== view) { t.view = view; sideBody.scrollTop = 0; }   // a new page of the tour starts at its top, not where the last one was scrolled
+  if (t.end) {
+    $("sideSub").textContent = "Tour finished";
+    sideBody.innerHTML = `
+      <div class="tour-stop tour-end"><h3>That's the tour</h3><p class="wf-plain">You walked through ${t.workflows.length === 1 ? "one workflow" : `${t.workflows.length} workflows`}: ${t.workflows.map((w, k) => `${wfDot(k)}${esc(w.name)}`).join(", ")}.</p></div>
+      <div><h3>What next</h3><ul class="tour-next">
+        <li>Click any building in the city to see what that file does.</li>
+        ${askEnabled ? `<li>Ask a question about the code, like "where does it start?"</li>` : ""}
+      </ul></div>
+      <div class="side-actions tour-end-acts">
+        <button type="button" data-tour="overview">Back to the overview</button>
+        ${askEnabled ? `<button type="button" data-tour="ask">Ask a question</button>` : ""}
+        <button type="button" class="primary" data-tour="close">Close the tour</button>
+      </div>`;
+  } else if (t.w < 0) {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span></button></li>`).join("")}</ol></div>
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
       ${coverageHtml(t)}
       <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
         ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
@@ -4911,11 +4935,9 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
     sideBody.innerHTML = `
-      <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button>
-        ${t.w > 0 ? `<button type="button" class="mini" data-wf="${t.w - 1}">← ${esc(t.workflows[t.w - 1].name)}</button>` : ""}
-        ${t.w < t.workflows.length - 1 ? `<button type="button" class="mini" data-wf="${t.w + 1}">${esc(t.workflows[t.w + 1].name)} →</button>` : ""}</div>
+      <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button></div>
       <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p></div>
-      <div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>
+      ${w.steps.length < 2 ? "" : `<div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>`}
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
@@ -4935,17 +4957,17 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${plain ? (code.trim() ? `<details class="more"><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
         </li>`; }).join("")}</ol>
-      <div class="side-actions">
+      <div class="side-actions tour-nav">
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
         <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
       </div>
-      <p class="side-note">Tip: the ← and → keys step through the tour.</p>`;
+      <p class="side-note kbd-tip">Tip: the ← and → keys step through the tour.</p>`;
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
     if (cur && !again) cur.scrollIntoView({ block: "nearest" });
   }
   // the panel was redrawn: keep keyboard focus, or when its button is gone (a workflow was opened, or the
   // overview), move it on to Next, or the first workflow
-  if (wasIn) { const el = again && sideBody.querySelector(again), on = el && !el.disabled ? el : again ? sideBody.querySelector(t.w < 0 ? ".wf-card" : '[data-tour="next"]') : null; if (on) on.focus(); }
+  if (wasIn) { const el = again && sideBody.querySelector(again), on = el && !el.disabled ? el : again ? sideBody.querySelector(t.end ? '[data-tour="close"]' : t.w < 0 ? ".wf-card" : '[data-tour="next"]') : null; if (on) on.focus(); }
   $("sideSub").setAttribute("aria-live", "polite");   // "Workflow 2 of 3 · step 1 of 2" is read out as it changes
 }
 function renderTourClassic() {   // Advanced and Manager: the tour panel as it was when the sites split
@@ -5027,8 +5049,11 @@ sideBody.addEventListener("click", e => {
   else if (act.dataset.tour === "next") {
     if (t.i < w.steps.length - 1) goToStop(t.i + 1);
     else if (t.w < t.workflows.length - 1) goToWorkflow(t.w + 1, 0);
+    else if (plainTour()) showOverview(true);   // Beginner ends on a card that says what next
     else { closeSide(); resetView(true); }
-  } else {   // play / pause
+  } else if (act.dataset.tour === "close") { closeSide(); resetView(true); }
+  else if (act.dataset.tour === "ask") { const q = $("askInput"); if (q && q.offsetParent) q.focus(); else openSeg("understand"); }
+  else {   // play / pause
     t.playing = !t.playing;
     if (t.w < 0) { if (t.playing) goToWorkflow(0, 0); else renderTour(); }
     else goToStop(t.i);
