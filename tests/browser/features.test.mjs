@@ -38,6 +38,7 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
       server.on("exit", code => reject(new Error(`code-city exited (${code}): ${out}`)));
     });
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await context.addInitScript(() => { try { if (!localStorage.getItem("codecity.for")) localStorage.setItem("codecity.for", "advanced"); } catch (e) {} });   // every tool on screen
     const page = await context.newPage();
     page.setDefaultTimeout(120000);   // headless Chromium compiles the city's shaders in software, slowly
     const errors = [], asked = [];
@@ -124,6 +125,18 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
     await page.waitForTimeout(1500);
     await page.click("#recBtn");
     await page.waitForFunction(() => document.getElementById("recBtn").textContent === "Download video");
+
+    // The three versions: Beginner hides the expert tools; Manager opens the status report, from the folder's history
+    const shown = id => page.evaluate(id => getComputedStyle(document.getElementById(id)).display !== "none", id);
+    await page.selectOption("#forSel", "beginner");
+    assert.equal(await shown("recBtn"), false); assert.equal(await shown("hotBtn"), false); assert.equal(await shown("reportBtn"), false);
+    await page.selectOption("#forSel", "manager");
+    await page.waitForFunction(() => document.getElementById("sideTitle").textContent === "Status report" && /Download report/.test(document.getElementById("sideBody").textContent));
+    assert.match(await page.textContent("#sideBody"), /Commits\s*2[\s\S]*Who did the work\s*t\s*2 commits/i);
+    assert.match(await page.textContent("#sideBody"), /shop\//, "the folder that changed");
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById("sideTitle").textContent === "Status report");   // remembered, and it opens by itself
+    assert.equal(await page.inputValue("#forSel"), "manager");
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

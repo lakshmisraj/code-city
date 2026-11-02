@@ -289,6 +289,20 @@ def assembled():
     return shell.replace(STYLE_MARK, read("style.css").rstrip("\n"), 1).replace(APP_MARK, read("app.js").rstrip("\n"), 1)
 
 
+LOCK_MARK = "const LOCKED_FOR = null, SITE_URLS = {};"
+AUDIENCES = ("beginner", "advanced", "manager")
+
+
+def locked(html, audience, sites=""):
+    """The page set to one version only (Beginner, Advanced or Manager), for a site that is just that version.
+    sites ("advanced=https://…,manager=https://…") are the other versions' addresses, linked from the Guide."""
+    urls = dict(kv.split("=", 1) for kv in sites.split(",") if "=" in kv)
+    urls = {k.strip(): v.strip() for k, v in urls.items() if k.strip() in AUDIENCES and v.strip().startswith("https://")}
+    mark = LOCK_MARK.encode()
+    assert html.count(mark) == 1, "src/app.js lost its LOCKED_FOR line"
+    return html.replace(mark, f"const LOCKED_FOR = {json.dumps(audience)}, SITE_URLS = {json.dumps(urls)};".encode(), 1)
+
+
 def page():
     """The page body (from src/ in a checkout, else the built code-city.html), wrapped in a full document."""
     if os.path.isfile(os.path.join(SRC, "page.html")):
@@ -450,7 +464,9 @@ def main(argv=None):
     e.add_argument("src", help="repo URL, owner/name, or local folder")
     e.add_argument("-o", "--out")
     e.add_argument("--no-source", action="store_true", help="leave out file previews (smaller file)")
-    sub.add_parser("build", help="put src/ together into code-city.html and site/index.html (from a checkout)")
+    b = sub.add_parser("build", help="put src/ together into code-city.html and site/index.html (from a checkout)")
+    b.add_argument("--for", dest="audience", choices=AUDIENCES, help="make site/index.html only this version (each Netlify site does)")
+    b.add_argument("--sites", default="", help="the other versions' addresses for the Guide: advanced=https://…,manager=https://…")
     args = ap.parse_args(argv)
 
     if args.cmd == "build":
@@ -458,8 +474,8 @@ def main(argv=None):
             fh.write(assembled())
         os.makedirs(os.path.join(HERE, "site"), exist_ok=True)
         with open(os.path.join(HERE, "site", "index.html"), "wb") as fh:
-            fh.write(page())
-        print("Wrote code-city.html and site/index.html from src/")
+            fh.write(locked(page(), args.audience, args.sites) if args.audience else page())
+        print("Wrote code-city.html and site/index.html from src/" + (f", site/index.html as the {args.audience.title()} site" if args.audience else ""))
         return
 
     if args.cmd == "export":

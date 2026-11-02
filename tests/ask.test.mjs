@@ -64,6 +64,19 @@ test("workflows that walk mostly the same files become one, and feeds follow it"
   assert.deepEqual(out.workflows[1].feeds, ["Serve again"], "feeds to folded workflows name the one they joined, once");
   assert.deepEqual(out.workflows[0].feeds, [], "never feeds itself");
 });
+test("an Advanced tour (every) keeps every workflow, overlapping or not, up to five", async () => {
+  const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));
+  reply = { title: "T", overview: "O", workflows: [
+    { name: "Start", summary: "S", steps: st("a.js", "b.js"), feeds: [] },
+    { name: "Start again", summary: "S2", steps: st("a.js", "b.js", "c/d.js"), feeds: [] }] };
+  const [code, out] = await call({ mode: "tour", files, question: "every", every: true });
+  assert.equal(code, 200);
+  assert.deepEqual(out.workflows.map(w => w.name), ["Start", "Start again"], "nothing folds");
+  assert.match(lastInput.system_instruction, /two to 5 things/);
+  assert.doesNotMatch(lastInput.system_instruction, /Don't tell the same walk twice/);
+  await call({ mode: "tour", files, question: "every-not" });
+  assert.match(lastInput.system_instruction, /two to 4 things[\s\S]*Don't tell the same walk twice/);
+});
 test("lines keeps real line numbers of files that were sent", async () => {
   reply = { steps: [{ path: "a.js", lines: [{ line: 2, note: "n" }, { line: 9, note: "past the end" }] }, { path: "zz.js", lines: [{ line: 1, note: "x" }] }] };
   const [st, out] = await call({ mode: "lines", question: "Start", files, code: [{ path: "a.js", text: "x\ny\nz" }] });

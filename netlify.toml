@@ -1,5 +1,9 @@
 [build]
   publish = "site"
+  # Code City is three Netlify sites from this one repo: Beginner (this address), Advanced and Manager. Each
+  # builds the page as its own version from two settings made per site in Netlify: CODECITY_FOR (beginner,
+  # the default, advanced or manager) and CODECITY_SITES, the other two's addresses for the Guide's links.
+  command = "python3 codecity.py build --for \"${CODECITY_FOR:-beginner}\" --sites \"${CODECITY_SITES:-}\""
 
 [functions]
   directory = "netlify/functions"

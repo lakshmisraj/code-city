@@ -32,6 +32,14 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 
 ## On the hosted site
 
+Code City comes in three versions, each its own site:
+
+- **Beginner** (the main address): the basics. Where the code starts, how it flows, Ask and explanations, without the expert tools.
+- **Advanced**: every tool. Trace, tangles and how the parts connect, every workflow in a tour, commits, pull requests and recording.
+- **Manager**: opens on a **Status report** for the last 30 days: how much work landed and who did it, pull requests merged and still open, where in the code the work happened (lit on the map), and what's worth a look. **Download report** saves it as Markdown for an update. It's read from GitHub with no AI.
+
+The local app and the VS Code extension have all three, with a switch in the top bar (and in the Guide); a link can pick one with `?for=manager`.
+
 Paste any public GitHub repo and press Build (a private one needs a read-only token: see [docs/teams.md](docs/teams.md#on-the-hosted-site)). The site reads it straight from GitHub's API:
 
 1. Today's files show right away (about 4 requests).
@@ -158,6 +166,16 @@ Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitH
    - Homepage URL: `https://code-city-view.netlify.app`
    - Authorization callback URL: `https://code-city-view.netlify.app/.netlify/functions/github-callback`
 2. In Netlify: Site configuration → Environment variables, add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (mark the secret as secret), then redeploy.
+
+### The three sites (site owner setup)
+
+All three versions build from this repo; `netlify.toml` runs `python3 codecity.py build --for …` on each. The main site needs nothing more (it builds as Beginner). For each of the other two:
+
+1. In Netlify: Add new site → Import an existing project → this GitHub repo, branch `main`. Name it, say `code-city-advanced` and `code-city-manager`.
+2. Site configuration → Environment variables: `CODECITY_FOR` = `advanced` (or `manager`), plus the main site's `GEMINI_API_KEY` and any `ASK_…` settings.
+3. GitHub sign-in needs its own OAuth app per site (GitHub allows one callback address each): repeat the steps above with the new site's address, and add its `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+
+To link the three from each other's Guide, set `CODECITY_SITES` on all three, for example `beginner=https://code-city-view.netlify.app/,advanced=https://code-city-advanced.netlify.app/,manager=https://code-city-manager.netlify.app/`, then redeploy.
 
 ## Run it on your own code
 

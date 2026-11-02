@@ -29,16 +29,17 @@
 
 <header id="topbar" aria-label="Repository on screen">
   <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag" id="mode">Sample</span></div>
+  <label class="tb-for" title="Who Code City is set up for: Beginner shows the basics, Advanced every tool, Manager a status report"><span class="sr">Show Code City for</span><select id="forSel"><option value="beginner">Beginner</option><option value="advanced">Advanced</option><option value="manager">Manager</option></select></label>
   <div id="askSlot"></div>
   <dl class="tb-stats">
     <div><dt>files</dt><dd id="sFiles">0</dd></div>
     <div><dt>lines</dt><dd id="sLines">0</dd></div>
-    <div id="tbCommits" class="tb-link" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
+    <div id="tbCommits" class="tb-link not-beginner" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
-    <button id="recBtn" type="button" class="mini" title="Record what you do here, or the history replay, as a video">Record video</button>
+    <button id="recBtn" type="button" class="mini not-beginner" title="Record what you do here, or the history replay, as a video">Record video</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
   <button id="tbMore" type="button" class="mini" aria-label="More: copy link, record video, reset view" title="More">⋯</button>
@@ -59,7 +60,7 @@
       <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
       <small id="repoStatus" aria-live="polite"></small>
     </form>
-    <form class="field" id="prForm" autocomplete="off" hidden>
+    <form class="field not-beginner" id="prForm" autocomplete="off" hidden>
       <label for="prInput">Show a pull request</label>
       <div class="inline">
         <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
@@ -98,6 +99,7 @@
     <p class="seg-note">Start here, then take the tour.</p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts and the main paths through it</span></button>
+      <button id="reportBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Status report</b><span>What changed lately, who did it, and what's still open, ready to share</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
       <form id="tourForm" class="tour-topic" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
     </div>
@@ -119,14 +121,14 @@
       <span class="label">Color buildings by</span>
       <div class="seg" role="group" aria-label="Color buildings by">
         <button type="button" id="cLang" aria-pressed="true">Language</button>
-        <button type="button" id="hotBtn" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
+        <button type="button" id="hotBtn" class="not-beginner" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
     <div class="field">
       <span class="label">Over time</span>
       <div class="seg-actions">
-        <button id="commitsBtn" type="button" class="seg-action" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
+        <button id="commitsBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
       </div>
     </div>
     <div class="field" id="howTo">
@@ -148,6 +150,10 @@
   </section>
 
   <section class="segment guide" data-seg="guide">
+    <div class="for-pick"><h3>Who is it for?</h3><div class="seg for-seg" role="group" aria-label="Show Code City for">
+      <button type="button" data-for="beginner" aria-pressed="false">Beginner</button><button type="button" data-for="advanced" aria-pressed="false">Advanced</button><button type="button" data-for="manager" aria-pressed="false">Manager</button></div>
+      <p id="forNote"></p></div>
+    <p id="forSites"></p>
     <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick look around, one part at a time.</p></div>
     <div><h3>Start here</h3><ol>
       <li><b>Repo</b>: paste a GitHub link, or open a folder.</li>

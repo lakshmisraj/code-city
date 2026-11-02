@@ -32,7 +32,7 @@ const PREFER_MS = 5 * 60 * 1000;
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
 const MAX_TRIES = 4;
-const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
+const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOWS_ALL = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 5, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, read by the page (it sends at most this)
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
@@ -69,14 +69,14 @@ You may also get what the code itself shows: the README, project manifests, whic
 If nothing in the list answers the question, say so and return no files.
 ${VOICE}`;
 
-const TOUR_SCHEMA = {
+const tourSchema = max => ({
   type: "object",
   properties: {
     title: { type: "string" },
     overview: { type: "string" },
     workflows: {
       type: "array",
-      maxItems: MAX_WORKFLOWS,
+      maxItems: max,
       items: {
         type: "object",
         properties: {
@@ -94,7 +94,7 @@ const TOUR_SCHEMA = {
     },
   },
   required: ["title", "overview", "workflows"],
-};
+});
 
 // Two workflows that walk mostly the same files are one walk told twice: the shorter folds into the longer, which
 // keeps the earlier one's place and lists the other under merged. Feeds that named it now name the one it joined.
@@ -118,10 +118,11 @@ function foldOnce(workflows) {
   return kept;
 }
 
-const TOUR_SYSTEM = `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
+// every: all the workflows, overlapping or not (Advanced asks for this); otherwise a few that don't repeat each other
+const tourSystem = every => `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-Split the software into its main workflows: two to ${MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words, a one or two sentence summary, and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
-Workflows often share files; reuse the same path when they do, since that is where they meet. Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
+Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words, a one or two sentence summary, and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
+Workflows often share files; reuse the same path when they do, since that is where they meet.${every ? "" : " Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one."} Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
 Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another. Give the tour a short title.
 You may also get what the code itself shows: the README, project manifests, which files import which, the most-imported files, likely entry points, and files' top-level functions and classes. Use it: start workflows at real entry points, make each step import or be imported by the next wherever the import list allows, and mention the functions or classes involved. Say "likely" only when you are inferring beyond it.
 It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).
@@ -343,7 +344,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([SYSTEM, TOUR_SYSTEM, LINES_SYSTEM, EXPLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([SYSTEM, tourSystem(false), tourSystem(true), LINES_SYSTEM, EXPLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -389,7 +390,7 @@ async function handle(event) {
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch (e) { return json(400, { error: "That request wasn't valid JSON." }); }
-  const tour = body.mode === "tour", explain = body.mode === "explain", keyLines = body.mode === "lines", changed = body.mode === "change";
+  const tour = body.mode === "tour", every = tour && body.every === true, explain = body.mode === "explain", keyLines = body.mode === "lines", changed = body.mode === "change";
   const question = (String(body.question || "").trim() || (tour ? DEFAULT_TOUR : explain ? DEFAULT_EXPLAIN : keyLines ? "This workflow." : changed ? "(no message)" : "")).slice(0, keyLines || changed ? 600 : MAX_QUESTION);   // lines: a workflow's name and summary; change: the commit message
   const repo = String(body.repo || "this repository").slice(0, 120);
   const digest = typeof body.digest === "string" ? body.digest.slice(0, MAX_DIGEST) : "";   // what the page read from the code itself
@@ -416,7 +417,7 @@ async function handle(event) {
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
   const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : changed ? "change" : "ask";
-  const ckey = cacheKey([PROMPTS, mode, question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs]);
+  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs]);
   const saved = await cacheGet(ckey);
   if (saved) { console.log(`ask: ${mode} answered from a saved copy`); return json(200, { ...saved, cached: true }); }
   const done = async body => { await cachePut(ckey, body); return json(200, body); };
@@ -442,8 +443,8 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? TOUR_SYSTEM : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? TOUR_SCHEMA : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const system = tour ? tourSystem(every) : explain ? EXPLAIN_SYSTEM : keyLines ? LINES_SYSTEM : changed ? CHANGE_SYSTEM : SYSTEM;
+    const schema = tour ? tourSchema(every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS) : explain ? EXPLAIN_SCHEMA : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
@@ -527,10 +528,11 @@ async function handle(event) {
       steps: w.steps.filter(st => st && known.has(st.path))
         .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, 500) })).slice(0, MAX_WORKFLOW_STEPS),
       feeds: (Array.isArray(w.feeds) ? w.feeds : []).map(f => String(f).slice(0, 60)),
-    })).filter(w => w.name && w.steps.length).slice(0, MAX_WORKFLOWS);
+    })).filter(w => w.name && w.steps.length).slice(0, every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS);
     const names = new Set(workflows.map(w => w.name));
     workflows.forEach(w => { w.feeds = w.feeds.filter(f => f !== w.name && names.has(f)); });   // only workflows that are in the tour
-    workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
+    if (!every) workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
+    else workflows.forEach(w => { w.merged = []; });
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
     return done({ title: String(reply.title || "A tour of the city").slice(0, 100), overview: String(reply.overview || "").slice(0, 1000), workflows });
   }

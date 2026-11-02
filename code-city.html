@@ -83,6 +83,11 @@ body.seg-closed .card { display: none; }
   border: 1px solid var(--line); border-radius: 10px;
 }
 .tb-repo { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; max-width: 30%; }
+.tb-for select { font: 12px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; cursor: pointer; }
+.tb-for select:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+/* the three versions: each hides what isn't for its readers */
+body.locked .tb-for, body.locked .for-pick,
+body.for-beginner .not-beginner, body.for-manager .not-manager, body:not(.for-advanced) .adv-only { display: none !important; }
 .tb-repo b { font: 600 14px var(--f-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tb-stats { display: flex; gap: 14px; margin: 0 0 0 auto; flex: none; }
 .tb-stats div { display: flex; align-items: baseline; gap: 5px; }
@@ -335,6 +340,11 @@ details.more[open] summary { margin-bottom: 8px; }
 ul.cycles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 ul.cycles li.warn { border-left: 3px solid var(--fire); padding: 2px 0 2px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-dim); }
 ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 12px; }
+.report-nums { grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); }
+.report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink); }
+.report-list li { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; overflow-wrap: anywhere; }
+.report-list .meta { font-size: 11px; color: var(--ink-dim); }
+.report-list a { color: var(--sodium); }
 .wf-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .wf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .wf-card { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
@@ -559,6 +569,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   #tbMore { display: inline-flex; }
   #topbar { top: calc(80px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); padding: 0 12px; }
   .tb-repo { max-width: none; flex: 1; }
+  .tb-for { display: none; }   /* phones pick in the Guide */
   .tb-stats div:nth-child(n+2) { display: none; }   /* the repo name needs the room */
   .rail-logo { margin: 0 6px 0 0; }
   .rail-btn[aria-pressed="true"]::before { left: 9px; right: 9px; top: auto; bottom: -6px; width: auto; height: 3px; }
@@ -608,16 +619,17 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 
 <header id="topbar" aria-label="Repository on screen">
   <div class="tb-repo"><b id="repoName" title="The repository on screen">harbor (example repo)</b><span class="tag" id="mode">Sample</span></div>
+  <label class="tb-for" title="Who Code City is set up for: Beginner shows the basics, Advanced every tool, Manager a status report"><span class="sr">Show Code City for</span><select id="forSel"><option value="beginner">Beginner</option><option value="advanced">Advanced</option><option value="manager">Manager</option></select></label>
   <div id="askSlot"></div>
   <dl class="tb-stats">
     <div><dt>files</dt><dd id="sFiles">0</dd></div>
     <div><dt>lines</dt><dd id="sLines">0</dd></div>
-    <div id="tbCommits" class="tb-link" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
+    <div id="tbCommits" class="tb-link not-beginner" role="button" tabindex="0" title="Commits and branches"><dt>commits</dt><dd id="sCommits">0</dd></div>
     <div><dt>fires</dt><dd id="sFires" class="fire">0</dd></div>
   </dl>
   <div class="tb-actions">
     <button id="shareBtn" type="button" class="mini" title="Copy a link to this view">Copy link</button>
-    <button id="recBtn" type="button" class="mini" title="Record what you do here, or the history replay, as a video">Record video</button>
+    <button id="recBtn" type="button" class="mini not-beginner" title="Record what you do here, or the history replay, as a video">Record video</button>
     <button id="resetBtn" type="button" class="mini" title="Back to the whole city">Reset view</button>
   </div>
   <button id="tbMore" type="button" class="mini" aria-label="More: copy link, record video, reset view" title="More">⋯</button>
@@ -638,7 +650,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <div class="alt"><button type="button" id="openBtn">Open a folder from computer</button></div>
       <small id="repoStatus" aria-live="polite"></small>
     </form>
-    <form class="field" id="prForm" autocomplete="off" hidden>
+    <form class="field not-beginner" id="prForm" autocomplete="off" hidden>
       <label for="prInput">Show a pull request</label>
       <div class="inline">
         <input id="prInput" type="text" placeholder="PR number or URL" spellcheck="false">
@@ -677,6 +689,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
     <p class="seg-note">Start here, then take the tour.</p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts and the main paths through it</span></button>
+      <button id="reportBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Status report</b><span>What changed lately, who did it, and what's still open, ready to share</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
       <form id="tourForm" class="tour-topic" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
     </div>
@@ -698,14 +711,14 @@ button.mini { padding: 3px 8px; font-size: 11px; }
       <span class="label">Color buildings by</span>
       <div class="seg" role="group" aria-label="Color buildings by">
         <button type="button" id="cLang" aria-pressed="true">Language</button>
-        <button type="button" id="hotBtn" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
+        <button type="button" id="hotBtn" class="not-beginner" aria-pressed="false" title="How often each file changes, with a list of the big files that keep changing">Hotspots</button>
       </div>
     </div>
     <label class="check" for="linksToggle"><input type="checkbox" id="linksToggle" checked> Show connections between files</label>
     <div class="field">
       <span class="label">Over time</span>
       <div class="seg-actions">
-        <button id="commitsBtn" type="button" class="seg-action" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
+        <button id="commitsBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Commits and branches</b><span>Every branch and merge, newest first; click a commit to see it in the city</span></button>
       </div>
     </div>
     <div class="field" id="howTo">
@@ -727,6 +740,10 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   </section>
 
   <section class="segment guide" data-seg="guide">
+    <div class="for-pick"><h3>Who is it for?</h3><div class="seg for-seg" role="group" aria-label="Show Code City for">
+      <button type="button" data-for="beginner" aria-pressed="false">Beginner</button><button type="button" data-for="advanced" aria-pressed="false">Advanced</button><button type="button" data-for="manager" aria-pressed="false">Manager</button></div>
+      <p id="forNote"></p></div>
+    <p id="forSites"></p>
     <div><button type="button" class="primary" id="siteTourBtn">Take the tour</button><p>A quick look around, one part at a time.</p></div>
     <div><h3>Start here</h3><ol>
       <li><b>Repo</b>: paste a GitHub link, or open a folder.</li>
@@ -1707,6 +1724,7 @@ function matFor(b) {
   if (sideMode === "commits" && commitSel) { const st = commitSel.get(b.userData.f.path); return st ? PR_MATS[st] || PR_MATS.modified : DIM; }
   if (sideMode === "trace" && traceState) { const p = b.userData.f.path; return p === traceState.path ? PICKED : traceState.files.has(p) ? MATCH : DIM; }
   if (askState) return askState.files.has(b.userData.f.path) ? MATCH : DIM;
+  if (sideMode === "report" && reportState && !reportState.loading && reportState.changed.size) return reportState.changed.has(b.userData.f.path) ? MATCH : DIM;   // what changed lately
   if (sideMode === "map") { const m = systemMat(b.userData.f.path); if (m) return m; }   // files in a loop
   if (sideMode === "map" && mapRole(b.userData.f.path)) return PICKED;
   if (query) return b.userData.match ? SEARCH : DIM;
@@ -1962,7 +1980,7 @@ async function renderOutline(path) {
     box.innerHTML = `<details class="more"${defs.length <= 25 ? " open" : ""}><summary>Functions · ${fmt(defs.length)}</summary><ul class="todos parts outline fnlist">${defs.map(({ d, i }) => {
       const n = idx.counts(path, i);
       return `<li class="${d.parent >= 0 ? "nested" : ""}"><button type="button" class="oline" data-oline="${d.line}" title="Open the code at line ${d.line}"><em>L${d.line}</em><b>${esc(d.name)}</b><span class="kind">${esc(d.kind === "function" && d.inline ? "handler" : d.kind)}</span></button>` +
-        (d.kind === "class" ? "" : (n.calls || n.callers ? `<span class="fn-n" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">${n.calls ? `→${n.calls}` : ""}${n.calls && n.callers ? " " : ""}${n.callers ? `←${n.callers}` : ""}</span>` : "") + `<button type="button" class="mini" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
+        (d.kind === "class" ? "" : (n.calls || n.callers ? `<span class="fn-n not-beginner not-manager" title="Calls ${n.calls} function${n.calls === 1 ? "" : "s"} in this repo; called from ${n.callers} place${n.callers === 1 ? "" : "s"}">${n.calls ? `→${n.calls}` : ""}${n.calls && n.callers ? " " : ""}${n.callers ? `←${n.callers}` : ""}</span>` : "") + `<button type="button" class="mini not-beginner not-manager" data-fn-trace="${esc(path)}" data-fn-i="${i}" title="What it calls, file to file, and what calls it">Trace</button>`) + `</li>`;
     }).join("")}</ul>${defs.some(({ i }) => { const n = idx.counts(path, i); return n.calls || n.callers; }) ? `<p class="note">→ calls · ← called by, read with a parser. Trace follows the calls from file to file.</p>` : ""}</details>` +
       `<details class="more"><summary>First lines</summary><pre class="code">${esc(c.text.split("\n").slice(0, 40).join("\n"))}</pre></details>`;
     return;
@@ -2693,6 +2711,7 @@ function linkQuery() {
   if (!currentRepo) return "";
   const q = new URLSearchParams({ repo: currentRepo });
   if (currentRange) q.set("range", currentRange);
+  if (audience !== "beginner" && !LOCKED_FOR) q.set("for", audience);
   if (colorMode === "heat") q.set("mode", "heat");
   if (sideMode === "hot") q.set("panel", "hotspots");
   if (prState) q.set("pr", prState.n);
@@ -2759,7 +2778,8 @@ function onCityBuilt() {
   restoreSession();
   mapState = null;
   if (sideMode === "map") openSide("map");   // the new city's facts
-  else if (!sideMode && citySource !== "sample") openSide("map");   // first look: how the repo is built
+  else if (sideMode === "report") openReport();   // the new city's report
+  else if (!sideMode && citySource !== "sample") { if (audience === "manager") openReport(); else openSide("map"); }   // first look: the status report, or how the repo is built
   if (citySource !== "sample" && segOpen && !phoneMQ.matches && !(citySource === "github" && !hist && ghProbe)) openSeg("understand");
   autoRead();
 }
@@ -2855,6 +2875,48 @@ for (const [k, el] of [["side", sidePanel], ["drawer", drawer]]) {
 }
 applyPanels(false);
 const $ = id => document.getElementById(id);
+
+// ---------- who it's for ----------
+// Three versions of the page. Beginner: the basics, without the expert tools. Advanced: every tool, every
+// workflow, and How the parts connect. Manager: a status report first, without code-level detail. Picked in
+// the top bar or the Guide, remembered, and carried in shared links (?for=manager). CSS hides each version's
+// extras: .not-beginner, .not-manager, .adv-only.
+const AUDIENCES = {
+  beginner: "Just the basics: where the code starts, how it flows, and explanations in plain words.",
+  advanced: "Every tool: traces, tangles, how the parts connect, every workflow, commits and pull requests.",
+  manager: "A status report first: what changed lately, who did it and what's still open, with less code-level detail.",
+};
+// A site that is only one version: `codecity.py build --for manager` sets these (each of the three Netlify sites
+// does), and SITE_URLS points at the other two.
+const LOCKED_FOR = null, SITE_URLS = {};
+let audience = (() => {
+  if (AUDIENCES[LOCKED_FOR]) return LOCKED_FOR;
+  const q = new URLSearchParams(location.search).get("for");
+  if (AUDIENCES[q]) return q;
+  try { const s = localStorage.getItem("codecity.for"); if (AUDIENCES[s]) return s; } catch (e) { /* storage blocked */ }
+  return "beginner";
+})();
+function setAudience(a, quiet) {
+  if (!AUDIENCES[a] || (LOCKED_FOR && a !== LOCKED_FOR)) return;
+  audience = a;
+  try { localStorage.setItem("codecity.for", a); } catch (e) { /* storage blocked */ }
+  for (const k in AUDIENCES) document.body.classList.toggle("for-" + k, k === a);
+  $("forSel").value = a;
+  document.querySelectorAll("[data-for]").forEach(b => b.setAttribute("aria-pressed", b.dataset.for === a));
+  $("forNote").textContent = AUDIENCES[a];
+  document.body.classList.toggle("locked", !!LOCKED_FOR);
+  const others = Object.keys(AUDIENCES).filter(k => k !== a && SITE_URLS[k]);
+  $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
+  if (quiet) return;
+  if (a === "beginner" && ["commits", "hot", "pr", "report"].includes(sideMode)) closeSide();   // panels this version doesn't have
+  if (a === "beginner" && colorMode === "heat") setColorMode("lang");
+  if (a === "manager" && citySource !== "sample" && sideMode !== "report") openReport();
+  else if (sideMode) renderSide();
+  syncUrl();
+}
+setAudience(audience, true);
+$("forSel").onchange = e => setAudience(e.target.value);
+document.querySelector(".for-seg").addEventListener("click", e => { const b = e.target.closest("[data-for]"); if (b) setAudience(b.dataset.for); });
 function openSide(mode) {
   if (sideMode && sideMode !== mode) {   // one list at a time, so its highlights aren't hidden by another's
     if (sideMode === "pr") clearPR();
@@ -2866,6 +2928,7 @@ function openSide(mode) {
   roomFor(); sideMode = mode; sidePanel.hidden = false; sidePanel.classList.toggle("compact", mode === "lang"); document.body.classList.add("side-open");
   $("mapBtn").setAttribute("aria-pressed", mode === "map");
   $("commitsBtn").setAttribute("aria-pressed", mode === "commits");
+  $("reportBtn").setAttribute("aria-pressed", mode === "report");
   if (mode === "map") loadMap();
   renderSide(); syncUrl();
 }
@@ -2879,9 +2942,10 @@ function closeSide(quiet) {
   drawLinks();
   $("mapBtn").setAttribute("aria-pressed", "false");
   $("commitsBtn").setAttribute("aria-pressed", "false");
+  $("reportBtn").setAttribute("aria-pressed", "false");
   if (!quiet) syncUrl();
 }
-function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "lang") renderLang(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); drawLinks(); }
+function renderSide() { if (sideMode === "commits") return renderCommits(); if (sideMode === "trace" && traceState) return renderTrace(); if (sideMode === "map") renderMap(); else if (sideMode === "hot") renderHotspots(); else if (sideMode === "lang") renderLang(); else if (sideMode === "pr") renderPR(); else if (sideMode === "ask" && askState) renderAsk(); else if (sideMode === "tour" && tourState) renderTour(); else if (sideMode === "report") renderReport(); drawLinks(); }
 let sideQueued = false;
 function refreshSideSoon() {   // the timeline moves many times a second; redraw the list at most 4 times a second so clicks on rows land
   if (sideQueued) return;
@@ -3015,7 +3079,7 @@ function renderMap() {
     if (mp.meet.length) html += `<div><h3>Where paths meet</h3><ol class="rank">${mp.meet.map(m => `<li><button type="button" ${idx && m.i >= 0 ? `data-fn-trace="${esc(m.path)}" data-fn-i="${m.i}"` : `data-path="${esc(m.path)}"`}><span class="n">⋈</span><span class="path">${idx && m.i >= 0 ? esc(fnName(idx, m.path, m.i)) : pathHtml(m.path)}</span><span class="meta">on ${fmt(m.n)} paths · ${esc(shortFile(m.path))}</span></button></li>`).join("")}</ol></div>`;
     if (idx) {
       const all = idx.entries.filter(e => idx.def(e.path, e.i) || e.i < 0), main = all.filter(e => !aside(e.path)), list = (main.length ? main : all).slice(0, 12);
-      if (list.length) html += `<details class="more"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(whyText(e.why))} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
+      if (list.length) html += `<details class="more not-beginner not-manager"><summary>Where requests and commands come in · ${fmt((main.length ? main : all).length)}</summary><ol class="rank">${list.map(e => `<li><button type="button" data-fn-trace="${esc(e.path)}" data-fn-i="${e.i}" title="Trace what it calls"><span class="n">⇢</span><span class="path">${esc(fnName(idx, e.path, e.i))}</span><span class="meta">${esc(whyText(e.why))} · ${esc(shortFile(e.path))}</span></button></li>`).join("")}</ol></details>`;
     } else if (callIdx && callIdx.city === buildings && !callIdx.error && callIdx.total) html += `<p class="side-note">Reading functions… ${fmt(callIdx.n)} of ${fmt(callIdx.total)} files</p>`;
     html += systemHtml();
     if (f.partial) html += `<p class="side-note">Only the first ${fmt(MAX_SCAN)} source files were read.</p>`;
@@ -3063,8 +3127,16 @@ async function overviewMarkdown() {
     out.push("");
   }
   if (mp.meet.length) out.push("## Where paths meet", "", ...mp.meet.map(m => `- ${step(m.path, m.i)}, reached from ${n(m.n, "entry point")}`), "");
+  const mod = name => name.startsWith("(") ? name : `\`${name}/\``;   // "(top)" is the files at the root
+  if (sys && sys.layers.length && audience === "advanced") {
+    out.push("## Modules", "", "The product's folders as modules. Each layer uses the ones below it.", "");
+    const top = sys.layers.length;
+    sys.layers.forEach((l, k) => {
+      out.push(`### ${top === 1 ? "One layer: these modules depend on each other" : k === 0 ? "Top: uses the others" : k === top - 1 ? "Foundation: used by the others" : `Layer ${top - k}`}`, "");
+      out.push(...l.map(g => { const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([m]) => mod(m)); return `- ${mod(g.name)} (${n(g.files.length, "file")})${uses.length ? `: uses ${uses.join(", ")}` : ""}`; }), "");
+    });
+  }
   if (sys && (sys.cycles.length || sys.fileCycles.length)) {
-    const mod = name => name.startsWith("(") ? name : `\`${name}/\``;   // "(top)" is the files at the root
     out.push("## Tangles", "", "Folders or files that import each other when they load, so none of them can be changed or tested on its own.", "");
     out.push(...sys.cycles.map(c => `- ${c.map(g => mod(g.name)).join(" ⇄ ")}`), ...sys.fileCycles.map(c => `- ${[...c, c[0]].map(file).join(" → ")}`), "");
   }
@@ -3740,7 +3812,7 @@ function closeCtx() { ctxMenu.hidden = true; ctxMenu.innerHTML = ""; }
 // On a phone the top bar's buttons sit in a ⋯ menu; each item presses the real button, so they behave the same.
 $("tbMore").onclick = e => {
   e.stopPropagation();
-  const btns = ["shareBtn", "recBtn", "resetBtn"].map(id => $(id)).filter(b => !b.hidden);
+  const btns = ["shareBtn", "recBtn", "resetBtn"].map(id => $(id)).filter(b => !b.hidden && getComputedStyle(b).display !== "none");
   ctxMenu.innerHTML = btns.map(b => `<button type="button" role="menuitem" data-press="${b.id}">${esc(b.textContent)}</button>`).join("");
   ctxMenu.hidden = false;
   const r = $("tbMore").getBoundingClientRect();
@@ -4820,20 +4892,142 @@ function systemHtml() {   // the tangles part of Code structure: parts or files 
     if (systemLoading !== buildings) { const city = systemLoading = buildings; loadSystem().then(s => { if (systemLoading === city) systemLoading = null; if (s && sideMode === "map") renderSide(); }, () => { if (systemLoading === city) systemLoading = null; }); }
     return "";
   }
-  if (!st.cycles.length && !st.fileCycles.length) return "";   // nothing tangled: nothing to say
   const label = n => n === "(top)" ? "top-level files" : n.split("/").pop();
+  let parts = "";
+  if (audience === "advanced") {   // How the parts connect: the folders as parts, in layers, for Advanced
+    const tangled = new Set(st.cycles.flat().map(g => g.name));
+    const grp = g => {
+      const uses = [...g.uses].sort((a, b) => b[1].length - a[1].length).map(([n]) => label(n)), by = g.usedBy.size;
+      const meta = !uses.length && !by ? "on its own" : [uses.length ? `uses ${uses.slice(0, 3).join(", ")}${uses.length > 3 ? ` and ${uses.length - 3} more` : ""}` : "", by ? `used by ${fmt(by)} part${by === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+      return `<li><button type="button" data-group="${esc(g.name)}"><span class="n">${fmt(g.files.length)}</span><span class="path">${esc(g.name === "(top)" ? "top-level files" : g.name + "/")}</span>` +
+        `<span class="meta">${g.files.length === 1 ? "1 file" : `${fmt(g.files.length)} files`} · ${esc(meta)}${tangled.has(g.name) ? " · tangled" : ""}</span></button></li>`;
+    };
+    // parts that use others first, down to the ones everything uses; parts with no links at all last, biggest first
+    const all = st.layers.flat(), linked = all.filter(g => g.uses.size || g.usedBy.size), alone = all.filter(g => !g.uses.size && !g.usedBy.size).sort((a, b) => b.files.length - a.files.length);
+    parts = `<div><h3>How the parts connect</h3><ol class="rank">${linked.concat(alone).map(grp).join("")}</ol></div>`;
+  }
+  if (!st.cycles.length && !st.fileCycles.length) return parts;   // nothing tangled: nothing to say
   const cyc = c => {
     const names = c.map(g => g.name), ex = [];   // one import each way between the first two that link
     for (const a of names) for (const b of names) { const x = st.example.get(a + ">" + b), y = st.example.get(b + ">" + a); if (a < b && x && y && !ex.length) ex.push(x, y); }
     return `<li class="warn"><b>${names.map(n => esc(label(n))).join(" ⇄ ")}</b><span>${ex.length ? `For example, ${fileLink(ex[0][0], shortFile(ex[0][0]))} imports ${fileLink(ex[0][1], shortFile(ex[0][1]))}, and ${fileLink(ex[1][0], shortFile(ex[1][0]))} imports ${fileLink(ex[1][1], shortFile(ex[1][1]))}.` : ""}</span></li>`;
   };
-  return `<div><h3>Tangles</h3><p class="side-note">These import each other in a loop, so none of them can be changed or tested on its own.</p><ul class="cycles">${st.cycles.map(cyc).join("")}` +
+  return parts + `<div class="not-beginner"><h3>Tangles</h3><p class="side-note">These import each other in a loop, so none of them can be changed or tested on its own.</p><ul class="cycles">${st.cycles.map(cyc).join("")}` +
     st.fileCycles.map(c => `<li class="warn"><span>${c.map(f => fileLink(f, shortFile(f))).join(" → ")} → ${fileLink(c[0], shortFile(c[0]))}</span></li>`).join("") + `</ul></div>`;
 }
-function systemMat(path) {   // while Code structure is open, files in loops glow
+function systemMat(path) {   // while Code structure is open: the part you point at lights up (Advanced), files in loops glow
   const st = systemState && systemState.city === buildings ? systemState : null;
-  return st && st.fileCycles.some(c => c.includes(path)) ? FLASH.del || MATCH : null;
+  if (!st) return null;
+  if (st.hover) return st.groupOf(path) === st.hover && !aside(path) ? MATCH : DIM;
+  return st.fileCycles.some(c => c.includes(path)) ? FLASH.del || MATCH : null;
 }
+sideBody.addEventListener("mouseover", e => {
+  if (sideMode !== "map" || !systemState) return;
+  const row = e.target.closest("[data-group]"), g = row ? row.dataset.group : null;
+  if (g !== systemState.hover) { systemState.hover = g; }
+});
+sideBody.addEventListener("mouseleave", () => { if (systemState) systemState.hover = null; });
+sideBody.addEventListener("click", e => {
+  const row = e.target.closest("[data-group]");
+  if (!row || sideMode !== "map" || !systemState) return;
+  const g = systemState.groups.get(row.dataset.group);
+  if (g) { const dir = g.name; const d = districts.find(x => x.userData.dir === dir); if (d) openFolder(dir); else if (g.files[0]) openDrawer(bmap.get(g.files[0])); }
+});
+
+// ---------- status report ----------
+// For a manager, or anyone catching up: the last REPORT_DAYS days in plain words. How much work landed and who
+// did it, the pull requests merged and still open, the parts of the code that changed (lit on the map), and
+// what's worth a look (hotspots, tangles). Read from GitHub (four or five requests) or the folder's own git
+// history, with no AI. Manager opens it by itself; Download report saves it as Markdown for an update.
+const REPORT_DAYS = 30;
+let reportState = null;   // { city, loading, error, commits, merged, open, changed: Map(path -> lines changed), truncated }
+function openReport() {
+  if (!reportState || reportState.city !== buildings) { reportState = { city: buildings, loading: true, error: null, commits: [], merged: [], open: [], changed: new Map(), truncated: false }; loadReport(reportState); }
+  openSide("report");
+}
+async function loadReport(st) {
+  const since = Math.floor(Date.now() / 1000) - REPORT_DAYS * 86400;
+  try {
+    if (currentRepo) {
+      const base = `/repos/${currentRepo}`;
+      const [list, closed, open] = await Promise.all([
+        gh(`${base}/commits?since=${new Date(since * 1000).toISOString()}&per_page=100`),
+        gh(`${base}/pulls?state=closed&sort=updated&direction=desc&per_page=50`).catch(() => []),
+        gh(`${base}/pulls?state=open&sort=updated&direction=desc&per_page=20`).catch(() => [])]);
+      st.commits = list.map(c => ({ sha: c.sha, t: when(c), a: (c.author && c.author.login) || c.commit.author.name, m: c.commit.message.split("\n")[0].slice(0, 140), parent: c.parents && c.parents[0] && c.parents[0].sha }));
+      st.truncated = list.length === 100;
+      const pr = p => ({ n: p.number, title: p.title, by: p.user && p.user.login, url: p.html_url, draft: !!p.draft });
+      st.merged = closed.filter(p => p.merged_at && Date.parse(p.merged_at) / 1000 >= since).map(p => ({ ...pr(p), t: Date.parse(p.merged_at) / 1000 }));
+      st.open = open.map(p => ({ ...pr(p), t: Date.parse(p.updated_at) / 1000 }));
+      const first = st.commits[st.commits.length - 1];   // everything since the window opened, in one compare
+      if (first && first.parent) for (const f of (await gh(`${base}/compare/${first.parent}...${st.commits[0].sha}`)).files || []) st.changed.set(f.filename, (f.additions || 0) + (f.deletions || 0));
+    } else if (hist) {   // a folder: its own history, newest first
+      const list = hist.commits.filter(c => c.t >= since);
+      st.commits = list.slice().reverse().map(c => ({ sha: c.h, t: c.t, a: c.a, m: c.m || "" }));
+      for (const c of list) for (const [p, add, del] of c.c) st.changed.set(p, (st.changed.get(p) || 0) + add + del);
+      st.merged = st.commits.map(c => /^Merge pull request #(\d+)/.exec(c.m) && { n: +RegExp.$1, title: c.m, by: c.a, t: c.t }).filter(Boolean);
+    }
+  } catch (e) { if (!isAbort(e)) st.error = e.message || "Couldn't read the history."; }
+  st.loading = false;
+  if (reportState === st && sideMode === "report") renderSide();
+}
+function reportFacts(st) {
+  const now = Date.now() / 1000, week = st.commits.filter(c => c.t >= now - 7 * 86400).length;
+  const people = new Map(); for (const c of st.commits) people.set(c.a, (people.get(c.a) || 0) + 1);
+  const files = [...st.changed.keys()];
+  const top = p => p.includes("/") ? p.split("/")[0] : "(top)";
+  let depth = 1;   // one folder for everything says little: go a level deeper
+  if (new Set(files.map(top)).size === 1 && files.some(p => p.split("/").length > 2)) depth = 2;
+  const areas = new Map();
+  for (const p of files) { const parts = p.split("/").slice(0, -1), k = parts.length ? parts.slice(0, depth).join("/") : "(top)"; areas.set(k, (areas.get(k) || 0) + 1); }
+  return { week, people: [...people].sort((a, b) => b[1] - a[1]), areas: [...areas].sort((a, b) => b[1] - a[1]), files: files.length,
+    hot: hist ? hotspotRows(3) : [], tangles: systemState && systemState.city === buildings ? systemState.cycles.length + systemState.fileCycles.length : 0 };
+}
+const plural = (k, word) => `${fmt(k)} ${word}${k === 1 ? "" : "s"}`;
+function renderReport() {
+  const st = reportState;
+  $("sideTitle").textContent = "Status report";
+  $("sideSub").textContent = `Last ${REPORT_DAYS} days · ${currentRepo || cityName}`;
+  if (!st || st.loading) { sideBody.innerHTML = `<p class="side-note">Reading the last ${REPORT_DAYS} days…</p>`; return; }
+  if (st.error) { sideBody.innerHTML = `<p class="side-note">${esc(st.error)}</p>`; return; }
+  if (!st.commits.length) { sideBody.innerHTML = `<p class="side-note">Nothing changed in the last ${REPORT_DAYS} days.</p>`; return; }
+  const r = reportFacts(st), area = n => n === "(top)" ? "top-level files" : n + "/";
+  const pr = p => `<li>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">#${p.n}</a>` : `#${p.n}`} ${esc(p.title)}<span class="meta">${p.by ? esc(p.by) + " · " : ""}${ago(p.t)}${p.draft ? ` · <span class="chip">draft</span>` : ""}</span></li>`;
+  sideBody.innerHTML = `
+    <dl class="stats report-nums"><div><dt>Commits</dt><dd>${fmt(st.commits.length)}${st.truncated ? "+" : ""}</dd></div><div><dt>This week</dt><dd>${fmt(r.week)}</dd></div>
+      <div><dt>People</dt><dd>${fmt(r.people.length)}</dd></div>${st.merged.length ? `<div><dt>Merged</dt><dd>${fmt(st.merged.length)}</dd></div>` : ""}</dl>
+    <div><h3>Who did the work</h3><ul class="report-list">${r.people.slice(0, 6).map(([a, n]) => `<li>${esc(a)}<span class="meta">${plural(n, "commit")}</span></li>`).join("")}</ul></div>
+    ${st.merged.length ? `<div><h3>Merged</h3><ul class="report-list">${st.merged.slice(0, 10).map(pr).join("")}</ul></div>` : ""}
+    ${st.open.length ? `<div><h3>Still open</h3><ul class="report-list">${st.open.slice(0, 10).map(pr).join("")}</ul></div>` : ""}
+    ${r.areas.length ? `<div><h3>Where the work happened</h3><p class="side-note">${plural(r.files, "file")} changed, lit on the map.</p><ol class="rank">${r.areas.slice(0, 6).map(([n, k]) =>
+      `<li><button type="button" data-area="${esc(n)}"><span class="n">${fmt(k)}</span><span class="path">${esc(area(n))}</span></button></li>`).join("")}</ol></div>` : ""}
+    ${r.hot.length || r.tangles ? `<div><h3>Worth a look</h3><ul class="report-list">${r.hot.map(h => `<li><button type="button" class="linkish" data-path="${esc(h.b.userData.f.path)}">${esc(h.b.userData.f.path)}</button><span class="meta">big, and changed in ${plural(h.c, "commit")}: where bugs tend to live</span></li>`).join("")}${r.tangles ? `<li>${plural(r.tangles, "tangle")}<span class="meta">code that imports itself in a loop, so it's hard to change safely (see Code structure)</span></li>` : ""}</ul></div>` : ""}
+    <div class="side-actions"><button type="button" class="primary" data-report-md>Download report</button></div>
+    <p class="side-note">Read from the repo's history${currentRepo ? " on GitHub" : ""}, with no AI.${st.truncated ? " Only the newest 100 commits were read." : ""}</p>`;
+}
+function reportMarkdown() {
+  const st = reportState, r = reportFacts(st), name = currentRepo || cityName;
+  const out = [`# ${name}: status, last ${REPORT_DAYS} days`, "", `> Made by [Code City](${SITE_URL}) on ${new Date().toISOString().slice(0, 10)} from the repo's history, with no AI.`, "",
+    `- **${plural(st.commits.length, "commit")}**${st.truncated ? " (or more)" : ""}, ${fmt(r.week)} this week`, `- **${plural(r.people.length, "person")}** worked on it`.replace("persons", "people"),
+    ...(st.merged.length ? [`- **${plural(st.merged.length, "pull request")} merged**`] : []), ...(st.open.length ? [`- **${fmt(st.open.length)} still open**`] : []), ""];
+  out.push("## Who did the work", "", ...r.people.slice(0, 10).map(([a, n]) => `- ${a}: ${plural(n, "commit")}`), "");
+  const pr = p => `- ${p.url ? `[#${p.n}](${p.url})` : `#${p.n}`} ${p.title}${p.by ? ` (${p.by}, ${ago(p.t)})` : ""}${p.draft ? " (draft)" : ""}`;
+  if (st.merged.length) out.push("## Merged", "", ...st.merged.map(pr), "");
+  if (st.open.length) out.push("## Still open", "", ...st.open.map(pr), "");
+  if (r.areas.length) out.push("## Where the work happened", "", `${plural(r.files, "file")} changed.`, "", ...r.areas.slice(0, 10).map(([n, k]) => `- \`${n === "(top)" ? "top-level files" : n + "/"}\`: ${plural(k, "file")}`), "");
+  if (r.hot.length || r.tangles) out.push("## Worth a look", "", ...r.hot.map(h => `- \`${h.b.userData.f.path}\`: big, and changed in ${plural(h.c, "commit")}`), ...(r.tangles ? [`- ${plural(r.tangles, "tangle")}: code that imports itself in a loop`] : []), "");
+  return out.join("\n").trimEnd() + "\n";
+}
+sideBody.addEventListener("click", e => {
+  if (sideMode !== "report" || !reportState) return;
+  const a = e.target.closest("[data-area]");
+  if (a) { const dir = a.dataset.area; if (dir !== "(top)" && districts.some(d => d.userData.dir === dir)) openFolder(dir); return; }
+  if (!e.target.closest("[data-report-md]")) return;
+  const url = URL.createObjectURL(new Blob([reportMarkdown()], { type: "text/markdown;charset=utf-8" }));
+  const link = Object.assign(document.createElement("a"), { href: url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-status.md` });
+  document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+$("reportBtn").onclick = () => sideMode === "report" ? closeSide() : openReport();
 
 // ---------- commits and branches ----------
 // The repo's history as a graph, like GitHub Desktop: one lane per line of work, newest at the top, a dot per
@@ -5168,7 +5362,7 @@ async function startTour(topic) {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest }),
+      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced" }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now

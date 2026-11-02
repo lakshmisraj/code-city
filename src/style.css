@@ -77,6 +77,11 @@ body.seg-closed .card { display: none; }
   border: 1px solid var(--line); border-radius: 10px;
 }
 .tb-repo { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; max-width: 30%; }
+.tb-for select { font: 12px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; cursor: pointer; }
+.tb-for select:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+/* the three versions: each hides what isn't for its readers */
+body.locked .tb-for, body.locked .for-pick,
+body.for-beginner .not-beginner, body.for-manager .not-manager, body:not(.for-advanced) .adv-only { display: none !important; }
 .tb-repo b { font: 600 14px var(--f-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tb-stats { display: flex; gap: 14px; margin: 0 0 0 auto; flex: none; }
 .tb-stats div { display: flex; align-items: baseline; gap: 5px; }
@@ -329,6 +334,11 @@ details.more[open] summary { margin-bottom: 8px; }
 ul.cycles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 ul.cycles li.warn { border-left: 3px solid var(--fire); padding: 2px 0 2px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-dim); }
 ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 12px; }
+.report-nums { grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); }
+.report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink); }
+.report-list li { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; overflow-wrap: anywhere; }
+.report-list .meta { font-size: 11px; color: var(--ink-dim); }
+.report-list a { color: var(--sodium); }
 .wf-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .wf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .wf-card { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
@@ -553,6 +563,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
   #tbMore { display: inline-flex; }
   #topbar { top: calc(80px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); padding: 0 12px; }
   .tb-repo { max-width: none; flex: 1; }
+  .tb-for { display: none; }   /* phones pick in the Guide */
   .tb-stats div:nth-child(n+2) { display: none; }   /* the repo name needs the room */
   .rail-logo { margin: 0 6px 0 0; }
   .rail-btn[aria-pressed="true"]::before { left: 9px; right: 9px; top: auto; bottom: -6px; width: auto; height: 3px; }

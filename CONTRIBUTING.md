@@ -27,6 +27,8 @@ Both servers read `src/` on every load, so a reload shows your edits. The dev se
 
 Netlify serves `site/`. `python3 codecity.py build` (or `npm run build`) puts `src/` together into `code-city.html`, the page as one file (the installed package and the claude.ai artifact use it), and wraps that in a document skeleton as `site/index.html`. **Commit them with your `src/` change**: the tests fail when either is out of date. Never edit `code-city.html` or `site/index.html` by hand.
 
+The page has three versions (Beginner, Advanced, Manager), switched in the top bar. CSS hides each one's extras: mark an element `not-beginner`, `not-manager` or `adv-only`. On Netlify each version is its own site: `netlify.toml` builds with `--for` from the site's `CODECITY_FOR` setting, which fixes `site/index.html` to that version (see the README, "The three sites"). Commit the plain build, without `--for`.
+
 ## The package
 
 `pyproject.toml` builds the `code-city` package: `codecity.py`, the page and the parser, plus `local/ask-server.mjs` bundled with `ask.mjs` and its packages (`hatch_build.py` runs `npm run bundle:ask` when npm is there). To try a build (`pyproject-build` rather than `python3 -m build`: the repo's `build/` folder, where the ask server is bundled, would be taken for the build tool):

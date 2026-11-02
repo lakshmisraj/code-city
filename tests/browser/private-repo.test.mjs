@@ -31,7 +31,7 @@ test("a private repo opens with a pasted token, reading files through the API", 
   const seen = { contents: [], raw: [], tokens: new Set() };
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await page.addInitScript(() => { try { localStorage.setItem("codecity.siteTour.here", "1"); sessionStorage.setItem("codecity.siteTourClosed", "1"); } catch (e) {} });   // the site tour would cover the page
+    await page.addInitScript(() => { try { localStorage.setItem("codecity.siteTour.here", "1"); sessionStorage.setItem("codecity.siteTourClosed", "1"); localStorage.setItem("codecity.for", "advanced"); } catch (e) {} });   // the site tour would cover the page
     page.setDefaultTimeout(120000);   // headless Chromium compiles the city's shaders in software, slowly
     await page.route("https://raw.githubusercontent.com/**", route => { seen.raw.push(route.request().url()); return route.fulfill({ status: 404, body: "" }); });
     await page.route("https://api.github.com/**", route => {
