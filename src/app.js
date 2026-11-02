@@ -2602,9 +2602,12 @@ function linkChip(x, from, path) {   // how sure a connection is: an import line
 function explainBlocks(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
   const one = x.files.length === 1, f0 = x.files[0];
-  const parts = f => !f.parts.length ? "" : block("xb-parts", "Key parts", "The lines that matter most. Click one to see it in the code.",
-    `<ul class="xb-list">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><div>` +
-      `<button type="button" class="flink pname" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">${esc(pt.name)}</button><p>${rich(pt.note, f.path)}</p></div></li>`).join("")}</ul>`);
+  // every block of the code in order, each explained (Key parts are left out: the blocks cover them)
+  const parts = f => !f.blocks || !f.blocks.length || (x.range && f.blocks.length < 2) ? "" : block("xb-parts", "Block by block", "The code in order, one piece at a time. Click the lines to see them.",
+    `<ul class="xb-list">${f.blocks.map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
+      return `<li><button type="button" class="lnum" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${at}</button><div>` +
+        `<button type="button" class="flink pname" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${esc(bk.name)}</button>` +
+        `<p>${bk.explanation ? rich(bk.explanation, f.path) : `<span class="xb-none">Gemini didn't explain this block this time.</span>`}</p></div></li>`; }).join("")}</ul>`);
   const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "Other files this one works with. Click one to see the line where it uses that file, explained.",
     `<ul class="xb-list">${f.links.map(l => { const b = bmap.get(l.path), live = b && b.userData.lines > 0;
       return `<li><button type="button" class="xb-conn" ${live ? `data-connect="${esc(l.path)}" data-from="${esc(f.path)}" title="Show the line in ${esc(f.path.split("/").pop())} that uses it, explained"` : "disabled"}>` +
@@ -2660,6 +2663,52 @@ sideBody.addEventListener("click", e => {
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
 // it already has) and sends it to the ask function, which explains it and names the files each one connects to.
 const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, MAX_CHAIN = 8, codeCache = new Map();   // the ask function reads at most MAX_CODE_CHARS of each file
+const MAX_BLOCKS = 24, LONG_BLOCK = 80;   // Beginner: blocks per explanation in all; a class longer than this is split by its methods
+// Beginner: a file's code (or just the lines asked about) cut into blocks for Gemini to explain one by one: each
+// top-level function or class (a long class by its methods) and the code between them, joined down to max.
+async function codeSplit(path, text, range, max) {
+  const lines = text.split("\n"), lo = range ? Math.max(1, range.from) : 1, hi = Math.min(lines.length, range ? range.to : lines.length);
+  if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
+  const fx = callsReady() && callsReady().files.get(path);
+  let defs = [];
+  if (fx) {
+    const all = fx.defs.map((d, i) => ({ ...d, i })).filter(d => d.kind !== "alias");
+    for (const d of all.filter(d => d.parent < 0)) {
+      const kids = d.end - d.line > LONG_BLOCK ? all.filter(k => k.parent === d.i) : [];
+      if (!kids.length) { defs.push({ name: d.name, from: d.line, to: d.end }); continue; }
+      defs.push({ name: d.name, from: d.line, to: kids[0].line - 1 });
+      kids.forEach(k => defs.push({ name: `${d.name}.${k.name}`, from: k.line, to: k.end }));
+    }
+  } else {   // no parser for this language: a block from each definition line to the next
+    const head = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:def|function\*?|class|func|fn|pub fn)\s+([A-Za-z_$][\w$]*)/;
+    lines.forEach((l, k) => { const m = head.exec(l); if (m) defs.push({ name: m[1], from: k + 1, to: k + 1 }); });
+    defs.forEach((d, k) => { d.to = k + 1 < defs.length ? defs[k + 1].from - 1 : lines.length; });
+  }
+  defs.sort((a, b) => a.from - b.from);
+  const note = /^\s*(?:\/\/|#|\/\*|\*|--|<!--|@[\w.]+)/;   // a comment (or decorator) just above a definition belongs to it
+  defs.forEach((d, k) => {   // a class's opening lines can give the comment over its first method to that method
+    const prev = defs[k - 1], floor = prev ? (prev.name.includes(".") || !d.name.startsWith(prev.name + ".") ? prev.to : prev.from) : 0;
+    while (d.from - 1 > floor && note.test(lines[d.from - 2])) d.from--;
+    if (prev && prev.to >= d.from) prev.to = d.from - 1;
+  });
+  defs = defs.map(d => ({ ...d, from: Math.max(d.from, lo), to: Math.min(d.to, hi) })).filter(d => d.to >= d.from);
+  const blocks = [], bare = /^[\s{}()\[\];,]*$/;   // lines of only brackets aren't a block of their own
+  const gap = (from, to) => {
+    while (from <= to && bare.test(lines[from - 1])) from++;
+    while (to >= from && bare.test(lines[to - 1])) to--;
+    if (to >= from) blocks.push({ from, to, name: blocks.length ? "Other code" : "Setup" });
+  };
+  let at = lo;
+  for (const d of defs) { if (d.from < at) continue; gap(at, d.from - 1); blocks.push(d); at = d.to + 1; }
+  gap(at, hi);
+  while (blocks.length > max) {   // too many: join the two neighbours that make the smallest block
+    let k = 0, best = Infinity;
+    for (let j = 0; j + 1 < blocks.length; j++) if (blocks[j + 1].to - blocks[j].from < best) { best = blocks[j + 1].to - blocks[j].from; k = j; }
+    const a = blocks[k], b = blocks[k + 1];
+    blocks.splice(k, 2, { from: a.from, to: b.to, name: `${a.name}, ${b.name}`.slice(0, 80) });
+  }
+  return blocks.map(({ name, from, to }) => ({ name, from, to }));
+}
 function codeRepo() {   // where to read today's source from, or null
   if (ghRepo) return ghRepo;
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(currentRepo || "");
@@ -2699,13 +2748,14 @@ async function explainCode(state, paths, question, from, range) {
   const real = await Promise.all(code.map(c => loadDeps(c.path)));   // the files each one really imports
   code.forEach((c, i) => { c.imports = real[i]; });
   st.real = new Map(code.map((c, i) => [c.path, new Set(real[i])]));
+  if (audience === "beginner") for (const c of code) c.blocks = await codeSplit(c.path, c.text, range, Math.floor(MAX_BLOCKS / code.length));   // explained block by block
   if (!code.length) { st.loading = false; st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code }),
+      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code, plain: audience === "beginner" }),
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) return;
@@ -2729,18 +2779,61 @@ async function followLink(from, path) {
   if (panes.filter(p => p.st).length >= MAX_CHAIN) { toast(`${MAX_CHAIN} explanations are open. Close some to follow more.`); return; }
   explainCode(explainState, [path], `How does ${path} work, and how does it connect to ${from}? Then what does it connect to next?`, from);
 }
-// Beginner's Connects to: this file opens at the line that uses the other one (or else imports it), and only that
-// line is explained beside it. The explanation it replaces comes back with Back, without asking again.
+// Beginner's Connects to, as a chain: this file's code opens at the line that uses the other file, and the other
+// file opens beside it at the code that line runs, with just that block explained. Its own Connects to carries
+// the chain on. With no named code to find, only the line here is explained.
 async function explainConnection(from, to) {
-  const c = await pullCode(from);
+  const [a, b] = await Promise.all([pullCode(from), pullCode(to)]);
   await getGraph().ready;
-  const link = c && connectionMarks(from, c.text, to), at = link && (link.uses[0] || link.imports[0]);
+  const link = a && connectionMarks(from, a.text, to);
+  if (link && !link.uses.length && b) {   // the import named nothing readable (a require, say): find a call to something the other file defines
+    const defs = await definedNames(to, b.text), calls = defs.length && new RegExp(`\\b(${defs.map(n => n.replace(/\$/g, "\\$")).join("|")})\\s*\\(`);
+    const k = calls ? a.text.split("\n").findIndex((l, i) => !link.byLine.has(i + 1) && calls.test(l)) : -1;
+    if (k >= 0) { const n = calls.exec(a.text.split("\n")[k])[1]; link.uses.push(k + 1); link.byLine.set(k + 1, { kind: "use", note: "uses " + n }); link.names.add(n); }
+  }
+  const at = link && (link.uses[0] || link.imports[0]);
   if (!at) return followLink(from, to);   // no line here names it: the two files and how they connect, as before
-  const was = (codePane(from) || explainWindowFor(from) || {}).st;
-  if (!await viewFile(from, at, link)) return;
-  const how = link.byLine.get(at).kind === "use" ? "uses" : "imports";
-  explainCode(explainState, [from], `Explain only line ${at} of ${from}, where it ${how} ${to}: what this line does with ${to}, and why it needs it. ` +
-    `Use the rest of the file just as context, and keep the key parts within the lines around it.`, null, { from: at, to: at, back: was && !was.loading ? was : null });
+  const used = /^uses (.+)$/.exec((link.byLine.get(at) || {}).note || ""), names = used ? [used[1], ...link.names] : [...link.names];
+  if (!await viewFile(from, at, link)) return;   // the line first: finding the code it runs can take a moment
+  const impl = b && await implementationOf(to, b.text, names);
+  if (!impl) {
+    const was = (codePane(from) || {}).st, how = link.byLine.get(at).kind === "use" ? "uses" : "imports";
+    return explainCode(explainState, [from], `Explain only line ${at} of ${from}, where it ${how} ${to}: what this line does with ${to}, and why it needs it. ` +
+      `Use the rest of the file just as context, and keep the key parts within the lines around it.`, null, { from: at, to: at, back: was && !was.loading ? was : null });
+  }
+  const was = (codePane(to) || explainWindowFor(to) || {}).st;
+  if (!await viewFile(to, impl.line)) return;
+  const lines = impl.end > impl.line ? `lines ${impl.line}–${impl.end}` : `line ${impl.line}`;
+  explainCode(explainState, [to], `Explain only ${lines} of ${to}: ${impl.name}, which line ${at} of ${from} uses. Say what it does when ${from} uses it, step by step, ` +
+    `and what it gives back. Use the rest of the file just as context, keep the key parts within those lines, and list what it connects to next.`, from,
+    { from: impl.line, to: impl.end, at, back: was && !was.loading ? was : null });
+  lineUp([codePane(from), codePane(to)]);   // the line that uses it and the code it runs, side by side, once the explanation has widened its window
+}
+// Where a name is defined in a file: from the parsed functions and classes when they're read, else a plain
+// search for a definition line, up to the next one. Returns { name, line, end } or null.
+async function implementationOf(path, text, names) {
+  if (!names.length) return null;
+  if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
+  const fx = callsReady() && callsReady().files.get(path);
+  if (fx) for (const n of names) { const d = fx.defs.find(d => d.name === n && d.kind !== "alias"); if (d) return { name: n, line: d.line, end: Math.max(d.line, Math.min(d.end, d.line + MAX_IMPL_LINES - 1)) }; }
+  const lines = text.split("\n"), head = n => new RegExp(`^\\s*(export\\s+)?(default\\s+)?(async\\s+)?(def|function\\*?|class|const|let|var|func|fn|pub fn|type|interface|struct)\\s+${n.replace(/\$/g, "\\$")}\\b|^\\s*${n.replace(/\$/g, "\\$")}\\s*[:=]\\s*(async\\s*)?(function|\\()`);
+  const anyDef = /^(export\s+)?(default\s+)?(async\s+)?(def|function\*?|class|func|fn|pub fn)\s+\w/;
+  for (const n of names) {
+    const re = head(n), k = lines.findIndex(l => re.test(l));
+    if (k < 0) continue;
+    let e = k + 1;
+    while (e < lines.length && e < k + MAX_IMPL_LINES && !anyDef.test(lines[e])) e++;
+    while (e > k + 1 && !lines[e - 1].trim()) e--;
+    return { name: n, line: k + 1, end: e };
+  }
+  return null;
+}
+const MAX_IMPL_LINES = 60;   // a long function is explained from its start
+async function definedNames(path, text) {   // the functions and classes a file defines at its top level
+  if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
+  const fx = callsReady() && callsReady().files.get(path);
+  if (fx) return [...new Set(fx.defs.filter(d => d.parent < 0 && d.kind !== "alias" && d.name && d.name.length > 2).map(d => d.name))];
+  return [...new Set([...text.matchAll(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:def|function\*?|class|func|fn)\s+([A-Za-z_$][\w$]{2,})/gm)].map(m => m[1]))];
 }
 // Lines selected in a code window when Explain is pressed: only those are explained, beside them; the rest of the
 // file is sent too, as context and so the line numbers stay true.
@@ -2855,7 +2948,7 @@ function connectionMarks(path, text, other) {
     if (m) { uses.push(k); byLine.set(k, { kind: "use", note: names.size ? "uses " + m[1] : "mentions it" }); }
   });
   imports.sort((a, b) => a - b);
-  return { other, byLine, imports, uses, inferred: !imports.length };
+  return { other, byLine, imports, uses, names, inferred: !imports.length };
 }
 function linkBanner(link) {
   const go = n => `<button type="button" class="linkish" data-goto="${n}">L${n}</button>`, name = esc(link.other.split("/").pop());
@@ -2912,7 +3005,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
   renderViewer();
 }
 function explainCol(st) {
-  return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">Followed from ${fileLink(st.from)}</p>` : ""}
+  return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">${st.range && st.range.at ? `Used on <button type="button" class="flink" data-file="${esc(st.from)}" data-line="${st.range.at}" title="Show that line">line ${st.range.at}</button> of ${fileLink(st.from)}` : `Followed from ${fileLink(st.from)}`}</p>` : ""}
     ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : audience === "beginner" ? `<p class="side-note">Gemini's answer came back in a shape Code City couldn't read. Close this and try again.</p>` : ""}
 `;
 }

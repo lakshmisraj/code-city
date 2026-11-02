@@ -726,3 +726,5 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
   body.for-beginner .tour-nav { position: sticky; bottom: -14px; z-index: 1; margin: 0 -16px -14px; padding: 10px 16px 14px; background: var(--street); box-shadow: 0 -1px 0 var(--line); }
   body.for-beginner #drawer { height: auto; max-height: 55dvh; }   /* only as tall as the file needs, so more of the city shows */
 }
+.xb-parts .lnum { min-width: 44px; padding: 1px 6px; white-space: nowrap; }
+.xb-none { font-style: italic; }

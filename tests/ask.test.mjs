@@ -25,6 +25,18 @@ test("explain keeps only real files, lines and links", async () => {
   assert.match(lastInput.input, /--- a\.js ---\nImports these files in the repo: b\.js\n1\| x\n2\| y/);
   assert.match(lastInput.input, /Question: What does this code do/);
 });
+test("Beginner's explain marks the blocks it was sent and gives every one back, in order", async () => {
+  reply = { summary: "S", files: [{ path: "a.js", explanation: "E", links: [], blocks: [
+    { from: 3, name: "go", explanation: "Runs it." }, { from: 1, name: "setup", explanation: "Gets ready." }, { from: 9, name: "made up", explanation: "x" }] }] };
+  const text = "a\nb\nfunction go() {\n  c\n}\nd";
+  const [st, out] = await call({ mode: "explain", question: "x?", repo: "r", files, plain: true, code: [{ path: "a.js", text, imports: [],
+    blocks: [{ from: 1, to: 2, name: "Setup" }, { from: 3, to: 5, name: "go" }, { from: 2, to: 4, name: "overlaps" }, { from: 6, to: 6, name: "Other code" }] }] });
+  assert.equal(st, 200);
+  assert.deepEqual(out.files[0].blocks.map(b => [b.from, b.to, b.name, b.explanation]),
+    [[1, 2, "setup", "Gets ready."], [3, 5, "go", "Runs it."], [6, 6, "Other code", ""]]);   // the overlapping block was dropped; the one Gemini skipped stays, unexplained
+  assert.match(lastInput.input, /=== block from line 3: go ===\n3\| function go\(\) \{/);
+  assert.match(lastInput.system_instruction, /every one of its blocks/);
+});
 test("explain with no code is refused", async () => {
   const [st] = await call({ mode: "explain", files, code: [] });
   assert.equal(st, 400);
