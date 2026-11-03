@@ -675,17 +675,12 @@ body.for-beginner #sideBody .tour-stop:has(> h3 > .wf-dot) h3 { font-size: 18px;
 /* Beginner: an explanation is a stack of blocks, each with a line saying what it's for. Notes read as prose;
    only the names of things are set as code. */
 .xb { --xb: var(--sodium); display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--night); box-shadow: inset 3px 0 0 var(--xb), inset 0 0 0 1px var(--line); }
-.xb.xb-parts { --xb: var(--changed); } .xb.xb-links { --xb: var(--added); } .xb.xb-how { --xb: var(--ink-dim); }
+.xb.xb-links { --xb: var(--added); } .xb.xb-how { --xb: var(--ink-dim); }
 body.for-beginner .xb h3 { margin: 0; font: 700 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--xb); }
 .xb-why { margin: -6px 0 2px; font-size: 12px; line-height: 1.4; color: var(--ink-dim); }
 .xb .ask-answer, .xb .explain-text { font-size: 14px; line-height: 1.55; }
 .xb .side-actions { margin-top: 2px; }
 .xb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.xb-parts .xb-list li { display: flex; align-items: flex-start; gap: 10px; }
-.xb-parts .lnum { flex: none; min-width: 34px; margin: 1px 0 0; padding: 1px 0; border-radius: 6px; text-align: center; text-decoration: none; font: 600 11px var(--f-mono); color: var(--changed); background: color-mix(in srgb, var(--changed) 14%, transparent); }
-.xb-parts .lnum:hover { color: var(--ink); }
-.xb-parts .pname { font: 600 12.5px var(--f-mono); color: var(--ink); text-decoration-color: var(--line); }
-.xb-parts .xb-list p { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
 .xb-conn { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 0 -10px; width: calc(100% + 20px); border-radius: 8px; cursor: pointer; }
 .xb-conn:hover:not(:disabled) { background: var(--street-2); }
 .xb-conn:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
@@ -732,7 +727,6 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
   body.for-beginner .tour-nav { position: sticky; bottom: -14px; z-index: 1; margin: 0 -16px -14px; padding: 10px 16px 14px; background: var(--street); box-shadow: 0 -1px 0 var(--line); }
   body.for-beginner #drawer { height: auto; max-height: 55dvh; }   /* only as tall as the file needs, so more of the city shows */
 }
-.xb-parts .lnum { min-width: 44px; padding: 1px 6px; white-space: nowrap; }
 
 /* Beginner's Connects to: a name, then the file it leads to */
 .xb-uses li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
@@ -751,15 +745,6 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 .xb-uses .xb-names { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; min-width: 0; }
 .xb-uses .xb-comma { margin-right: 4px; color: var(--ink-dim); }
 .xb-uses .xb-pair:has(.xb-names) { flex-wrap: nowrap; align-items: flex-start; }
-/* Beginner: Block by block starts closed */
-details.xb-parts > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
-details.xb-parts > summary::-webkit-details-marker { display: none; }
-details.xb-parts > summary::before { content: "▸"; color: var(--xb); transition: transform .15s; }
-details.xb-parts[open] > summary::before { transform: rotate(90deg); }
-details.xb-parts > summary:focus-visible { outline: 2px solid var(--sodium); outline-offset: 4px; border-radius: 4px; }
-.xb-count { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
-details.xb-parts:not([open]) { gap: 0; }
-@media (prefers-reduced-motion: reduce) { details.xb-parts > summary::before { transition: none; } }
 /* Beginner: how to explain just part of the code, beside Explain */
 .pane-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-dim); margin-left: auto; }
 .pane-hint.on { color: var(--sodium); }

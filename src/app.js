@@ -2630,8 +2630,6 @@ function usesList(x, f) {
   return list("Uses", "from other files", groups.uses) + list("Used by", "other files", groups.usedBy) +
     (audience === "beginner" ? "" : list("Maybe related", "Gemini's reading, no import line", groups.maybe));
 }
-// Beginner: an explanation as a stack of blocks, each saying what it's for. One file's own paragraph is its
-// summary (the two said the same thing), and a connection opens the line that uses the other file, explained.
 function usedLine(l) {   // "github-callback.js uses readCookies, page from oauth.js", each name opening the line that uses it
   const u = l.uses, file = p => `<b>${esc(p.split("/").pop())}</b>`;
   if (!u || !u.names.length) return "";
@@ -2639,16 +2637,11 @@ function usedLine(l) {   // "github-callback.js uses readCookies, page from oaut
   const name = n => `<button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${esc(u.by.split("/").pop())}, where it's used">${esc(n.name)}</button>`;
   return `<span class="xb-conn-uses">${file(u.by)} uses ${homes.map(h => `${shown.filter(n => n.of === h).map(name).join(", ")} from ${file(h)}`).join("; ")}${more > 0 ? ` and ${more} more` : ""}</span>`;
 }
-function explainBlocks(x) {
+// Beginner: an explanation as a stack of cards, each saying what it's for: what the code does (one file's own
+// paragraph is its summary), then what it connects to.
+function explainCards(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
   const one = (x.paths ? x.paths.length : x.files.length) === 1, f0 = x.files[0] || {};   // one file asked about, whatever came back
-  // every block of the code in order, each explained (Key parts are left out: the blocks cover them)
-  const said = f => (f.blocks || []).filter(bk => bk.explanation);   // a block Gemini didn't explain isn't shown
-  const parts = f => !said(f).length || (x.range && said(f).length < 2) ? "" : `<details class="xb xb-parts"><summary><h3>Block by block</h3><span class="xb-count">${said(f).length} block${said(f).length === 1 ? "" : "s"}</span></summary>` +   // closed until asked for
-    `<p class="xb-why">The code in order, one piece at a time. Click the lines to see them.</p><ul class="xb-list">${said(f).map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
-      return `<li><button type="button" class="lnum" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${at}</button><div>` +
-        `<button type="button" class="flink pname" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${esc(bk.name)}</button>` +
-        `<p>${rich(bk.explanation, f.path)}</p></div></li>`; }).join("")}</ul></details>`;
   const links = f => { const list = usesList(x, f); return list ? block("xb-links", "Connects to", "Click a name to see how it's implemented, or a file to open it.", list) : ""; };   // nothing left to show: no card
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
@@ -2656,12 +2649,12 @@ function explainBlocks(x) {
     `<p class="ask-answer">${one && f0.explanation ? rich(f0.explanation, f0.path) : rich(x.summary)}</p>` + (one ? partial(f0) : "") +
     (x.files.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(x.files.slice(0, 6).map(f => f.path)))}">View these ${Math.min(x.files.length, 6)} files side by side</button></div>` : ""));
   if (!x.files.length) return what;
-  if (one) return what + parts(f0) + links(f0);
+  if (one) return what + links(f0);
   return what + x.files.map(f => `<div class="xb-file"><div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>` +
-    block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + parts(f) + links(f) + `</div>`).join("");
+    block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + links(f) + `</div>`).join("");
 }
 function explainHtml(x) {
-  if (audience === "beginner") return explainBlocks(x);
+  if (audience === "beginner") return explainCards(x);
   const row = (from, path, meta, l) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
     const chip = audience === "advanced" && linkKind(x, from, path) ? "" : linkChip(x, from, path);   // Advanced: only the "inferred" chip
     return `<li><div class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
@@ -2701,54 +2694,6 @@ sideBody.addEventListener("click", e => {
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
 // it already has) and sends it to the ask function, which explains it and names the files each one connects to.
 const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, MAX_CHAIN = 8, codeCache = new Map();   // the ask function reads at most MAX_CODE_CHARS of each file
-const MAX_BLOCKS = 16, LONG_BLOCK = 80;   // Beginner: blocks per explanation in all; a class longer than this is split by its methods
-// Beginner: a file's code (or just the lines asked about) cut into blocks for Gemini to explain one by one: each
-// top-level function or class (a long class by its methods) and the code between them, joined down to max.
-async function codeSplit(path, text, range, max) {
-  const lines = text.split("\n"), lo = range ? Math.max(1, range.from) : 1, hi = Math.min(lines.length, range ? range.to : lines.length);
-  if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
-  const fx = callsReady() && callsReady().files.get(path);
-  let defs = [];
-  if (fx) {
-    const all = fx.defs.map((d, i) => ({ ...d, i })).filter(d => d.kind !== "alias");
-    for (const d of all.filter(d => d.parent < 0)) {
-      const kids = d.end - d.line > LONG_BLOCK ? all.filter(k => k.parent === d.i) : [];
-      if (!kids.length) { defs.push({ name: d.name, from: d.line, to: d.end }); continue; }
-      defs.push({ name: d.name, from: d.line, to: kids[0].line - 1 });
-      kids.forEach(k => defs.push({ name: `${d.name}.${k.name}`, from: k.line, to: k.end }));
-    }
-  } else {   // no parser for this language: a block from each definition line to the next
-    const head = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:def|function\*?|class|func|fn|pub fn)\s+([A-Za-z_$][\w$]*)/;
-    lines.forEach((l, k) => { const m = head.exec(l); if (m) defs.push({ name: m[1], from: k + 1, to: k + 1 }); });
-    defs.forEach((d, k) => { d.to = k + 1 < defs.length ? defs[k + 1].from - 1 : lines.length; });
-  }
-  defs.sort((a, b) => a.from - b.from);
-  const note = /^\s*(?:\/\/|#|\/\*|\*|--|<!--|@[\w.]+)/;   // a comment (or decorator) just above a definition belongs to it
-  defs.forEach((d, k) => {   // a class's opening lines can give the comment over its first method to that method
-    const prev = defs[k - 1], floor = prev ? (prev.name.includes(".") || !d.name.startsWith(prev.name + ".") ? prev.to : prev.from) : 0;
-    while (d.from - 1 > floor && note.test(lines[d.from - 2])) d.from--;
-    if (prev && prev.to >= d.from) prev.to = d.from - 1;
-  });
-  defs = defs.map(d => ({ ...d, from: Math.max(d.from, lo), to: Math.min(d.to, hi) })).filter(d => d.to >= d.from);
-  const blocks = [], bare = /^[\s{}()\[\];,]*$/;   // lines of only brackets aren't a block of their own
-  const noCode = /^\s*(?:\/\/|#|\/\*|\*|<!--|-->|"""|'''|["']use strict["'];?\s*$|module\.exports\s*=\s*(?:\{[^}]*\}?|[\w$.]+);?\s*$|exports\.[\w$]+\s*=\s*[\w$.]+;?\s*$|export\s*\{[^}]*\}\s*;?\s*$|export\s+default\s+[\w$.]+;?\s*$|__all__\s*=|[\w$]+\s*,?\s*$)/;
-  const gap = (from, to) => {
-    while (from <= to && bare.test(lines[from - 1])) from++;
-    while (to >= from && bare.test(lines[to - 1])) to--;
-    if (to >= from && !lines.slice(from - 1, to).every(l => bare.test(l) || noCode.test(l)))   // only comments or an export list: nothing to explain
-      blocks.push({ from, to, name: blocks.length ? "Other code" : "Setup" });
-  };
-  let at = lo;
-  for (const d of defs) { if (d.from < at) continue; gap(at, d.from - 1); blocks.push(d); at = d.to + 1; }
-  gap(at, hi);
-  while (blocks.length > max) {   // too many: join the two neighbours that make the smallest block
-    let k = 0, best = Infinity;
-    for (let j = 0; j + 1 < blocks.length; j++) if (blocks[j + 1].to - blocks[j].from < best) { best = blocks[j + 1].to - blocks[j].from; k = j; }
-    const a = blocks[k], b = blocks[k + 1];
-    blocks.splice(k, 2, { from: a.from, to: b.to, name: `${a.name}, ${b.name}`.slice(0, 80) });
-  }
-  return blocks.map(({ name, from, to }) => ({ name, from, to }));
-}
 function codeRepo() {   // where to read today's source from, or null
   if (ghRepo) return ghRepo;
   const m = /^([\w.-]+)\/([\w.-]+)$/.exec(currentRepo || "");
@@ -2788,7 +2733,6 @@ async function explainCode(state, paths, question, from, range) {
   const real = await Promise.all(code.map(c => loadDeps(c.path)));   // the files each one really imports
   code.forEach((c, i) => { c.imports = real[i]; });
   st.real = new Map(code.map((c, i) => [c.path, new Set(real[i])]));
-  if (audience === "beginner") for (const c of code) c.blocks = await codeSplit(c.path, c.text, range, Math.floor(MAX_BLOCKS / code.length));   // explained block by block
   if (!code.length) { st.loading = false; st.errorHtml = "The source of these files isn't available here, so there's no code to explain."; return redraw(); }
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
