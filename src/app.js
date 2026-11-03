@@ -2832,21 +2832,24 @@ const MAX_IMPL_LINES = 60;   // a long function is explained from its start
 const MAX_USED_NAMES = 6, MAX_HOPS = 3;   // names shown in a connection's row (the rest are counted); files followed
 const rxName = n => n.replace(/\$/g, "\\$");
 async function namesUsed(by, byText, of, ofText) {
-  const link = connectionMarks(by, byText, of), defs = await definedNames(of, ofText), lines = byText.split("\n");
-  const body = lines.map((l, i) => link.imports.includes(i + 1) ? "" : l);   // past the import lines
+  const link = connectionMarks(by, byText, of), defs = await definedNames(of, ofText);
+  const kind = IMPORT_LANG[langOf(by)], code = (kind ? blankComments(kind, byText) : byText).split("\n");   // comments don't count as uses
+  const body = code.map((l, i) => link.imports.includes(i + 1) ? "" : l);   // past the import lines
   const fx = callsReady() && callsReady().files.get(of), classes = new Set(fx ? fx.defs.filter(d => d.kind === "class").map(d => d.name) : []);
   const isType = n => classes.has(n) || new RegExp(`^\\s*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:type|interface|class)\\s+${rxName(n)}\\b`, "m").test(ofText);   // types and classes are left out
-  const lineOf = re => body.findIndex(l => re.test(l)) + 1;
+  // The line that uses a name: its first call, else its first mention; never a property of something else (event.headers.cookie)
+  const lineOf = (name, rows = body) => { const r = rxName(name).replace(".", "\\."), at = re => rows.findIndex(l => re.test(l)) + 1;
+    return at(new RegExp(`(?<![\\w$.])${r}\\s*\\(`)) || at(new RegExp(`(?<![\\w$.])${r}(?![\\w$])`)); };
   const out = [];
   for (const n of link.names) {
     if (isType(n)) continue;
     const members = defs.includes(n) ? [] : [...new Set(body.join("\n").match(new RegExp(`\\b${rxName(n)}\\.[A-Za-z_$][\\w$]*`, "g")) || [])]
       .filter(m => { const k = m.slice(n.length + 1); return !isType(k) && new RegExp(`\\b${rxName(k)}\\b`).test(ofText); });
-    if (members.length) members.forEach(m => out.push({ name: m, line: lineOf(new RegExp(`\\b${rxName(m).replace(".", "\\.")}\\b`)), of }));
-    else { const line = lineOf(new RegExp(`\\b${rxName(n)}\\b`)); if (line) out.push({ name: n, line, of: await homeOf(of, ofText, n) }); }
+    if (members.length) members.forEach(m => out.push({ name: m, line: lineOf(m), of }));
+    else { const line = lineOf(n); if (line) out.push({ name: n, line, of: await homeOf(of, ofText, n) }); }
   }
   if (!link.names.size) for (const n of defs) {   // called, passed on, or re-exported (export { n } from, on the import line itself)
-    const re = new RegExp(`\\b${rxName(n)}\\b`), line = lines.findIndex(l => re.test(l)) + 1;
+    const line = lineOf(n, code);
     if (!isType(n) && line) out.push({ name: n, line, of });
   }
   await Promise.all(out.map(async n => {   // the line that defines each one, in the file that defines it
