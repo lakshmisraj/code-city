@@ -2592,8 +2592,12 @@ function renderAsk() {
     }).join("")}</ol>` : "") +
     (askState.order.length ? `<div class="side-actions"><button type="button" class="primary" data-explain-answer>Explain the code of the top ${Math.min(MAX_EXPLAIN, askState.order.length)} files</button></div>` : "");
 }
+function linkKind(x, from, path) {   // "imports" or "used by" when an import line in one of the two files shows it, else null (Gemini's reading)
+  const g = graph;
+  return x.real && x.real.get(from) && x.real.get(from).has(path) ? "imports" : g && g.usedBy && (g.usedBy.get(from) || new Set()).has(path) ? "used by" : null;
+}
 function linkChip(x, from, path) {   // how sure a connection is: an import line in one of the two files, or Gemini's reading
-  const g = graph, real = x.real && x.real.get(from) && x.real.get(from).has(path), user = g && g.usedBy && (g.usedBy.get(from) || new Set()).has(path);
+  const kind = linkKind(x, from, path), real = kind === "imports", user = kind === "used by";
   return real ? `<span class="chip real" title="Found in this file's import lines">imports</span>` : user ? `<span class="chip real" title="Found in that file's import lines">used by</span>`
     : `<span class="chip guess" title="Gemini's reading of the code, not an import line">inferred</span>`;
 }
@@ -2759,7 +2763,13 @@ async function explainCode(state, paths, question, from, range) {
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) return;
-    if (r.ok) Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
+    if (r.ok) {
+      Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
+      if (audience === "beginner" && Array.isArray(st.files)) {   // Beginner: only connections an import line shows, nothing inferred
+        await getGraph().ready;
+        for (const f of st.files) f.links = (f.links || []).filter(l => linkKind(st, f.path, l.path));
+      }
+    }
     else st.errorHtml = esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
       (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
   } catch (e) { st.errorHtml = "Couldn't reach Code City's server. Check your connection and try again."; }
@@ -5034,11 +5044,9 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
-        const guess = !hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path;
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
           ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Lines to look at are picked in the first four files only.</p>` : ""}
-          ${guess ? `<p class="side-note"><span class="chip guess">guess</span> No line of code links this step to step ${k + 2}; Gemini worked it out from what the files do.</p>` : ""}
           ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
         return `<li class="wf-step current" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" aria-current="step"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
