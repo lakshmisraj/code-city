@@ -703,8 +703,6 @@ body.for-beginner .explain-col { gap: 10px; }
 body.for-beginner .pane-head .explain-path { flex: 0 1 auto; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; padding: 2px 4px; background: none; box-shadow: none; border-color: transparent; color: var(--ink); }
 body.for-beginner .pane-head .explain-path:hover { border-color: transparent; text-decoration: underline; text-underline-offset: 3px; }
 /* Beginner: the file panel's notes and the numbers' key */
-#dStatsKey { margin: -6px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-dim); }
-#dStatsKey:empty { display: none; }
 body.for-beginner #dTodos .note { margin: 0 0 8px; font-size: 12px; color: var(--ink-dim); }
 body.for-beginner #dTodos .todos li { align-items: flex-start; }
 body.for-beginner #dTodos .todos li .lnum { flex: none; min-width: 34px; margin: 1px 0 0; padding: 1px 0; border-radius: 6px; text-align: center; text-decoration: none; font: 600 11px var(--f-mono); color: var(--sodium); background: color-mix(in srgb, var(--sodium) 14%, transparent); }
@@ -748,3 +746,16 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 /* Beginner: how to explain just part of the code, beside Explain */
 .pane-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-dim); margin-left: auto; }
 .pane-hint.on { color: var(--sodium); }
+/* Beginner's welcome tour: lighter dimming so the city shows through, a Skip, finger-sized buttons, still under reduced motion */
+body.for-beginner #siteTour .st-spot { box-shadow: 0 0 0 9999px rgba(6,9,20,.45); }
+body.for-beginner #siteTour .st-skip { font-size: 12.5px; color: var(--ink-dim); }
+@media (pointer: coarse) { body.for-beginner #siteTour .st-foot button { min-height: 44px; min-width: 44px; } }
+@media (prefers-reduced-motion: reduce) { body.for-beginner #siteTour .st-spot { transition: none; } }
+/* Beginner: a file's explanation inside its file panel */
+#dExplain { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 10px; }
+#dExplain[hidden] { display: none; }
+/* Beginner: the "New here?" card steps aside while a panel or window is open, so it never covers one */
+body.for-beginner:is(.drawer-open, .side-open, .tabs-open) #startHint { display: none; }
+.phone-only { display: none; }
+@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) { body.for-beginner .phone-only { display: block; } }
+#forSel2 { font: 14px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }

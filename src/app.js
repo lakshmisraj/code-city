@@ -630,7 +630,7 @@ function clearCity() {
   city = new THREE.Group(); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
   for (const p of panes) if (p.el) p.el.remove();
-  explainState = { chain: [], files: new Map() }; nameIndex = null;
+  explainState = { chain: [], files: new Map() }; inPanel.clear(); nameIndex = null;
   panes = []; document.getElementById("viewer").hidden = true;
   graph = null; hoverFocus = null; if (linkGroup) { scene.remove(linkGroup); linkGroup = null; } sparks = [];   // the viewer shows files of the city on screen
 }
@@ -1081,13 +1081,11 @@ function openDrawer(b) {
   const stat = (dt, dd, cls) => `<div><dt>${dt}</dt><dd${cls ? ` class="${cls}"` : ""}>${dd}</dd></div>`;   // only what the file has: no rows of zeros
   const easy = audience === "beginner", todos = easy ? f.todos.filter(t => NOTE_RE.test(t.text)) : f.todos;
   const floors = !hist && !easy;   // Beginner: floors are just lines again, so they aren't shown
-  document.getElementById("dStats").innerHTML = stat("Lines", (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines)) +
+  const size = (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines);
+  document.getElementById("dStats").innerHTML = (easy ? stat("Size", `${size} lines`) : stat("Lines", size)) +
     (!(ghRepo && f.text == null) && f.funcs && !easy ? stat("Functions", fmt(f.funcs)) : "") +   // Beginner: What's inside lists them
     (viewNow && todos.length ? stat(easy ? "Notes" : "Fires", fmt(todos.length), "fire") : "") +
-    (hist ? (commits ? stat("Commits", fmt(commits)) : "") : floors ? stat("Floors", Math.max(1, Math.round(b.userData.target))) : "");
-  // Beginner: what the numbers mean, in one line
-  document.getElementById("dStatsKey").textContent = !easy ? "" : ["Lines: how long the file is", hist && commits ? "Commits: how many times it was changed" : "",
-    viewNow && todos.length ? "Notes: to-do comments the authors left in it" : ""].filter(Boolean).join(". ") + ".";
+    (hist ? (commits ? (easy ? stat("Changes", `${fmt(commits)} time${commits === 1 ? "" : "s"}`) : stat("Commits", fmt(commits))) : "") : floors ? stat("Floors", Math.max(1, Math.round(b.userData.target))) : "");
   document.getElementById("dTodos").innerHTML = viewNow && todos.length
     ? easy ? `<h3>Notes the authors left</h3><p class="note">Comments marked TODO, FIXME or HACK: things someone meant to come back to.</p><ul class="todos">${todos.slice(0, 40).map(t => `<li><button type="button" class="lnum" data-oline="${t.line}" title="Open the code at line ${t.line}">L${t.line}</button><span>${esc(noteText(t.text))}</span></li>`).join("")}</ul>`
       : `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
@@ -1105,6 +1103,7 @@ function openDrawer(b) {
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
   document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button>${IN_VSCODE ? `<button type="button" data-open-editor>Open in editor</button>` : ""}</div>`;
+  renderPanelExplain();
   opened(drawer); roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
@@ -1205,6 +1204,7 @@ function openFolder(dir) {
   syncUrl();
 }
 drawer.addEventListener("click", e => {
+  if (e.target.closest("#dExplain")) { if (explainClicks(e)) e.stopImmediatePropagation(); return; }   // names, files and lines in the explanation
   const oline = e.target.closest("[data-oline]");
   if (oline && picked) return viewFile(picked.userData.f.path, +oline.dataset.oline);
   const all = e.target.closest("[data-view-all]");
@@ -2061,7 +2061,7 @@ function setAudience(a, quiet) {
   audience = a;
   try { localStorage.setItem("codecity.for", a); } catch (e) { /* storage blocked */ }
   for (const k in AUDIENCES) document.body.classList.toggle("for-" + k, k === a);
-  $("forSel").value = a;
+  $("forSel").value = a; $("forSel2").value = a;
   document.querySelectorAll("[data-for]").forEach(b => b.setAttribute("aria-pressed", b.dataset.for === a));
   $("forNote").textContent = AUDIENCES[a];
   document.body.classList.toggle("locked", !!LOCKED_FOR);
@@ -2070,6 +2070,12 @@ function setAudience(a, quiet) {
   understandOrder();
   $("dMore").open = a !== "beginner";
   if (a !== "beginner") $("startHint").hidden = true;
+  // Beginner: Info is Help (Guide's how-to folded into it), and Guide isn't on the rail
+  SEG_TITLES.info = a === "beginner" ? "Help" : "Info";
+  const help = document.querySelector('#rail [data-seg="info"]');
+  help.querySelector(".rail-label").textContent = SEG_TITLES.info; help.setAttribute("aria-label", SEG_TITLES.info);
+  help.title = a === "beginner" ? "Help: what's on screen and how to move around" : "Info: what Code City shows and how to read it";
+  if (a === "beginner" && segOpen === "guide") openSeg("info", false, true);
   $("pageH1").hidden = a !== "beginner";   // Beginner: a heading for screen readers, and the browser's bar in the page's colour
   const tc = document.querySelector('meta[name="theme-color"]');
   if (a === "beginner" && !tc) document.head.append(Object.assign(document.createElement("meta"), { name: "theme-color", content: "#0b1020" }));
@@ -2090,13 +2096,15 @@ function understandOrder() {
   if (beginner) box.prepend($("tourBtn2"), $("tourForm")); else box.append($("tourBtn2"), $("tourForm"));
   $("tourBtn2").classList.toggle("primary", beginner);
   $("mapBtn").classList.toggle("primary", !beginner);
-  $("tourBtn2").querySelector("span").textContent = beginner ? "What the code does and where it starts, in plain English. For one workflow, write its name below."
+  $("tourBtn2").querySelector("span").textContent = beginner ? "What the code does and where it starts, in plain English."
     : "A guided walk through what the code does. For a custom workflow, write its name below.";
-  $("understandNote").textContent = beginner ? "Start here." : "Start here, then take the tour.";
+  $("understandNote").textContent = "Start here, then take the tour.";
+  $("understandNote").hidden = beginner;   // Beginner: one button, nothing to explain
 }
 const plainTour = () => audience === "beginner";   // the tour in plain English as well is Beginner's
 setAudience(audience, true);
 $("forSel").onchange = e => setAudience(e.target.value);
+$("forSel2").onchange = e => setAudience(e.target.value);   // Beginner on a phone: Help holds the choice
 document.querySelector(".for-seg").addEventListener("click", e => { const b = e.target.closest("[data-for]"); if (b) setAudience(b.dataset.for); });
 function openSide(mode) {
   if (sideMode && sideMode !== mode) {   // one list at a time, so its highlights aren't hidden by another's
@@ -2714,7 +2722,15 @@ async function pullCode(path) {
 }
 // Each explanation opens in its own window and is a step in a chain: Follow on a connected file explains it next.
 let explainState = { chain: [], files: new Map() };   // this city's explanations; the chain is drawn over the city
-async function explainCode(state, paths, question, from, range) {
+// Beginner: a whole file's explanation shows in its file panel, under its buttons, not in a window of its own
+const inPanel = new Map();   // path → its explanation
+function renderPanelExplain() {
+  const el = $("dExplain"), path = picked && picked.userData.f.path, st = path && inPanel.get(path);
+  el.hidden = !st; el.innerHTML = st ? explainCol(st) : "";
+  const again = $("dActions").querySelector("[data-explain]");
+  if (again) again.hidden = !!st && !st.errorHtml;   // explained: no need to ask again (unless it failed)
+}
+async function explainCode(state, paths, question, from, range, panel) {   // panel: Beginner, in the file's panel
   if (!canAsk()) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
   if (!okToSendPrivate()) return;
   const gen = cityGen;
@@ -2723,10 +2739,11 @@ async function explainCode(state, paths, question, from, range) {
   state.chain.push(st);
   // The explanation opens on its own, with a View code button; if the file's code is already open, it joins that
   // window on the right instead.
-  let win = paths.length === 1 ? codePane(paths[0]) : null;
-  if (win) { win.st = st; widenForExplain(win); win.dirty = true; win.collapsed = false; toFront(win); renderViewer(); }
+  let win = panel ? null : paths.length === 1 ? codePane(paths[0]) : null;
+  if (panel) inPanel.set(paths[0], st);
+  else if (win) { win.st = st; widenForExplain(win); win.dirty = true; win.collapsed = false; toFront(win); renderViewer(); }
   else { win = { kind: "explain", st, path: paths[0] }; if (!addPane(win)) return; }
-  const redraw = () => { if (win.st === st || win.kind === "explain") { win.dirty = true; renderViewer(); } drawLinks(); };
+  const redraw = () => { if (panel) renderPanelExplain(); else if (win.st === st || win.kind === "explain") { win.dirty = true; renderViewer(); } drawLinks(); };
   redraw();
   const code = (await Promise.all(paths.slice(0, MAX_EXPLAIN).map(pullCode))).filter(Boolean)
     .map(c => c.text.length > MAX_CODE_CHARS ? { path: c.path, text: c.text.slice(0, MAX_CODE_CHARS), partial: true } : c);
@@ -2891,6 +2908,11 @@ function explainLines(path, range) {
   explainCode(explainState, [path], `Explain only ${lines} of ${path}: what they do and how they work. Use the rest of the file just as context, and keep the key parts within those lines.`, null, range);
 }
 function explainFile(path) {
+  if (audience === "beginner" && picked && picked.userData.f.path === path) {   // from its file panel: the answer goes there
+    const had = inPanel.get(path);
+    if (had && (had.loading || !had.errorHtml)) return renderPanelExplain();
+    return explainCode(explainState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?", null, null, true);
+  }
   const open = explainWindowFor(path);
   if (open) { open.collapsed = false; toFront(open); renderViewer(); return; }
   explainCode(explainState, [path], "What does this file do, how does it work, and how does it connect to the rest of the code?");
@@ -5394,14 +5416,25 @@ const SITE_TOUR = [
   { at: '.rail-btn[data-seg="guide"]', title: "Guide", text: "How to use each tool. You can start this tour again from here." },
   { at: '.rail-btn[data-seg="account"]', title: "Sign in", text: "Sign in with GitHub to ask questions and have code explained.", when: () => signinEnabled && !oauthToken },
 ];
-const siteTour = { el: $("siteTour"), i: 0, steps: [] };
+// Beginner: four stops, the ones that get someone started; the rest is in Help
+const SITE_TOUR_EASY = [
+  { title: "Welcome to Code City", text: "Every file in the project is a building. Taller means more code, and folders are districts." },
+  { at: '.rail-btn[data-seg="understand"]', title: "Start with the tour", text: "Understand walks you through what the code does, step by step, in plain English." },
+  { title: "Click any building", text: "See what that file is for, and have it explained. Drag to turn the city, scroll to zoom." },
+  { at: "#askSlot", title: "Ask a question", text: "Type a question about the code. The files that answer it light up.", when: () => askEnabled },
+  SITE_TOUR[SITE_TOUR.length - 1],   // sign in, where it's needed
+];
+const siteTour = { el: $("siteTour"), i: 0, steps: [], opener: null };
 function stShown(sel) {   // the first of these that is on screen (a phone shows ⋯ instead of the top bar's buttons)
   for (const el of document.querySelectorAll(sel)) { if (el.hidden || el.closest("[hidden]")) continue; const r = el.getBoundingClientRect(); if (r.width && r.height) return r; }
   return null;
 }
 function startSiteTour() {
   closeCtx();
-  siteTour.steps = SITE_TOUR.filter(st => (!st.when || st.when()) && (!st.at || stShown(st.at)));
+  // Beginner's stops are picked by what's on, not by what has drawn yet (Ask's box can arrive a moment after the tour)
+  siteTour.steps = audience === "beginner" ? SITE_TOUR_EASY.filter(st => !st.when || st.when())
+    : SITE_TOUR.filter(st => (!st.when || st.when()) && (!st.at || stShown(st.at)));
+  siteTour.opener = document.activeElement;   // Beginner: focus goes back here when the tour closes
   siteTour.i = 0; siteTour.el.hidden = false; drawSiteTour();
   siteTour.el.querySelector('[data-st="next"]').focus();
 }
@@ -5424,6 +5457,7 @@ function drawSiteTour() {
 }
 function closeSiteTour() {
   siteTour.el.hidden = true;
+  if (audience === "beginner") { const o = siteTour.opener; (o && o !== document.body && o.isConnected ? o : document.querySelector('#rail [data-seg="understand"]')).focus(); }
   try { sessionStorage.setItem("codecity.siteTourClosed", "1"); } catch (e) { /* storage blocked */ }
 }
 siteTour.el.addEventListener("click", e => {
@@ -5436,11 +5470,17 @@ siteTour.el.addEventListener("click", e => {
 addEventListener("keydown", e => {
   if (siteTour.el.hidden) return;
   if (e.key === "Escape") { e.stopPropagation(); closeSiteTour(); }
+  else if (e.key === "Tab" && audience === "beginner") {   // Beginner: Tab stays inside the tour's card
+    const keys = [...siteTour.el.querySelectorAll(".st-card button")].filter(b => !b.hidden && b.offsetParent);
+    const k = keys.indexOf(document.activeElement), next = keys[(k + (e.shiftKey ? -1 : 1) + keys.length) % keys.length];
+    if (next) { e.preventDefault(); next.focus(); }
+  }
   else if (e.key === "ArrowRight") siteTour.el.querySelector('[data-st="next"]').click();
   else if (e.key === "ArrowLeft" && siteTour.i > 0) siteTour.el.querySelector('[data-st="back"]').click();
 }, true);
 addEventListener("resize", () => { if (!siteTour.el.hidden) drawSiteTour(); });
 $("siteTourBtn").onclick = startSiteTour;
+$("siteTourAgain").onclick = startSiteTour;
 function siteTourOnLoad() {
   let show;
   try {
