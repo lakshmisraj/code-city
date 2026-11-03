@@ -751,3 +751,15 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 .xb-uses .xb-names { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; min-width: 0; }
 .xb-uses .xb-comma { margin-right: 4px; color: var(--ink-dim); }
 .xb-uses .xb-pair:has(.xb-names) { flex-wrap: nowrap; align-items: flex-start; }
+/* Beginner: Block by block starts closed */
+details.xb-parts > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+details.xb-parts > summary::-webkit-details-marker { display: none; }
+details.xb-parts > summary::before { content: "▸"; color: var(--xb); transition: transform .15s; }
+details.xb-parts[open] > summary::before { transform: rotate(90deg); }
+details.xb-parts > summary:focus-visible { outline: 2px solid var(--sodium); outline-offset: 4px; border-radius: 4px; }
+.xb-count { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
+details.xb-parts:not([open]) { gap: 0; }
+@media (prefers-reduced-motion: reduce) { details.xb-parts > summary::before { transition: none; } }
+/* Beginner: how to explain just part of the code, beside Explain */
+.pane-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-dim); margin-left: auto; }
+.pane-hint.on { color: var(--sodium); }

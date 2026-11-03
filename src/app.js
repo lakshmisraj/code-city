@@ -2644,11 +2644,11 @@ function explainBlocks(x) {
   const one = (x.paths ? x.paths.length : x.files.length) === 1, f0 = x.files[0] || {};   // one file asked about, whatever came back
   // every block of the code in order, each explained (Key parts are left out: the blocks cover them)
   const said = f => (f.blocks || []).filter(bk => bk.explanation);   // a block Gemini didn't explain isn't shown
-  const parts = f => !said(f).length || (x.range && said(f).length < 2) ? "" : block("xb-parts", "Block by block", "The code in order, one piece at a time. Click the lines to see them.",
-    `<ul class="xb-list">${said(f).map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
+  const parts = f => !said(f).length || (x.range && said(f).length < 2) ? "" : `<details class="xb xb-parts"><summary><h3>Block by block</h3><span class="xb-count">${said(f).length} block${said(f).length === 1 ? "" : "s"}</span></summary>` +   // closed until asked for
+    `<p class="xb-why">The code in order, one piece at a time. Click the lines to see them.</p><ul class="xb-list">${said(f).map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
       return `<li><button type="button" class="lnum" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${at}</button><div>` +
         `<button type="button" class="flink pname" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${esc(bk.name)}</button>` +
-        `<p>${rich(bk.explanation, f.path)}</p></div></li>`; }).join("")}</ul>`);
+        `<p>${rich(bk.explanation, f.path)}</p></div></li>`; }).join("")}</ul></details>`;
   const links = f => { const list = usesList(x, f); return list ? block("xb-links", "Connects to", "Click a name to see how it's implemented, or a file to open it.", list) : ""; };   // nothing left to show: no card
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
@@ -2701,7 +2701,7 @@ sideBody.addEventListener("click", e => {
 // The page pulls the files' source itself (from GitHub when the city came from a repo, otherwise the preview
 // it already has) and sends it to the ask function, which explains it and names the files each one connects to.
 const MAX_EXPLAIN = 3, MAX_CODE_CHARS = 24000, MAX_CHAIN = 8, codeCache = new Map();   // the ask function reads at most MAX_CODE_CHARS of each file
-const MAX_BLOCKS = 24, LONG_BLOCK = 80;   // Beginner: blocks per explanation in all; a class longer than this is split by its methods
+const MAX_BLOCKS = 16, LONG_BLOCK = 80;   // Beginner: blocks per explanation in all; a class longer than this is split by its methods
 // Beginner: a file's code (or just the lines asked about) cut into blocks for Gemini to explain one by one: each
 // top-level function or class (a long class by its methods) and the code between them, joined down to max.
 async function codeSplit(path, text, range, max) {
@@ -3123,7 +3123,7 @@ function paneHtml(p) {
   }
   const lines = p.text.split("\n"), shown = lines.slice(0, MAX_VIEW_LINES), key = esc(p.path);
   return `<div class="pane-head">${p.fn ? `<span class="pane-fn" title="A step of the trace">${p.step ? `<em>${p.step}</em>` : ""}${esc(p.fn)}</span>` : ""}<button type="button" class="explain-path${p.fn ? " short" : ""}" data-path="${key}" title="${p.fn ? esc(p.path) : "Show it in the city"}">${p.fn ? esc(shortFile(p.path)) : pathHtml(p.path)}</button>
-      ${askEnabled ? `<button type="button" class="mini" data-pane-explain title="Explain the lines selected in this code, or the whole file when none are">Explain</button>` : ""}
+      ${askEnabled ? `<span class="pane-hint beginner-only" aria-live="polite">${PANE_HINT}</span><button type="button" class="mini" data-pane-explain title="Explain the lines selected in this code, or the whole file when none are">Explain</button>` : ""}
       ${IN_VSCODE ? `<button type="button" class="mini" data-pane-editor title="Open this file in the editor${p.line ? `, at line ${p.line}` : ""}">Editor</button>` : ""}
       <button type="button" class="mini" data-pane-collapse aria-label="Collapse this window to its tab" title="Collapse to its tab">–</button>
       <button type="button" class="mini" data-pane-close aria-label="Close ${key}" title="Close">✕</button></div>
@@ -3278,6 +3278,17 @@ $("tbMore").onclick = e => {
 addEventListener("pointerdown", e => { if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtx(); }, true);
 addEventListener("keydown", e => { if (e.key === "Escape" && !ctxMenu.hidden) { closeCtx(); e.stopPropagation(); } }, true);
 addEventListener("scroll", () => { if (!ctxMenu.hidden) closeCtx(); }, true);
+// Beginner: the hint beside Explain says what it will explain, following the selection in each code window
+const PANE_HINT = "Highlight lines to explain just those, or press Explain for the whole file.";
+document.addEventListener("selectionchange", () => {
+  if (audience !== "beginner") return;
+  for (const el of document.querySelectorAll("#viewerPanes .pane")) {
+    const hint = el.querySelector(".pane-hint"), body = el.querySelector(".pane-body");
+    if (!hint || !body) continue;
+    const r = selectedLines(body), text = r ? `Explain will cover ${r.from === r.to ? `line ${r.from}` : `lines ${r.from}–${r.to}`} →` : PANE_HINT;
+    if (hint.textContent !== text) { hint.textContent = text; hint.classList.toggle("on", !!r); }
+  }
+});
 $("viewerPanes").addEventListener("pointerdown", e => {
   if (!e.target.closest("[data-pane-explain]")) return;
   const p = paneOf(e.target), body = p && p.el && p.el.querySelector(".pane-body");
@@ -4934,7 +4945,7 @@ async function loadKeyLines(w) {
   await getGraph().ready;
   wf.handoff = new Map(wf.steps.map((st, k) => [k, k < wf.steps.length - 1 && code.has(st.path) ? handoffLines(st.path, code.get(st.path).text, wf.steps[k + 1].path) : []]));
   redraw();
-  const send = paths.filter(p => code.has(p)).slice(0, 4).map(p => ({ path: p, text: code.get(p).text }));
+  const send = paths.filter(p => code.has(p)).slice(0, plainTour() ? 6 : 4).map(p => ({ path: p, text: code.get(p).text }));   // Beginner: every step's file (a workflow has at most 6)
   if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
   try {
     const r = await fetch(ASK_URL, {

@@ -71,6 +71,7 @@ test("tour returns workflows of real files, with feeds between them", async () =
   assert.deepEqual(out.workflows.map(w => w.feature), ["Lets people start it.", ""]);   // plain English beside the technical summary
   assert.equal(out.overview, "O");
   assert.equal(out.story, "People open it and it shows them their code.");   // the whole system in simple English
+  assert.match(lastInput.system_instruction, /never coded[\s\S]*Be descriptive/);   // every line of a Beginner tour in plain words
   assert.match(lastInput.system_instruction, /end to end in simple English/);
   assert.match(lastInput.input, /What the code itself shows[^\n]*\nREADME: hello/);
   assert.match(lastInput.system_instruction, /workflows/);
