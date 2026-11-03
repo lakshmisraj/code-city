@@ -2603,6 +2603,13 @@ function linkChip(x, from, path) {   // how sure a connection is: an import line
 }
 // Beginner: an explanation as a stack of blocks, each saying what it's for. One file's own paragraph is its
 // summary (the two said the same thing), and a connection opens the line that uses the other file, explained.
+function usedLine(l) {   // "github-callback.js uses readCookies, page from oauth.js", each name opening the line that uses it
+  const u = l.uses, file = p => `<b>${esc(p.split("/").pop())}</b>`;
+  if (!u || !u.names.length) return "";
+  const shown = u.names.slice(0, MAX_USED_NAMES), more = u.names.length - shown.length, homes = [...new Set(shown.map(n => n.of))];
+  const name = n => `<button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${esc(u.by.split("/").pop())}, where it's used">${esc(n.name)}</button>`;
+  return `<span class="xb-conn-uses">${file(u.by)} uses ${homes.map(h => `${shown.filter(n => n.of === h).map(name).join(", ")} from ${file(h)}`).join("; ")}${more > 0 ? ` and ${more} more` : ""}</span>`;
+}
 function explainBlocks(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
   const one = x.files.length === 1, f0 = x.files[0];
@@ -2615,7 +2622,7 @@ function explainBlocks(x) {
   const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "Other files this one works with. Click one to see the line where it uses that file, explained.",
     `<ul class="xb-list">${f.links.map(l => { const b = bmap.get(l.path), live = b && b.userData.lines > 0;
       return `<li><button type="button" class="xb-conn" ${live ? `data-connect="${esc(l.path)}" data-from="${esc(f.path)}" title="Show the line in ${esc(f.path.split("/").pop())} that uses it, explained"` : "disabled"}>` +
-        `<span class="xb-conn-head"><span class="path">${pathHtml(l.path)}</span>${linkChip(x, f.path, l.path)}</span><span class="xb-conn-how">${esc(l.how)}</span></button></li>`; }).join("")}</ul>`);
+        `<span class="xb-conn-head"><span class="path">${pathHtml(l.path)}</span>${usedLine(l) ? "" : linkChip(x, f.path, l.path)}</span><span class="xb-conn-how">${esc(l.how)}</span></button>${usedLine(l)}</li>`; }).join("")}</ul>`);
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
     x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.",
@@ -2628,10 +2635,10 @@ function explainBlocks(x) {
 }
 function explainHtml(x) {
   if (audience === "beginner") return explainBlocks(x);
-  const row = (from, path, meta) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
-    const chip = linkChip(x, from, path);
-    return `<li class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
-      (live ? `<span class="link-acts"><button type="button" class="mini" data-view="${esc(path)}">View</button><button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</li>`; };
+  const row = (from, path, meta, l) => { const b = bmap.get(path), live = b && b.userData.lines > 0;
+    const chip = audience === "advanced" && linkKind(x, from, path) ? "" : linkChip(x, from, path);   // Advanced: only the "inferred" chip
+    return `<li><div class="link-row"><button type="button" ${live ? `data-path="${esc(path)}"` : `class="gone" tabindex="-1"`}><span class="n">→</span><span class="path">${pathHtml(path)}</span><span class="meta">${chip}${esc(meta)}</span></button>` +
+      (live ? `<span class="link-acts">${audience === "advanced" ? "" : `<button type="button" class="mini" data-view="${esc(path)}">View</button>`}<button type="button" class="mini" data-follow="${esc(path)}" data-from="${esc(from)}">Follow</button></span>` : "") + `</div>` + (l ? usedLine(l) : "") + `</li>`; };
   const every = [...new Set(x.files.flatMap(f => [f.path, ...f.links.map(l => l.path)]))].filter(p => { const b = bmap.get(p); return b && b.userData.lines > 0; });
   return `<div><h3>${x.change ? "What changed" : x.range ? "What these lines do" : "How the code works"}</h3><p class="ask-answer">${rich(x.summary)}</p>` +
     (every.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(every.slice(0, 6)))}">View ${Math.min(every.length, 6)} files side by side</button></div>` : "") +
@@ -2641,7 +2648,7 @@ function explainHtml(x) {
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
       <p class="explain-text">${rich(f.explanation, f.path)}</p>
       ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><button type="button" class="flink pname" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">${esc(pt.name)}</button> ${rich(pt.note, f.path)}</li>`).join("")}</ul></div>` : ""}
-      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how)).join("")}</ol></div>` : ""}
+      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how, l)).join("")}</ol></div>` : ""}
     </section>`).join("");
 }
 // View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
@@ -2765,9 +2772,14 @@ async function explainCode(state, paths, question, from, range) {
     if (gen !== cityGen) return;
     if (r.ok) {
       Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
-      if (audience === "beginner" && Array.isArray(st.files)) {   // Beginner: only connections an import line shows, nothing inferred
+      if (Array.isArray(st.files)) {
         await getGraph().ready;
-        for (const f of st.files) f.links = (f.links || []).filter(l => linkKind(st, f.path, l.path));
+        if (audience === "beginner") for (const f of st.files) f.links = (f.links || []).filter(l => linkKind(st, f.path, l.path));   // Beginner: nothing inferred
+        await Promise.all(st.files.flatMap(f => (f.links || []).filter(l => linkKind(st, f.path, l.path)).map(async l => {   // which functions a connection an import line shows uses, and whose they are
+          const mine = code.find(c => c.path === f.path), other = await pullCode(l.path);
+          const [by, of] = linkKind(st, f.path, l.path) === "imports" ? [mine, other] : [other, mine];
+          if (by && of) l.uses = { by: by.path, of: of.path, names: await namesUsed(by.path, by.text, of.path, of.text) };
+        })));
       }
     }
     else st.errorHtml = esc(data.error || `Couldn't explain the code (error ${r.status}). Try again.`) +
@@ -2839,6 +2851,42 @@ async function implementationOf(path, text, names) {
   return null;
 }
 const MAX_IMPL_LINES = 60;   // a long function is explained from its start
+// The functions and variables a file takes from another and really uses, each with the first line that uses it and
+// the file that really defines it: the names its import line names (for a whole module, the members used from it, as
+// cart.total), leaving out types and classes; else (a require of the whole file, say) the other file's functions it
+// calls. A name the other file only passes on (an index.js or __init__.py) is followed to where it's defined.
+const MAX_USED_NAMES = 6, MAX_HOPS = 3;   // names shown in a connection's row (the rest are counted); files followed
+const rxName = n => n.replace(/\$/g, "\\$");
+async function namesUsed(by, byText, of, ofText) {
+  const link = connectionMarks(by, byText, of), defs = await definedNames(of, ofText), lines = byText.split("\n");
+  const body = lines.map((l, i) => link.imports.includes(i + 1) ? "" : l);   // past the import lines
+  const fx = callsReady() && callsReady().files.get(of), classes = new Set(fx ? fx.defs.filter(d => d.kind === "class").map(d => d.name) : []);
+  const isType = n => classes.has(n) || new RegExp(`^\\s*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:type|interface|class)\\s+${rxName(n)}\\b`, "m").test(ofText);   // types and classes are left out
+  const lineOf = re => body.findIndex(l => re.test(l)) + 1;
+  const out = [];
+  for (const n of link.names) {
+    if (isType(n)) continue;
+    const members = defs.includes(n) ? [] : [...new Set(body.join("\n").match(new RegExp(`\\b${rxName(n)}\\.[A-Za-z_$][\\w$]*`, "g")) || [])]
+      .filter(m => { const k = m.slice(n.length + 1); return !isType(k) && new RegExp(`\\b${rxName(k)}\\b`).test(ofText); });
+    if (members.length) members.forEach(m => out.push({ name: m, line: lineOf(new RegExp(`\\b${rxName(m).replace(".", "\\.")}\\b`)), of }));
+    else { const line = lineOf(new RegExp(`\\b${rxName(n)}\\b`)); if (line) out.push({ name: n, line, of: await homeOf(of, ofText, n) }); }
+  }
+  if (!link.names.size) for (const n of defs) { if (isType(n)) continue; const line = lineOf(new RegExp(`\\b${rxName(n)}\\s*\\(`)); if (line) out.push({ name: n, line, of }); }
+  return out;
+}
+async function defines(path, text, name) {   // a function, class or (top-level) variable of that name
+  return (await definedNames(path, text)).includes(name) ||
+    new RegExp(`^\\s*(?:export\\s+)?(?:const|let|var)\\s+${rxName(name)}\\b|^${rxName(name)}\\s*=`, "m").test(text);
+}
+async function homeOf(path, text, name, hops = 0) {   // the file that defines name, following files that only pass it on
+  if (await defines(path, text, name) || hops >= MAX_HOPS || !canImport(path)) return path;
+  for (const d of await depsOf(path).catch(() => [])) {
+    const c = await pullCode(d);
+    if (c && (connectionMarks(path, text, d).names.has(name) ||   // imported to pass on, or re-exported (export { name } from)
+      (await defines(d, c.text, name) && new RegExp(`\\b${rxName(name)}\\b`).test(text)))) return homeOf(d, c.text, name, hops + 1);
+  }
+  return path;
+}
 async function definedNames(path, text) {   // the functions and classes a file defines at its top level
   if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
   const fx = callsReady() && callsReady().files.get(path);
