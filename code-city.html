@@ -3651,7 +3651,7 @@ function usesList(x, f) {
   }
   groups.uses = [...from].map(([p, got]) => {   // uses: one row per file, then the names it gives (files with no name read last)
     const def = got.find(g => g.n.def);
-    return (`<li>${file(p, `data-line="${def ? def.n.def : 1}" data-file="${esc(p)}" title="Open ${short(p)}"`)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">←</span>` +
+    return (`<li>${file(p, `data-line="${def ? def.n.def : 1}" data-file="${esc(p)}" title="Open ${short(p)}"`)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">→</span>` +
       `<span class="xb-names">${got.map(g => g.name).join(`<span class="xb-comma">,</span>`)}</span></span></li>`);
   }).concat(groups.uses);
   const list = (title, why, items) => !items.length ? "" : `<h4 class="xb-sub">${title} <span>${why}</span></h4><ul class="xb-list xb-uses">${items.join("")}</ul>`;
