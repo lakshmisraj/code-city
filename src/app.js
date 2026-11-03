@@ -2617,9 +2617,9 @@ function usesList(x, f) {
       // where it's defined (uses), or where that file uses it (used by)
       const name = `<button type="button" class="xb-name" data-connect="${esc(u.by === f.path ? n.of : f.path)}" data-from="${esc(u.by)}" data-name="${esc(n.name.split(".").pop())}" data-at="${n.line}" title="Show how ${esc(n.name)} is implemented">${esc(n.name)}</button>`;
       const use = `data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${short(u.by)}, where ${esc(n.name)} is used"`;
-      group.push(u.by === f.path   // uses: the name, then the file it comes from; used by: the file, then the name it takes
-        ? `<li>${name}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">→</span>${file(n.of, `data-line="${n.def || 1}" data-file="${esc(n.of)}" title="Open ${short(n.of)}${n.def ? ` at line ${n.def}, where ${esc(n.name)} is defined` : ""}"`)}</span></li>`
-        : `<li>${file(u.by, use)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">←</span>${name}</span></li>`);
+      group.push(u.by === f.path   // uses: the file, then the name it gives; used by: the name, then the file that takes it
+        ? `<li>${file(n.of, `data-line="${n.def || 1}" data-file="${esc(n.of)}" title="Open ${short(n.of)}${n.def ? ` at line ${n.def}, where ${esc(n.name)} is defined` : ""}"`)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">←</span>${name}</span></li>`
+        : `<li>${name}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">→</span>${file(u.by, use)}</span></li>`);
     }
   }
   const list = (title, why, items) => !items.length ? "" : `<h4 class="xb-sub">${title} <span>${why}</span></h4><ul class="xb-list xb-uses">${items.join("")}</ul>`;
@@ -2639,12 +2639,13 @@ function explainBlocks(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
   const one = x.files.length === 1, f0 = x.files[0];
   // every block of the code in order, each explained (Key parts are left out: the blocks cover them)
-  const parts = f => !f.blocks || !f.blocks.length || (x.range && f.blocks.length < 2) ? "" : block("xb-parts", "Block by block", "The code in order, one piece at a time. Click the lines to see them.",
-    `<ul class="xb-list">${f.blocks.map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
+  const said = f => (f.blocks || []).filter(bk => bk.explanation);   // a block Gemini didn't explain isn't shown
+  const parts = f => !said(f).length || (x.range && said(f).length < 2) ? "" : block("xb-parts", "Block by block", "The code in order, one piece at a time. Click the lines to see them.",
+    `<ul class="xb-list">${said(f).map(bk => { const at = bk.to > bk.from ? `L${bk.from}–${bk.to}` : `L${bk.from}`;
       return `<li><button type="button" class="lnum" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${at}</button><div>` +
         `<button type="button" class="flink pname" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${esc(bk.name)}</button>` +
-        `<p>${bk.explanation ? rich(bk.explanation, f.path) : `<span class="xb-none">Gemini didn't explain this block this time.</span>`}</p></div></li>`; }).join("")}</ul>`);
-  const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "Click a name to see how it's implemented, or a file to open it.", usesList(x, f));
+        `<p>${rich(bk.explanation, f.path)}</p></div></li>`; }).join("")}</ul>`);
+  const links = f => { const list = usesList(x, f); return list ? block("xb-links", "Connects to", "Click a name to see how it's implemented, or a file to open it.", list) : ""; };   // nothing left to show: no card
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
     x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.",
@@ -2726,10 +2727,12 @@ async function codeSplit(path, text, range, max) {
   });
   defs = defs.map(d => ({ ...d, from: Math.max(d.from, lo), to: Math.min(d.to, hi) })).filter(d => d.to >= d.from);
   const blocks = [], bare = /^[\s{}()\[\];,]*$/;   // lines of only brackets aren't a block of their own
+  const noCode = /^\s*(?:\/\/|#|\/\*|\*|<!--|-->|"""|'''|["']use strict["'];?\s*$|module\.exports\s*=\s*(?:\{[^}]*\}?|[\w$.]+);?\s*$|exports\.[\w$]+\s*=\s*[\w$.]+;?\s*$|export\s*\{[^}]*\}\s*;?\s*$|export\s+default\s+[\w$.]+;?\s*$|__all__\s*=|[\w$]+\s*,?\s*$)/;
   const gap = (from, to) => {
     while (from <= to && bare.test(lines[from - 1])) from++;
     while (to >= from && bare.test(lines[to - 1])) to--;
-    if (to >= from) blocks.push({ from, to, name: blocks.length ? "Other code" : "Setup" });
+    if (to >= from && !lines.slice(from - 1, to).every(l => bare.test(l) || noCode.test(l)))   // only comments or an export list: nothing to explain
+      blocks.push({ from, to, name: blocks.length ? "Other code" : "Setup" });
   };
   let at = lo;
   for (const d of defs) { if (d.from < at) continue; gap(at, d.from - 1); blocks.push(d); at = d.to + 1; }
