@@ -41,6 +41,15 @@ test("Beginner's explain marks the blocks it was sent and gives every one back, 
   finally { delete process.env.ASK_SCHEMA; }
   assert.equal(lastInput.schema.properties.files.items.properties.blocks.maxItems, undefined);
 });
+test("explain keeps a file whose path Gemini wrote short", async () => {
+  reply = { summary: "S", files: [{ path: "./CardTest.jsx", explanation: "E", links: [], blocks: [{ from: 1, name: "Card", explanation: "Draws it." }] }] };
+  const [st, out] = await call({ mode: "explain", question: "x?", repo: "r", files, plain: true,
+    code: [{ path: "src/pages/CardTest.jsx", text: "function Card() {}", imports: [], blocks: [{ from: 1, to: 1, name: "Card" }] }] });
+  assert.equal(st, 200);
+  assert.equal(out.files.length, 1);
+  assert.equal(out.files[0].path, "src/pages/CardTest.jsx");
+  assert.equal(out.files[0].blocks[0].explanation, "Draws it.");
+});
 test("explain with no code is refused", async () => {
   const [st] = await call({ mode: "explain", files, code: [] });
   assert.equal(st, 400);

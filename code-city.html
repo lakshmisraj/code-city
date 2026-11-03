@@ -3669,7 +3669,7 @@ function usedLine(l) {   // "github-callback.js uses readCookies, page from oaut
 }
 function explainBlocks(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
-  const one = x.files.length === 1, f0 = x.files[0];
+  const one = (x.paths ? x.paths.length : x.files.length) === 1, f0 = x.files[0] || {};   // one file asked about, whatever came back
   // every block of the code in order, each explained (Key parts are left out: the blocks cover them)
   const said = f => (f.blocks || []).filter(bk => bk.explanation);   // a block Gemini didn't explain isn't shown
   const parts = f => !said(f).length || (x.range && said(f).length < 2) ? "" : block("xb-parts", "Block by block", "The code in order, one piece at a time. Click the lines to see them.",

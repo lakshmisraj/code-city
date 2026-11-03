@@ -581,7 +581,12 @@ async function handle(event) {
     // Beginner: every block that was sent comes back, in order, with Gemini's words where it gave them
     const blocks = f => asked.get(f.path).map(b => { const said = (Array.isArray(f.blocks) ? f.blocks : []).find(x => x && x.from === b.from);
       return { ...b, name: said && String(said.name || "").trim() ? String(said.name).slice(0, 80) : b.name, explanation: said ? String(said.explanation || "").slice(0, 800) : "" }; });
-    const out = dedupe(reply.files.filter(f => f && sent.has(f.path))).map(f => ({
+    // Gemini sometimes writes a path short ("CardTest.jsx") or with "./": match it to the file that was sent
+    const strip = p => String(p || "").trim().replace(/^\.?\//, ""), base = p => p.split("/").pop();
+    const match = p => { p = strip(p); if (sent.has(p)) return p;
+      const hits = [...sent.keys()].filter(k => k.endsWith("/" + p) || p.endsWith("/" + k) || base(k) === base(p));
+      return hits.length === 1 ? hits[0] : sent.size === 1 && reply.files.length === 1 ? [...sent.keys()][0] : null; };
+    const out = dedupe(reply.files.filter(f => f && typeof f === "object").map(f => ({ ...f, path: match(f.path) })).filter(f => f.path)).map(f => ({
       path: f.path,
       explanation: String(f.explanation || "").slice(0, 1200),
       ...(asked.get(f.path) ? { blocks: blocks(f) } : {}),
