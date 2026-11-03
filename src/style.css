@@ -748,3 +748,6 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 .xb-sub:first-of-type { margin-top: 4px; }
 .xb-sub span { margin-left: 4px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-dim); }
 .xb-uses .xb-pair { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }   /* the arrow stays with what it points to */
+.xb-uses .xb-names { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; min-width: 0; }
+.xb-uses .xb-comma { margin-right: 4px; color: var(--ink-dim); }
+.xb-uses .xb-pair:has(.xb-names) { flex-wrap: nowrap; align-items: flex-start; }

@@ -2607,7 +2607,7 @@ function linkChip(x, from, path) {   // how sure a connection is: an import line
 function usesList(x, f) {
   const file = (p, attrs) => `<button type="button" class="xb-to" ${attrs}><span class="path">${pathHtml(p)}</span></button>`;
   const short = p => esc(p.split("/").pop());
-  const groups = { uses: [], usedBy: [], maybe: [] };
+  const groups = { uses: [], usedBy: [], maybe: [] }, from = new Map();   // from: each file this one uses, and the names it takes
   for (const l of f.links) {
     const b = bmap.get(l.path), live = b && b.userData.lines > 0, u = l.uses, kind = linkKind(x, f.path, l.path);
     const group = !kind ? groups.maybe : kind === "imports" ? groups.uses : groups.usedBy;
@@ -2616,12 +2616,16 @@ function usesList(x, f) {
       // the name opens where it's implemented (explained, beside the line that uses it); a file opens that file:
       // where it's defined (uses), or where that file uses it (used by)
       const name = `<button type="button" class="xb-name" data-connect="${esc(u.by === f.path ? n.of : f.path)}" data-from="${esc(u.by)}" data-name="${esc(n.name.split(".").pop())}" data-at="${n.line}" title="Show how ${esc(n.name)} is implemented">${esc(n.name)}</button>`;
-      const use = `data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${short(u.by)}, where ${esc(n.name)} is used"`;
-      group.push(u.by === f.path   // uses: the file, then the name it gives; used by: the name, then the file that takes it
-        ? `<li>${file(n.of, `data-line="${n.def || 1}" data-file="${esc(n.of)}" title="Open ${short(n.of)}${n.def ? ` at line ${n.def}, where ${esc(n.name)} is defined` : ""}"`)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">←</span>${name}</span></li>`
-        : `<li>${name}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">→</span>${file(u.by, use)}</span></li>`);
+      if (u.by === f.path) { if (!from.has(n.of)) from.set(n.of, []); from.get(n.of).push({ n, name }); continue; }
+      groups.usedBy.push(`<li>${name}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">→</span>${file(u.by,
+        `data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${short(u.by)}, where ${esc(n.name)} is used"`)}</span></li>`);
     }
   }
+  groups.uses = [...from].map(([p, got]) => {   // uses: one row per file, then the names it gives (files with no name read last)
+    const def = got.find(g => g.n.def);
+    return (`<li>${file(p, `data-line="${def ? def.n.def : 1}" data-file="${esc(p)}" title="Open ${short(p)}"`)}<span class="xb-pair"><span class="xb-arrow" aria-hidden="true">←</span>` +
+      `<span class="xb-names">${got.map(g => g.name).join(`<span class="xb-comma">,</span>`)}</span></span></li>`);
+  }).concat(groups.uses);
   const list = (title, why, items) => !items.length ? "" : `<h4 class="xb-sub">${title} <span>${why}</span></h4><ul class="xb-list xb-uses">${items.join("")}</ul>`;
   return list("Uses", "from other files", groups.uses) + list("Used by", "other files", groups.usedBy) +
     (audience === "beginner" ? "" : list("Maybe related", "Gemini's reading, no import line", groups.maybe));
