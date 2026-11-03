@@ -745,3 +745,7 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 .xb-uses .path i { font-style: normal; color: var(--ink-dim); }
 .xb-uses button:hover .path, .xb-uses button.xb-name:hover { text-decoration: underline; }
 .xb-uses button:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+.xb-sub { margin: 10px 0 4px; font: 600 11px var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.xb-sub:first-of-type { margin-top: 4px; }
+.xb-sub span { margin-left: 4px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-dim); }
+.xb-uses .xb-pair { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }   /* the arrow stays with what it points to */
