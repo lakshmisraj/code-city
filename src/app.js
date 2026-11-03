@@ -1981,7 +1981,7 @@ function saveSession() {
     panel: [...inPanel].filter(([, st]) => !st.loading && !st.errorHtml).map(([p, st]) => [p, stepToJSON(st)]),
     picked: picked ? picked.userData.f.path : null,
     tour: tourState ? { title: tourState.title, story: tourState.story, overview: tourState.overview,
-      workflows: tourState.workflows.map(({ lines, handoff, ...w }) => w), w: tourState.w, i: tourState.i } : null };
+      workflows: tourState.workflows.map(({ lines, handoff, ...w }) => w), w: tourState.w, i: tourState.i, seen: [...(tourState.seen || [])] } : null };
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) { /* storage blocked: nothing to restore */ }
   if (audience !== "beginner") return;
   try {
@@ -4949,7 +4949,17 @@ function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved o
   const shared = new Map();
   data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
   return { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
-    w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
+    w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared, seen: new Set(data.seen || []) };
+}
+// Beginner: the tour ends only once every step of every workflow has been seen. These find what's left.
+const wfDone = (t, k) => t.workflows[k].steps.every((_, i) => t.seen.has(`${k}:${i}`));
+function nextUnseen(t) {   // { w, i } of the next step not seen yet: in this workflow first, then the next workflows; null when none
+  const n = t.workflows.length;
+  for (let d = 0; d < n; d++) {
+    const k = (t.w + d) % n, i = t.workflows[k].steps.findIndex((_, i) => !t.seen.has(`${k}:${i}`));
+    if (i >= 0) return { w: k, i };
+  }
+  return null;
 }
 function tourStep() { const t = tourState; return t && t.w >= 0 ? t.workflows[t.w].steps[t.i] : null; }
 function showOverview(end) {   // end: Beginner's closing card instead of the overview
@@ -4971,6 +4981,7 @@ function goToStop(i) {
   if (!t || t.w < 0) return;
   const steps = t.workflows[t.w].steps;
   t.i = Math.max(0, Math.min(steps.length - 1, i));
+  if (t.seen) t.seen.add(`${t.w}:${t.i}`);
   const b = bmap.get(steps[t.i].path);
   if (b) flyToBuilding(b);
   renderTour();
@@ -5199,7 +5210,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}${t.seen && wfDone(t, k) ? `<span class="wf-done">Done</span>` : ""}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
       ${coverageHtml(t)}
       <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
         ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
@@ -5234,7 +5245,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         </li>`; }).join("")}</ol>
       <div class="side-actions tour-nav">
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
-        <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : t.w < t.workflows.length - 1 ? "Next workflow" : "Finish tour"}</button>
+        <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : (u => !u ? "Finish tour" : u.w === t.w ? "Step you skipped" : "Next workflow")(nextUnseen(t))}</button>
       </div>
       <p class="side-note kbd-tip">Tip: the ← and → keys step through the tour.</p>`;
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
@@ -5323,8 +5334,11 @@ sideBody.addEventListener("click", e => {
   if (act.dataset.tour === "back") { if (t.i > 0) goToStop(t.i - 1); else if (t.w > 0) goToWorkflow(t.w - 1, t.workflows[t.w - 1].steps.length - 1); }
   else if (act.dataset.tour === "next") {
     if (t.i < w.steps.length - 1) goToStop(t.i + 1);
+    else if (plainTour()) {   // Beginner: on to a step not seen yet; the closing card only once every step of every workflow is
+      const u = nextUnseen(t);
+      if (!u) showOverview(true); else if (u.w === t.w) goToStop(u.i); else goToWorkflow(u.w, u.i);
+    }
     else if (t.w < t.workflows.length - 1) goToWorkflow(t.w + 1, 0);
-    else if (plainTour()) showOverview(true);   // Beginner ends on a card that says what next
     else { closeSide(); resetView(true); }
   } else if (act.dataset.tour === "close") { closeSide(); resetView(true); }
   else if (act.dataset.tour === "ask") { const q = $("askInput"); if (q && q.offsetParent) q.focus(); else openSeg("understand"); }
