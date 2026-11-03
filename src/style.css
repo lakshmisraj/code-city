@@ -755,7 +755,47 @@ body.for-beginner #siteTour .st-skip { font-size: 12.5px; color: var(--ink-dim);
 #dExplain { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 10px; }
 #dExplain[hidden] { display: none; }
 /* Beginner: the "New here?" card steps aside while a panel or window is open, so it never covers one */
-body.for-beginner:is(.drawer-open, .side-open, .tabs-open) #startHint { display: none; }
+body.for-beginner:is(.drawer-open, .side-open, .tabs-open) :is(#startHint, #resumeHint) { display: none; }
 .phone-only { display: none; }
 @media (max-width: 640px), (max-height: 500px) and (pointer: coarse) { body.for-beginner .phone-only { display: block; } }
 #forSel2 { font: 14px var(--f-body); color: var(--ink); background: var(--street-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.needs-signin { font-style: normal; color: var(--sodium); }
+
+/* Beginner: orange only for the one main action on a screen (primary buttons); everything else is ink or grey */
+body.for-beginner .rail-btn[aria-pressed="true"] { color: var(--ink); background: var(--street-2); }
+body.for-beginner .rail-btn[aria-pressed="true"]::before { background: var(--ink-dim); }
+body.for-beginner .flink, body.for-beginner .linkish, body.for-beginner .ask-answer a, body.for-beginner .explain-text a { color: var(--ink); text-decoration-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+body.for-beginner .flink:hover, body.for-beginner .linkish:hover { text-decoration-color: var(--ink); }
+body.for-beginner .linkish { font-family: var(--f-body); }
+body.for-beginner .xb { --xb: var(--line); }
+body.for-beginner .xb-uses button.xb-name { color: var(--ink); }
+body.for-beginner .xb-uses .xb-arrow, body.for-beginner .needs-signin { color: var(--ink-dim); }
+/* Beginner: labels in sentence case, never under 12px */
+body.for-beginner .seg-head h2 { font: 600 14px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink); }
+body.for-beginner .pane-kind { font: 600 12px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink-dim); }
+body.for-beginner .xb h3 { font: 600 14px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink); }
+body.for-beginner .xb-sub, body.for-beginner .stats dt, body.for-beginner .field > label, body.for-beginner .label,
+body.for-beginner .drawer-body h3, body.for-beginner .tag { font-size: 12px; letter-spacing: 0; text-transform: none; }
+body.for-beginner .rail-label { font-size: 11px; }   /* the most the rail's width takes for "Understand" */
+body.for-beginner #siteTour .st-count, body.for-beginner .xb-why, body.for-beginner .side-note { font-size: 12.5px; }
+/* Beginner on a touch screen: every control a finger can hit */
+@media (pointer: coarse) {
+  body.for-beginner :is(.mini, .linkish, .lnum, .xb-uses button, .seg-action, .win-tab button):not(#topbar *) { min-height: 44px; min-width: 44px; box-sizing: border-box; }
+  body.for-beginner :is(.lnum, .xb-uses button, .linkish) { display: inline-flex; align-items: center; }
+}
+/* Beginner with reduced motion: nothing slides or fades */
+@media (prefers-reduced-motion: reduce) {
+  body.for-beginner *, body.for-beginner *::before, body.for-beginner *::after { transition-duration: 0s !important; animation-duration: 0s !important; scroll-behavior: auto !important; }
+}
+body.for-beginner :is(.wf-label, .group-title, .chip, .chain-head b) { font-size: 12px; letter-spacing: 0; text-transform: none; }
+body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
+/* Beginner's Recent changes: one plain row per change */
+.recent { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.recent-row { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.recent-row:hover, .recent-row:focus-visible { background: var(--street-2); }
+.recent-row:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
+.recent-row.on { background: var(--street-2); box-shadow: inset 2px 0 0 var(--ink-dim); }
+.recent-msg { font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.recent-meta { font-size: 12px; color: var(--ink-dim); }
+.recent-detail { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.recent-detail h3 { margin: 4px 0 0; }

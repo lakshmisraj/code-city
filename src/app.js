@@ -636,20 +636,30 @@ function clearCity() {
 }
 
 function label(text, x, y, z, size, dir) {
-  const c = document.createElement("canvas");
-  const ctx = c.getContext("2d");
-  const fs = 64, font = `700 ${fs}px "Chakra Petch", "Arial Narrow", sans-serif`;
-  text = text.toUpperCase();
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
+  sp.position.set(x, y, z); sp.renderOrder = 10; sp.userData.text = text; sp.userData.size = size; sp.userData.dir = dir;
+  drawLabel(sp); city.add(sp); labels.push(sp);
+  return sp;
+}
+// A district's name over the city. Beginner's are quieter: the folder's own name, smaller, in the body face and a
+// soft grey, so the buildings lead (and only the biggest districts are named: see quietLabels).
+function drawLabel(sp) {
+  const easy = audience === "beginner", c = document.createElement("canvas"), ctx = c.getContext("2d");
+  const fs = 64, font = easy ? `600 ${fs}px "Instrument Sans", Arial, sans-serif` : `700 ${fs}px "Chakra Petch", "Arial Narrow", sans-serif`;
+  const text = easy ? sp.userData.text : sp.userData.text.toUpperCase(), size = sp.userData.size * (easy ? 0.7 : 1);
   ctx.font = font;
   c.width = Math.ceil(ctx.measureText(text).width * 1.05) + 40; c.height = fs + 30;
   ctx.font = font;
-  ctx.fillStyle = "rgba(11,16,32,.72)"; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.fillStyle = "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
-  sp.scale.set(size * c.width / c.height, size, 1); sp.position.set(x, y, z); sp.renderOrder = 10;
-  sp.userData.base = sp.scale.clone(); sp.userData.dir = dir;
-  city.add(sp); labels.push(sp);
-  return sp;
+  ctx.fillStyle = easy ? "rgba(11,16,32,.5)" : "rgba(11,16,32,.72)"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = easy ? "rgba(214,220,235,.88)" : "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
+  if (sp.material.map) sp.material.map.dispose();
+  sp.material.map = new THREE.CanvasTexture(c); sp.material.needsUpdate = true;
+  sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone();
+}
+const QUIET_LABELS = 6;   // Beginner names only this many districts, the biggest
+function quietLabels() {
+  const keep = new Set([...labels].sort((a, b) => b.userData.size - a.userData.size).slice(0, audience === "beginner" ? QUIET_LABELS : labels.length));
+  for (const l of labels) l.visible = keep.has(l);
 }
 
 function place(node, rect, depth) {
@@ -706,6 +716,7 @@ function buildCity(data) {
   const g = new THREE.Mesh(BOX, platMats[0]);
   g.position.set(0, -STEP, 0); g.scale.set(side + 4, STEP, side + 4); city.add(g);
   place(top, { x: -side / 2, y: -side / 2, w: side, h: side }, 0);
+  quietLabels();
   built = performance.now();
   if (reduceMotion) buildings.forEach(b => b.userData.delay = -10);
 
@@ -1103,7 +1114,7 @@ function openDrawer(b) {
         : codeRepo() ? "Press View code to read the full source." : "Source previews are left out of the built-in repos to keep them small. Build it with the local app to read code here."}</p>`;
   const readable = b.userData.lines > 0 && (f.text != null || codeRepo());   // the actions come first, so they never sit below a long list
   document.getElementById("dActions").innerHTML = !readable ? "" : `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-explain>Explain this code</button>` : ""}<button type="button" data-view>View code</button>${IN_VSCODE ? `<button type="button" data-open-editor>Open in editor</button>` : ""}</div>`;
-  renderPanelExplain();
+  renderPanelExplain(); signinCues();
   opened(drawer); roomFor(); drawer.hidden = false; document.body.classList.add("drawer-open");
   if (picked !== prevPicked) { flyToBuilding(b); renderFileLinks(f.path); drawLinks(); }
   syncUrl();
@@ -1219,6 +1230,7 @@ drawer.addEventListener("click", e => {
 });
 document.getElementById("closeBtn").onclick = closeDrawer;
 drawer.addEventListener("click", e => {
+  if (picked && e.target.closest("[data-explain-signin]")) return startSignin();
   if (picked && e.target.closest("[data-explain]")) explainFile(picked.userData.f.path);
   if (picked && e.target.closest("[data-view]")) viewFile(picked.userData.f.path);
   if (picked && e.target.closest("[data-open-editor]")) openInEditor(picked.userData.f.path);
@@ -1949,26 +1961,56 @@ function onCityBuilt() {
 // is hidden its windows, explanations and Ask answer are saved for this tab, and reopened when the same repo
 // loads again within half an hour.
 const SESSION_KEY = "codecity.session", SESSION_MS = 30 * 60 * 1000;
+// Beginner: the same, kept on this device for two weeks per repo, and offered back with a "Continue" card
+const KEEP_KEY = repo => "codecity.keep." + repo, KEEP_MS = 14 * 864e5;
+let keptHere = false;   // this page has kept something: closing it all clears it, but a visit that opened nothing doesn't
 function stepToJSON(st) {
   return { paths: st.paths, from: st.from, change: st.change || null, summary: st.summary, files: st.files, partial: [...(st.partial || [])],
     real: st.real ? [...st.real].map(([k, v]) => [k, [...v]]) : null,
     errorHtml: st.loading ? "This explanation was interrupted. Press Explain again." : st.errorHtml };
 }
 function stepFromJSON(j) { return { ...j, errorHtml: j.errorHtml ? esc(String(j.errorHtml).replace(/<[^>]*>/g, "")) : j.errorHtml, loading: false, partial: new Set(j.partial || []), real: j.real ? new Map(j.real.map(([k, v]) => [k, new Set(v)])) : null }; }
+const sessionRepo = () => currentRepo || (citySource !== "sample" && cityName) || null;   // a GitHub repo, or a local folder by its name
 function saveSession() {
-  if (!currentRepo) return;
+  const repo = sessionRepo();
+  if (!repo) return;
   const geo = p => ({ x: p.x, y: p.y, w: p.w, h: p.h, collapsed: !!p.collapsed });
-  const snap = { at: Date.now(), repo: currentRepo,
+  const snap = { at: Date.now(), repo,
     windows: panes.filter(p => p.kind !== "diff").map(p => ({ kind: p.kind, path: p.path, line: p.line, st: p.st ? stepToJSON(p.st) : null, ...geo(p) })),
-    ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order } : null };
+    ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order } : null,
+    panel: [...inPanel].filter(([, st]) => !st.loading && !st.errorHtml).map(([p, st]) => [p, stepToJSON(st)]),
+    picked: picked ? picked.userData.f.path : null,
+    tour: tourState ? { title: tourState.title, story: tourState.story, overview: tourState.overview,
+      workflows: tourState.workflows.map(({ lines, handoff, ...w }) => w), w: tourState.w, i: tourState.i } : null };
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) { /* storage blocked: nothing to restore */ }
+  if (audience !== "beginner") return;
+  try {
+    if (snap.windows.length || snap.panel.length || snap.picked || snap.tour) { localStorage.setItem(KEEP_KEY(repo), JSON.stringify(snap)); keptHere = true; }
+    else if (keptHere) localStorage.removeItem(KEEP_KEY(repo));   // everything closed: nothing to come back to
+  } catch (e) { /* storage blocked or full: only this tab keeps it */ }
 }
 addEventListener("pagehide", saveSession);
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveSession(); });
 function restoreSession() {
   let snap = null;
+  $("resumeHint").hidden = true;
   try { snap = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); } catch (e) { return; }
-  if (!snap || snap.repo !== currentRepo || Date.now() - snap.at > SESSION_MS || panes.length) return;
+  const some = j => j && ((j.windows || []).length || (j.panel || []).length || j.picked || j.tour || j.ask);   // anything to bring back
+  if (some(snap) && snap.repo === sessionRepo() && Date.now() - snap.at <= SESSION_MS && !panes.length) return applySession(snap);   // a reload in this tab: just as it was
+  if (audience !== "beginner" || citySource === "sample" || panes.length) return;
+  let kept = null;
+  try { kept = JSON.parse(localStorage.getItem(KEEP_KEY(sessionRepo())) || "null"); } catch (e) { return; }
+  if (!some(kept) || Date.now() - kept.at > KEEP_MS) return;
+  const where = [kept.picked && `<b>${esc(kept.picked.split("/").pop())}</b>`,
+    kept.tour && kept.tour.w >= 0 && kept.tour.workflows[kept.tour.w] && `step ${kept.tour.i + 1} of “${esc(kept.tour.workflows[kept.tour.w].name)}”`,
+    kept.tour && kept.tour.w < 0 && "the workflows tour",
+    kept.windows.length && `${kept.windows.length} open window${kept.windows.length === 1 ? "" : "s"}`].filter(Boolean);
+  $("resumeText").innerHTML = `<b>Welcome back.</b> Pick up where you left off${where.length ? `: ${where.join(", ")}` : ""}.`;
+  $("resumeHint").hidden = false; $("startHint").hidden = true;
+  $("resumeGo").onclick = () => { $("resumeHint").hidden = true; applySession(kept); };
+  $("resumeClose").onclick = () => { $("resumeHint").hidden = true; try { localStorage.removeItem(KEEP_KEY(sessionRepo())); } catch (e) { /* storage blocked */ } };
+}
+function applySession(snap) {
   for (const w of snap.windows || []) {
     const geo = { x: w.x, y: w.y, w: w.w, h: w.h, collapsed: !!w.collapsed };
     if (w.kind === "explain") {
@@ -1984,6 +2026,11 @@ function restoreSession() {
     }); }
   }
   if (snap.ask) { askState = { ...snap.ask, files: new Map(snap.ask.order.map(f => [f.path, f.why])) }; openSide("ask"); }
+  for (const [p, j] of snap.panel || []) { const st = stepFromJSON(j); inPanel.set(p, st); explainState.chain.push(st); }
+  if (snap.tour && Array.isArray(snap.tour.workflows)) {   // the tour, where it was: no need to ask Gemini again
+    endTour(); tourState = tourFrom(snap.tour); openSide("tour");
+    if (snap.tour.w >= 0 && tourState.workflows[snap.tour.w]) goToWorkflow(snap.tour.w, snap.tour.i); else showOverview();
+  } else if (snap.picked && bmap.get(snap.picked)) openDrawer(bmap.get(snap.picked));
   drawLinks();
 }
 
@@ -2068,10 +2115,14 @@ function setAudience(a, quiet) {
   const others = Object.keys(AUDIENCES).filter(k => k !== a && SITE_URLS[k]);
   $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
   understandOrder();
+  if (!quiet) { signinCues(); for (const l of labels) drawLabel(l); quietLabels(); if (typeof keepCityClear === "function") keepCityClear(); }   // the first, quiet call runs before Ask and sign-in are known
   $("dMore").open = a !== "beginner";
   if (a !== "beginner") $("startHint").hidden = true;
   // Beginner: Info is Help (Guide's how-to folded into it), and Guide isn't on the rail
   SEG_TITLES.info = a === "beginner" ? "Help" : "Info";
+  $("commitsBtn").querySelector("b").textContent = a === "beginner" ? "Recent changes" : "Commits and branches";   // Beginner: the latest changes, plainly
+  $("commitsBtn").querySelector("span").textContent = a === "beginner" ? "What changed lately, and what each change did"
+    : "Every branch and merge, newest first; click a commit to see it in the city";
   const help = document.querySelector('#rail [data-seg="info"]');
   help.querySelector(".rail-label").textContent = SEG_TITLES.info; help.setAttribute("aria-label", SEG_TITLES.info);
   help.title = a === "beginner" ? "Help: what's on screen and how to move around" : "Info: what Code City shows and how to read it";
@@ -2081,7 +2132,8 @@ function setAudience(a, quiet) {
   if (a === "beginner" && !tc) document.head.append(Object.assign(document.createElement("meta"), { name: "theme-color", content: "#0b1020" }));
   else if (a !== "beginner" && tc) tc.remove();
   if (quiet) return;
-  if (a === "beginner" && ["commits", "hot", "pr", "report"].includes(sideMode)) closeSide();   // panels this version doesn't have
+  if (a === "beginner" && ["hot", "pr", "report"].includes(sideMode)) closeSide();
+  if (sideMode === "commits") renderSide();   // the list in this version's form   // panels this version doesn't have
   if (a === "beginner" && colorMode === "heat") setColorMode("lang");
   if (a === "manager" && citySource !== "sample" && sideMode !== "report") openReport();
   else if (sideMode) renderSide();
@@ -2501,6 +2553,7 @@ function signOut() {
   $("signedinRow").hidden = true;
   $("signinRow").hidden = !signinEnabled;
   syncTokenUi();
+  signinCues();
   toast("Signed out of GitHub");
 }
 $("signoutBtn").onclick = signOut;
@@ -2520,6 +2573,7 @@ async function initSignin() {
     catch (e) { if (/rejected/.test(e.message)) { signOut(); setRepoStatus("Your GitHub sign-in expired. Please sign in again."); } }
   } else $("signinRow").hidden = !signinEnabled;
   syncTokenUi();
+  signinCues();
 }
 
 // ---------- Ask the city ----------
@@ -2540,10 +2594,25 @@ async function initAsk() {
   $("askForm").hidden = !askEnabled;
   $("tourForm").hidden = !askEnabled;
   understandOrder();
+  signinCues();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
 }
 // The local app with your own Gemini key needs no sign-in ("open"); the hosted site asks for one.
 const canAsk = () => !!oauthToken || askOpen;
+// Beginner: say up front that asking and explaining need a sign-in, on the controls themselves, so no one finds out
+// only after pressing them. Each one then starts the sign-in.
+const ASK_HOLDER = $("askInput").placeholder;
+const needsSignin = () => audience === "beginner" && askEnabled && signinEnabled && !canAsk();
+function signinCues() {
+  const need = needsSignin(), btn = $("askForm").querySelector('button[type="submit"]');
+  $("askInput").placeholder = need ? "Sign in with GitHub to ask about the code" : ASK_HOLDER;
+  btn.textContent = need ? "Sign in" : "Ask";
+  const tip = $("tourBtn2").querySelector("span");
+  tip.querySelector(".needs-signin")?.remove();
+  if (need) tip.insertAdjacentHTML("beforeend", ` <em class="needs-signin">Needs a free GitHub sign-in.</em>`);
+  const ex = $("dActions").querySelector("[data-explain], [data-explain-signin]");
+  if (ex) { ex.textContent = need ? "Sign in to explain this code" : "Explain this code"; ex.toggleAttribute("data-explain", !need); ex.toggleAttribute("data-explain-signin", need); }
+}
 // A private repo's code goes to Code City's server and to Gemini when you ask, so say so once per repo first.
 const privateOk = new Set();
 function okToSendPrivate() {
@@ -2553,7 +2622,7 @@ function okToSendPrivate() {
   return true;
 }
 const askHeaders = () => ({ "Content-Type": "application/json", "X-Code-City": "1", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
-$("askForm").addEventListener("submit", e => { e.preventDefault(); askCity($("askInput").value); });
+$("askForm").addEventListener("submit", e => { e.preventDefault(); if (needsSignin()) return startSignin(); askCity($("askInput").value); });
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
 {
   const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = document.querySelector('#segPanel .segment[data-seg="understand"]');
@@ -4562,8 +4631,10 @@ function ago(t) {
   const s = Date.now() / 1000 - t, d = s / 86400;
   return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : d < 30 ? `${Math.round(d)} d ago` : d < 365 ? `${Math.round(d / 30)} mo ago` : `${(d / 365).toFixed(1)} y ago`;
 }
+const RECENT = 10;   // Beginner's Recent changes: this many, newest first
 function renderCommits() {
   const st = commitState && commitState.city === buildings ? commitState : null;
+  if (audience === "beginner") return renderRecent(st);
   $("sideTitle").textContent = "Commits and branches";
   if (!st) { sideBody.innerHTML = ""; return; }
   const n = st.commits.size;
@@ -4584,6 +4655,34 @@ function renderCommits() {
     (st.skipped ? `<p class="side-note">${fmt(st.skipped)} more branch${st.skipped === 1 ? " isn't" : "es aren't"} shown.</p>` : "") +
     (st.error ? `<p class="side-note">${esc(st.error)}</p>` : "");
 }
+// Beginner: the last few changes as a plain list (no branches or graph). Picking one shows what it touched, with
+// "See what changed" and "Explain this change"; the city stays as it is today.
+function renderRecent(st) {
+  $("sideTitle").textContent = "Recent changes";
+  $("sideSub").textContent = currentRepo || cityName;
+  if (!st) { sideBody.innerHTML = ""; return; }
+  const order = commitOrder(st.commits).slice(0, RECENT), sel = st.sel && st.commits.get(st.sel);
+  if (!order.length) {
+    sideBody.innerHTML = st.error ? `<p class="side-note">${esc(st.error)}</p><div class="side-actions"><button type="button" data-commits-retry>Try again</button></div>`
+      : st.loading ? `<p class="side-note">Reading the latest changes…</p>`
+      : `<p class="side-note">${currentRepo || hist ? "No changes found." : "This project has no history here. Open it from GitHub to see its changes."}</p>`;
+    return;
+  }
+  sideBody.innerHTML = (sel ? recentDetailHtml(st, sel) : `<p class="side-note">Pick a change to see what it touched.</p>`) +
+    `<ol class="recent">${order.map(sha => { const c = st.commits.get(sha); return `<li><button type="button" class="recent-row${sha === st.sel ? " on" : ""}" data-commit="${esc(sha)}"${sha === st.sel ? ` aria-current="true"` : ""}>` +
+      `<span class="recent-msg">${esc(c.m.split("\n")[0])}</span><span class="recent-meta">${esc(c.a || "Someone")} · ${ago(c.t)}</span></button></li>`; }).join("")}</ol>`;
+}
+function recentDetailHtml(st, c) {
+  const files = st.detail.get(c.sha), rows = Array.isArray(files) ? files : [], can = rows.some(f => f.patch);
+  return `<div class="recent-detail"><div class="cg-dhead"><b>${esc(c.m.split("\n")[0])}</b><button type="button" class="mini" data-commit-close aria-label="Close this change" title="Close">✕</button></div>` +
+    `<p class="side-note">${esc(c.a || "Someone")} · ${esc(dateFmt.format(new Date(c.t * 1000)))}</p>` +
+    (files === undefined ? `<p class="side-note">Reading what it changed…</p>` : typeof files === "string" ? `<p class="side-note">${esc(files)}</p>` :
+      (can ? `<div class="side-actions">${askEnabled ? `<button type="button" class="primary" data-commit-explain>Explain this change</button>` : ""}<button type="button" data-commit-diffs>See what changed</button></div>` : "") +
+      `<h3>Files it changed <span class="count">${fmt(rows.length)}</span></h3><ol class="rank cg-files">${rows.slice(0, 30).map(f => `<li class="cg-file"><button type="button" ${bmap.has(f.path) ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}><span class="path">${pathHtml(f.path)}</span></button>` +
+        (f.patch ? `<button type="button" class="mini" data-diff="${esc(f.path)}" title="The lines this change removed and added">See it</button>` : "") + `</li>`).join("")}</ol>` +
+      (rows.length > 30 ? `<p class="side-note">and ${fmt(rows.length - 30)} more files</p>` : "") +
+      (!can && rows.length ? `<p class="side-note">The exact lines changed are only shown for projects opened from GitHub.</p>` : "")) + `</div>`;
+}
 function commitDetailHtml(st, c) {
   const files = st.detail.get(c.sha), idx = hist ? hist.commits.findIndex(x => x.h === c.sha.slice(0, 8)) : -1;
   const rows = Array.isArray(files) ? files : [];
@@ -4600,7 +4699,7 @@ async function selectCommit(sha) {
   const st = commitState; if (!st) return;
   st.sel = sha; commitSel = null;
   const idx = hist ? hist.commits.findIndex(x => x.h === sha.slice(0, 8)) : -1;
-  if (idx >= 0) { playing = false; viewAt(idx); scrub.value = idx; tlOpen = true; syncTimeline(); st.rewound = true; }   // the city as it was right after it
+  if (idx >= 0 && audience !== "beginner") { playing = false; viewAt(idx); scrub.value = idx; tlOpen = true; syncTimeline(); st.rewound = true; }   // the city as it was right after it (Beginner: it stays as today)
   renderSide();
   if (!st.detail.has(sha)) {
     if (currentRepo && sha.length > 8) {
@@ -4791,7 +4890,7 @@ function showStartHint() {
   try { seen = !!localStorage.getItem("codecity.startHint"); } catch (e) { /* storage blocked: show it */ }
   const show = audience === "beginner" && !seen && citySource !== "sample";
   if (show && !$("siteTour").hidden) return void setTimeout(showStartHint, 1000);   // after the site's own tour
-  $("startHint").hidden = !show;
+  $("startHint").hidden = !show || !$("resumeHint").hidden;   // coming back: the Continue card instead
 }
 function doneStartHint() {
   $("startHint").hidden = true;
@@ -4839,15 +4938,18 @@ async function planTour(topic, gen, status) {
     status.textContent = "";
     if (askState) askState = null;
     endTour();   // an old tour's auto-play timer must not drive the new one
-    const shared = new Map();
-    data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
-    tourState = { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
-      w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
+    tourState = tourFrom(data);
     if (plainTour()) loadMap();   // Beginner's tour shows where the program starts
     if (plainTour() && !drawer.hidden) closeDrawer();   // Beginner: the tour has the right edge to itself, not squeezed under a file
     openSide("tour");
     showOverview();
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
+}
+function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved one), at its overview
+  const shared = new Map();
+  data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
+  return { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
+    w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared };
 }
 function tourStep() { const t = tourState; return t && t.w >= 0 ? t.workflows[t.w].steps[t.i] : null; }
 function showOverview(end) {   // end: Beginner's closing card instead of the overview
