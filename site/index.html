@@ -740,6 +740,17 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 }
 .xb-parts .lnum { min-width: 44px; padding: 1px 6px; white-space: nowrap; }
 .xb-none { font-style: italic; }
+
+/* Beginner's Connects to: a name, then the file it leads to */
+.xb-uses li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.xb-uses .xb-arrow { color: var(--added); }
+.xb-uses button.xb-name, .xb-uses button.xb-to { all: unset; cursor: pointer; border-radius: 4px; min-width: 0; }
+.xb-uses button.xb-name { font: 12.5px var(--f-mono); padding: 1px 6px; background: var(--street-2); color: var(--sodium); }
+.xb-uses button.xb-to { padding: 1px 2px; }
+.xb-uses .path { font: 600 12.5px var(--f-mono); color: var(--ink); overflow-wrap: anywhere; }
+.xb-uses .path i { font-style: normal; color: var(--ink-dim); }
+.xb-uses button:hover .path, .xb-uses button.xb-name:hover { text-decoration: underline; }
+.xb-uses button:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
 </style>
 
 <div id="stage" aria-label="3D city where each building is a file"></div>
@@ -3612,6 +3623,21 @@ function linkChip(x, from, path) {   // how sure a connection is: an import line
   return real ? `<span class="chip real" title="Found in this file's import lines">imports</span>` : user ? `<span class="chip real" title="Found in that file's import lines">used by</span>`
     : `<span class="chip guess" title="Gemini's reading of the code, not an import line">inferred</span>`;
 }
+// Connects to, as one line per name a file takes from another or gives to one: the name (to the line that uses it),
+// then the file it leads to (where it's defined, explained; or the file that uses it). A connection with no name
+// read is just its file; Advanced marks the ones Gemini inferred.
+function usesList(x, f) {
+  const to = (p, attrs) => `<button type="button" class="xb-to" ${attrs}><span class="path">${pathHtml(p)}</span></button>`;
+  return `<ul class="xb-list xb-uses">${f.links.flatMap(l => {
+    const b = bmap.get(l.path), live = b && b.userData.lines > 0, u = l.uses, out = !u || u.by === f.path;
+    if (!u || !u.names.length) return [`<li>${live ? to(l.path, `data-connect="${esc(l.path)}" data-from="${esc(f.path)}" title="Show the line that uses it, explained"`) : `<span class="path">${pathHtml(l.path)}</span>`}` +
+      `${audience !== "beginner" && !linkKind(x, f.path, l.path) ? linkChip(x, f.path, l.path) : ""}</li>`];
+    return u.names.map(n => `<li><button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(u.by)}" title="Show line ${n.line} of ${esc(u.by.split("/").pop())}, where it's used">${esc(n.name)}</button>` +
+      `<span class="xb-arrow" aria-hidden="true">→</span>` + (out
+        ? to(n.of, `data-connect="${esc(n.of)}" data-from="${esc(f.path)}" title="Show where ${esc(n.name)} is defined, explained"`)
+        : to(u.by, `data-line="${n.line}" data-file="${esc(u.by)}" title="Show where ${esc(u.by.split("/").pop())} uses it"`)) + `</li>`);
+  }).join("")}</ul>`;
+}
 // Beginner: an explanation as a stack of blocks, each saying what it's for. One file's own paragraph is its
 // summary (the two said the same thing), and a connection opens the line that uses the other file, explained.
 function usedLine(l) {   // "github-callback.js uses readCookies, page from oauth.js", each name opening the line that uses it
@@ -3630,10 +3656,7 @@ function explainBlocks(x) {
       return `<li><button type="button" class="lnum" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${at}</button><div>` +
         `<button type="button" class="flink pname" data-line="${bk.from}" data-file="${esc(f.path)}" title="Show these lines in the code">${esc(bk.name)}</button>` +
         `<p>${bk.explanation ? rich(bk.explanation, f.path) : `<span class="xb-none">Gemini didn't explain this block this time.</span>`}</p></div></li>`; }).join("")}</ul>`);
-  const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "Other files this one works with. Click one to see the line where it uses that file, explained.",
-    `<ul class="xb-list">${f.links.map(l => { const b = bmap.get(l.path), live = b && b.userData.lines > 0;
-      return `<li><button type="button" class="xb-conn" ${live ? `data-connect="${esc(l.path)}" data-from="${esc(f.path)}" title="Show the line in ${esc(f.path.split("/").pop())} that uses it, explained"` : "disabled"}>` +
-        `<span class="xb-conn-head"><span class="path">${pathHtml(l.path)}</span>${usedLine(l) ? "" : linkChip(x, f.path, l.path)}</span><span class="xb-conn-how">${esc(l.how)}</span></button>${usedLine(l)}</li>`; }).join("")}</ul>`);
+  const links = f => !f.links.length ? "" : block("xb-links", "Connects to", "What this file uses from other files, and what other files use from it. Click a name to see the line that uses it, or a file to go there.", usesList(x, f));
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
     x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.",
@@ -3659,7 +3682,7 @@ function explainHtml(x) {
       ${x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : ""}
       <p class="explain-text">${rich(f.explanation, f.path)}</p>
       ${f.parts.length ? `<div><h3>Key parts</h3><ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button><button type="button" class="flink pname" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">${esc(pt.name)}</button> ${rich(pt.note, f.path)}</li>`).join("")}</ul></div>` : ""}
-      ${f.links.length ? `<div><h3>Connects to</h3><ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how, l)).join("")}</ol></div>` : ""}
+      ${f.links.length ? `<div><h3>Connects to</h3>${audience === "advanced" ? usesList(x, f) : `<ol class="rank links">${f.links.map(l => row(f.path, l.path, l.how, l)).join("")}</ol>`}</div>` : ""}
     </section>`).join("");
 }
 // View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
@@ -3865,7 +3888,7 @@ const MAX_IMPL_LINES = 60;   // a long function is explained from its start
 // The functions and variables a file takes from another and really uses, each with the first line that uses it and
 // the file that really defines it: the names its import line names (for a whole module, the members used from it, as
 // cart.total), leaving out types and classes; else (a require of the whole file, say) the other file's functions it
-// calls. A name the other file only passes on (an index.js or __init__.py) is followed to where it's defined.
+// names. A name the other file only passes on (an index.js or __init__.py) is followed to where it's defined.
 const MAX_USED_NAMES = 6, MAX_HOPS = 3;   // names shown in a connection's row (the rest are counted); files followed
 const rxName = n => n.replace(/\$/g, "\\$");
 async function namesUsed(by, byText, of, ofText) {
@@ -3882,7 +3905,10 @@ async function namesUsed(by, byText, of, ofText) {
     if (members.length) members.forEach(m => out.push({ name: m, line: lineOf(new RegExp(`\\b${rxName(m).replace(".", "\\.")}\\b`)), of }));
     else { const line = lineOf(new RegExp(`\\b${rxName(n)}\\b`)); if (line) out.push({ name: n, line, of: await homeOf(of, ofText, n) }); }
   }
-  if (!link.names.size) for (const n of defs) { if (isType(n)) continue; const line = lineOf(new RegExp(`\\b${rxName(n)}\\s*\\(`)); if (line) out.push({ name: n, line, of }); }
+  if (!link.names.size) for (const n of defs) {   // called, passed on, or re-exported (export { n } from, on the import line itself)
+    const re = new RegExp(`\\b${rxName(n)}\\b`), line = lines.findIndex(l => re.test(l)) + 1;
+    if (!isType(n) && line) out.push({ name: n, line, of });
+  }
   return out;
 }
 async function defines(path, text, name) {   // a function, class or (top-level) variable of that name

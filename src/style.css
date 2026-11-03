@@ -734,3 +734,14 @@ body.for-beginner #sideTitle { word-break: normal; overflow-wrap: anywhere; }
 }
 .xb-parts .lnum { min-width: 44px; padding: 1px 6px; white-space: nowrap; }
 .xb-none { font-style: italic; }
+
+/* Beginner's Connects to: a name, then the file it leads to */
+.xb-uses li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.xb-uses .xb-arrow { color: var(--added); }
+.xb-uses button.xb-name, .xb-uses button.xb-to { all: unset; cursor: pointer; border-radius: 4px; min-width: 0; }
+.xb-uses button.xb-name { font: 12.5px var(--f-mono); padding: 1px 6px; background: var(--street-2); color: var(--sodium); }
+.xb-uses button.xb-to { padding: 1px 2px; }
+.xb-uses .path { font: 600 12.5px var(--f-mono); color: var(--ink); overflow-wrap: anywhere; }
+.xb-uses .path i { font-style: normal; color: var(--ink-dim); }
+.xb-uses button:hover .path, .xb-uses button.xb-name:hover { text-decoration: underline; }
+.xb-uses button:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
