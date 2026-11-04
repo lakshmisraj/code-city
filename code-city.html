@@ -819,6 +819,15 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .task-row button { flex: none; align-self: flex-start; }
 #taskStatus { font-size: 12.5px; color: var(--ink-dim); }
 #taskStatus:empty { display: none; }
+/* Beginner's What's inside: one row per function, explained when clicked */
+.xb-inside-list li { display: block; }
+.xb-fn { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+.xb-fn:hover { background: var(--street-2); }
+.xb-fn:focus-visible { outline: 2px solid var(--sodium); outline-offset: -2px; }
+.xb-fn b { font: 600 12.5px var(--f-mono); color: var(--ink); overflow-wrap: anywhere; }
+.xb-fn .xb-kind { font-size: 12px; color: var(--ink-dim); }
+.xb-fn .xb-at { margin-left: auto; flex: none; font: 12px var(--f-mono); color: var(--ink-dim); }
+@media (pointer: coarse) { body.for-beginner .xb-fn { min-height: 44px; align-items: center; } }
 </style>
 
 <div id="stage" aria-label="3D city where each building is a file"></div>
@@ -3854,14 +3863,18 @@ function explainCards(x) {
       : x.usedByKnown ? "No other file imports this one, and it imports none." : "It imports no other file. Which files use it isn't known yet: open it again in a moment.",
       (list || "") + `<p class="xb-source">Only direct imports are found. Code loaded another way (by name, through settings) isn't shown.</p>`); };
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
+  const inside = f => x.range || !f.inside || !f.inside.length ? "" : block("xb-inside", "What's inside", "Its functions and classes, read from the code. Click one to have just it explained.",
+    `<ul class="xb-list xb-inside-list">${f.inside.map(d => { const at = d.to > d.from ? `L${d.from}–${d.to}` : `L${d.from}`;
+      return `<li><button type="button" class="xb-fn" data-explain-range data-file="${esc(f.path)}" data-from="${d.from}" data-to="${d.to}" title="Explain just ${esc(d.name)} (${at})">` +
+        `<b>${esc(d.name)}</b>${d.kind && d.kind !== "function" ? `<span class="xb-kind">${esc(d.kind)}</span>` : ""}<span class="xb-at">${at}</span></button></li>`; }).join("")}</ul>`);
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
     (x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.") + " Written by AI: check it against the code.",
     `<p class="ask-answer">${one && f0.explanation ? rich(f0.explanation, f0.path) : rich(x.summary)}</p>` + (one ? partial(f0) : "") +
     (x.files.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(x.files.slice(0, 6).map(f => f.path)))}">View these ${Math.min(x.files.length, 6)} files side by side</button></div>` : ""));
   if (!x.files.length) return what;
-  if (one) return what + links(f0);
+  if (one) return what + inside(f0) + links(f0);
   return what + x.files.map(f => `<div class="xb-file"><div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>` +
-    block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + links(f) + `</div>`).join("");
+    block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + inside(f) + links(f) + `</div>`).join("");
 }
 function explainHtml(x) {
   if (audience === "beginner") return explainCards(x);
@@ -3884,6 +3897,12 @@ function explainHtml(x) {
 // View, line-number, View all and Follow buttons, in the side panel or a window. Returns true when it handled the click.
 function explainClicks(e) {
   const all = e.target.closest("[data-view-all]"), view = e.target.closest("[data-view]"), line = e.target.closest("[data-line]"), follow = e.target.closest("[data-follow]");
+  const range = e.target.closest("[data-explain-range]");   // Beginner's What's inside: just that function's lines
+  if (range) {   // the code opens at those lines first, so the explanation sits beside them
+    const r = { from: +range.dataset.from, to: +range.dataset.to };
+    Promise.resolve(viewFile(range.dataset.file, r.from)).then(() => explainLines(range.dataset.file, r));
+    return true;
+  }
   const connect = e.target.closest("[data-connect]");
   if (connect) { explainConnection(connect.dataset.from, connect.dataset.connect, connect.dataset.name, +connect.dataset.at || 0); return true; }
   const change = changeOf(e);
@@ -3975,6 +3994,8 @@ async function explainCode(state, paths, question, from, range, panel) {   // pa
             const said = new Map((f.links || []).filter(l => linkKind(st, f.path, l.path)).map(l => [l.path, l]));
             const real = [...(st.real.get(f.path) || []), ...(g.usedBy ? g.usedBy.get(f.path) || [] : [])].filter(p => p !== f.path && bmap.has(p));
             f.links = [...new Set([...said.keys(), ...real])].slice(0, 16).map(p => said.get(p) || { path: p, how: "" });
+            const c = !range && code.find(c => c.path === f.path);
+            if (c) f.inside = await insideOf(f.path, c.text).catch(() => []);   // What's inside: from the code, explained one by one on request
           }
         }
         await Promise.all(st.files.flatMap(f => (f.links || []).filter(l => linkKind(st, f.path, l.path)).map(async l => {   // which functions a connection an import line shows uses, and whose they are
@@ -4593,6 +4614,16 @@ function outlineItems(path, text, max = 80) {
   let top = null;   // one level in: a method inside a class, a nested function anywhere else
   for (const i of items) { if (i.kind === "method") i.kind = top && /class|trait|interface|object|enum|record/.test(top.kind) ? "method" : "nested"; else if (!i.nested) top = i; }
   return items.slice(0, max);
+}
+// Beginner: a file's functions and classes with their lines, read from the code (no AI), for What's inside
+const MAX_INSIDE = 40;
+async function insideOf(path, text) {
+  if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
+  const fx = callsReady() && callsReady().files.get(path), n = text.split("\n").length;
+  if (fx && fx.defs.some(d => d.kind !== "alias"))
+    return fx.defs.filter(d => d.parent < 0 && d.kind !== "alias").slice(0, MAX_INSIDE).map(d => ({ name: d.name, kind: d.kind, from: d.line, to: Math.max(d.line, d.end) }));
+  const items = outlineItems(path, text).filter(i => !i.nested).slice(0, MAX_INSIDE);   // no parser: each runs to the next
+  return items.map((i, k) => ({ name: i.name, kind: i.kind, from: i.line, to: Math.max(i.line, (items[k + 1] ? items[k + 1].line : n + 1) - 1) }));
 }
 function outline(path, text) { return [...new Set(outlineItems(path, text).filter(i => !i.nested).map(i => i.name))].slice(0, 12); }
 // ---------- what the system is: facts read from the code, no AI ----------
