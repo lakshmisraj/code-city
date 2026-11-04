@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://code-city-view.netlify.app"
+Homepage = "https://codecitydev.com"
 Source = "https://github.com/lakshmisraj/code-city"
 
 [project.scripts]

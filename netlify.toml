@@ -9,6 +9,24 @@
   # changed settings) or a commit git can't find all build.
   ignore = "test -n \"$CACHED_COMMIT_REF\" && test \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- src site netlify netlify.toml codecity.py package.json package-lock.json"
 
+# The old netlify.app addresses send visitors to codecitydev.com, keeping the path and query. Each rule
+# matches only its exact host, so deploy previews (deploy-preview-N--code-city-view.netlify.app) still work.
+[[redirects]]
+  from = "https://code-city-view.netlify.app/*"
+  to = "https://codecitydev.com/:splat"
+  status = 301
+  force = true
+[[redirects]]
+  from = "https://code-city-advanced.netlify.app/*"
+  to = "https://advanced.codecitydev.com/:splat"
+  status = 301
+  force = true
+[[redirects]]
+  from = "https://code-city-manager.netlify.app/*"
+  to = "https://manager.codecitydev.com/:splat"
+  status = 301
+  force = true
+
 [functions]
   directory = "netlify/functions"
 

@@ -2919,7 +2919,7 @@ async function loadRepo(src) {
       catch (e) {
         // A TypeError means the request never left the page: the claude.ai copy blocks GitHub, or the visitor is offline.
         if (!(e instanceof TypeError) || !/fetch|network|load failed/i.test(e.message)) throw e;
-        setRepoStatus(`This page can't reach GitHub. Open <code>code-city-view.netlify.app</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
+        setRepoStatus(`This page can't reach GitHub. Open <code>codecitydev.com</code>, or run the app on your computer: <code>python3 codecity.py serve</code>`);
       }
     }
   } catch (e) {
@@ -2996,7 +2996,7 @@ addEventListener("drop", async e => {
 
 // ---------- shareable links ----------
 // ?repo=owner/name&range=1m&mode=heat&panel=hotspots&file=src/app.ts&pr=123 reopens the same view.
-const SITE_URL = "https://code-city-view.netlify.app/";
+const SITE_URL = "https://codecitydev.com/";
 const LINK_AUTOLOAD_MAX = 60;   // a link loads its history by itself only when that costs this few GitHub requests
 let currentRepo = null;    // owner/name of the city on screen, when it came from a repo
 let currentRange = null;   // history range loaded from GitHub, as a link code
@@ -3028,7 +3028,7 @@ function syncUrl() {
   try { history.replaceState(null, "", location.pathname + (q ? "?" + q : "")); } catch (e) { /* some hosts don't allow it */ }
 }
 function shareUrl() {
-  const base = /\.netlify\.app$/.test(location.hostname) ? location.origin + location.pathname : SITE_URL;
+  const base = /\.netlify\.app$|(^|\.)codecitydev\.com$/.test(location.hostname) ? location.origin + location.pathname : SITE_URL;
   const q = linkQuery();
   return base + (q ? "?" + q : "");
 }
@@ -3647,7 +3647,7 @@ async function loadPR(input) {
     openSide("pr");
   } catch (e) {
     if (isAbort(e)) { prStatus.textContent = ""; return; }   // a new repo is loading instead
-    prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>code-city-view.netlify.app</code> to view pull requests." : e.message;
+    prStatus.innerHTML = e instanceof TypeError ? "This page can't reach GitHub. Open <code>codecitydev.com</code> to view pull requests." : e.message;
   }
 }
 function clearPR() { prState = null; prInput.value = ""; }
@@ -6728,7 +6728,7 @@ function recordFrame() {
     ctx.fillText(msg === c.m ? msg : msg + "…", 48, REC_H - 24);
   }
   ctx.fillStyle = "rgba(230,233,242,0.75)"; ctx.font = `600 18px "JetBrains Mono", Menlo, monospace`;
-  ctx.textAlign = "right"; ctx.fillText("code-city-view.netlify.app", REC_W - 32, 40); ctx.textAlign = "left";
+  ctx.textAlign = "right"; ctx.fillText("codecitydev.com", REC_W - 32, 40); ctx.textAlign = "left";
   // The replay ends by returning to today; hold that view briefly, then finish.
   if (rec.mode === "history" && !playing) {
     if (!rec.ending) rec.ending = performance.now();

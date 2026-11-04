@@ -1,6 +1,6 @@
 # Code City
 
-**Live:** https://code-city-view.netlify.app
+**Live:** https://codecitydev.com
 
 Code City helps you understand a codebase quickly: where it starts, which files the rest depends on, how its workflows run and join, and how it grew. It draws the repo as a 3D city at night. Each file is a building (height is lines of code, width is number of functions), folders are raised districts, and TODO / FIXME comments burn on the rooftops.
 
@@ -80,7 +80,7 @@ The history bar opens when you load history from the history panel (▾ hides it
 - **Hotspots** (under Display, beside Language) colours the city by change heat and ranks files by *commits × lines* (see the table above): big files that keep changing, where bugs tend to cluster and refactoring pays off first. Click a row to fly to the building. Closing the list keeps the heat colours until you pick another colour.
 - **Show a pull request** (under Repo): enter a PR number or paste its URL. Its files light up (blue changed, green new, red deleted), everything else dims, and the panel flags the ones that are hotspots (top tenth for changes).
 - **Copy link** (top right) copies a link that reopens the same view, for example
-  `https://code-city-view.netlify.app/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
+  `https://codecitydev.com/?repo=sindresorhus/ky&range=2026-06-01..now&mode=heat&panel=hotspots&pr=12&file=source/core/Ky.ts`.
   `range` is two dates (`start` and `now` also work); older links with `1w`, `1m`, `3m`, `1y` or `all` still open.
   A link loads its history by itself only when that costs 60 GitHub requests or fewer; otherwise it opens the history panel with that range picked.
 
@@ -170,8 +170,8 @@ jobs:
 Sign-in runs through two Netlify Functions in `netlify/functions/`. It asks GitHub for no scopes: the token only identifies the visitor, which raises their limit to 5,000 requests an hour. The token reaches the page through the site's own storage, never through a URL. Until it's set up, the button stays hidden and the paste-a-token box still works.
 
 1. On GitHub: Settings → Developer settings → OAuth Apps → New OAuth App.
-   - Homepage URL: `https://code-city-view.netlify.app`
-   - Authorization callback URL: `https://code-city-view.netlify.app/.netlify/functions/github-callback`
+   - Homepage URL: `https://codecitydev.com`
+   - Authorization callback URL: `https://codecitydev.com/.netlify/functions/github-callback` (keep the old `https://code-city-view.netlify.app/…` one too, for deploy previews and old links)
 2. In Netlify: Site configuration → Environment variables, add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (mark the secret as secret), then redeploy.
 
 ### The three sites (site owner setup)
@@ -182,7 +182,7 @@ All three versions build from this repo; `netlify.toml` runs `python3 codecity.p
 2. Site configuration → Environment variables: `CODECITY_FOR` = `advanced` (or `manager`), plus the main site's `GEMINI_API_KEY` and any `ASK_…` settings.
 3. GitHub sign-in needs its own OAuth app per site (GitHub allows one callback address each): repeat the steps above with the new site's address, and add its `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
 
-To link the three from each other's Guide, set `CODECITY_SITES` on all three, for example `beginner=https://code-city-view.netlify.app/,advanced=https://code-city-advanced.netlify.app/,manager=https://code-city-manager.netlify.app/`, then redeploy.
+To link the three from each other's Guide, set `CODECITY_SITES` on all three, for example `beginner=https://codecitydev.com/,advanced=https://advanced.codecitydev.com/,manager=https://manager.codecitydev.com/`, then redeploy.
 
 Each push to `main` rebuilds all three, unless it changes nothing the sites are made from (`src/`, `site/`, `netlify/`, `netlify.toml`, `codecity.py`, the package files): a push of only tests, docs, the VS Code extension or CI skips all three builds (the `ignore` rule in `netlify.toml`).
 

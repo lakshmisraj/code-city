@@ -23,7 +23,7 @@ In VS Code, the Code City extension does the same for the open workspace (**Code
 
 ## On the hosted site
 
-[code-city-view.netlify.app](https://code-city-view.netlify.app) opens any public GitHub repo. For a private repo, each person pastes a fine-grained token (under **Repo**, then **Add a token**):
+[codecitydev.com](https://codecitydev.com) opens any public GitHub repo. For a private repo, each person pastes a fine-grained token (under **Repo**, then **Add a token**):
 
 1. [Create a fine-grained token](https://github.com/settings/personal-access-tokens/new).
 2. **Repository access**: Only select repositories, and pick the ones to view.
@@ -64,7 +64,7 @@ Open the repo in Code City, wait for **Code structure** to finish reading, optio
 For a public repo, a badge that opens it in Code City:
 
 ```markdown
-[![See it in Code City](https://img.shields.io/badge/see%20it%20in-Code%20City-f2a541)](https://code-city-view.netlify.app/?repo=OWNER/NAME)
+[![See it in Code City](https://img.shields.io/badge/see%20it%20in-Code%20City-f2a541)](https://codecitydev.com/?repo=OWNER/NAME)
 ```
 
 Replace `OWNER/NAME`. Add `&range=start..now` to load its whole history when it opens; that happens by itself only when it costs 60 GitHub requests or fewer (one per commit), and otherwise the visitor picks a range.
