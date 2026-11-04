@@ -800,3 +800,6 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .recent-detail { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .recent-detail h3 { margin: 4px 0 0; }
 .wf-done { margin-left: 8px; padding: 0 6px; border-radius: 999px; font: 600 12px var(--f-body); color: var(--ink-dim); background: var(--street-2); vertical-align: 1px; }
+/* Beginner: where a piece of text comes from, and what Code City can't see */
+.xb-source { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-dim); }
+.cut-note { font-style: normal; color: var(--ink-dim); font-weight: 400; }

@@ -635,9 +635,10 @@ function clearCity() {
   graph = null; hoverFocus = null; if (linkGroup) { scene.remove(linkGroup); linkGroup = null; } sparks = [];   // the viewer shows files of the city on screen
 }
 
-function label(text, x, y, z, size, dir) {
+function label(text, x, y, z, size, dir, depth = 1, area = 0) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
   sp.position.set(x, y, z); sp.renderOrder = 10; sp.userData.text = text; sp.userData.size = size; sp.userData.dir = dir;
+  sp.userData.depth = depth; sp.userData.area = area;
   drawLabel(sp); city.add(sp); labels.push(sp);
   return sp;
 }
@@ -646,7 +647,7 @@ function label(text, x, y, z, size, dir) {
 function drawLabel(sp) {
   const easy = audience === "beginner", c = document.createElement("canvas"), ctx = c.getContext("2d");
   const fs = 64, font = easy ? `600 ${fs}px "Instrument Sans", Arial, sans-serif` : `700 ${fs}px "Chakra Petch", "Arial Narrow", sans-serif`;
-  const text = easy ? sp.userData.text : sp.userData.text.toUpperCase(), size = sp.userData.size * (easy ? 0.7 : 1);
+  const text = easy ? sp.userData.text : sp.userData.text.toUpperCase(), size = sp.userData.size * (easy ? (sp.userData.depth > 1 ? 0.55 : 0.7) : 1);
   ctx.font = font;
   c.width = Math.ceil(ctx.measureText(text).width * 1.05) + 40; c.height = fs + 30;
   ctx.font = font;
@@ -656,9 +657,10 @@ function drawLabel(sp) {
   sp.material.map = new THREE.CanvasTexture(c); sp.material.needsUpdate = true;
   sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone();
 }
-const QUIET_LABELS = 6;   // Beginner names only this many districts, the biggest
+const QUIET_LABELS = 12;   // Beginner names this many districts, the biggest, folders inside the top ones included
 function quietLabels() {
-  const keep = new Set([...labels].sort((a, b) => b.userData.size - a.userData.size).slice(0, audience === "beginner" ? QUIET_LABELS : labels.length));
+  if (audience !== "beginner") { for (const l of labels) l.visible = l.userData.depth === 1; return; }   // the others: top-level folders only
+  const keep = new Set([...labels].sort((a, b) => b.userData.area - a.userData.area).slice(0, QUIET_LABELS));
   for (const l of labels) l.visible = keep.has(l);
 }
 
@@ -686,7 +688,9 @@ function place(node, rect, depth) {
     p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
     p.userData = { dir: node.path, depth };
     city.add(p); districts.push(p);
-    if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, Math.max(1.6, Math.min(4, Math.sqrt(rect.w * rect.h) / 9)), node.path);
+    const area = rect.w * rect.h, size = Math.max(1.6, Math.min(4, Math.sqrt(area) / 9));
+    if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, size, node.path, 1, area);
+    else if (depth === 2 && area > 40) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.2, rect.y + rect.h / 2, size, node.path, 2, area);   // Beginner names the big folders inside the top ones too: in their middle, clear of the parent's name
   }
   const inner = { x: rect.x + PAD, y: rect.y + PAD, w: Math.max(0.1, rect.w - PAD * 2), h: Math.max(0.1, rect.h - PAD * 2) };
   for (const { it, x, y, w, h } of squarify([...node.children.values()], inner)) place(it.n, { x, y, w, h }, depth + 1);
@@ -1874,7 +1878,7 @@ function readLink() {
   const q = new URLSearchParams(location.search);
   const repo = (q.get("repo") || "").trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "").replace(/\.git$|\/+$/g, "");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return {};
-  pendingView = { repo, range: q.get("range"), mode: q.get("mode"), panel: q.get("panel"), file: q.get("file"), pr: q.get("pr") };
+  pendingView = { repo, range: q.get("range"), mode: q.get("mode"), panel: q.get("panel"), file: q.get("file"), pr: q.get("pr"), tour: q.get("tour") };
   return pendingView;
 }
 function linkQuery() {
@@ -1886,6 +1890,7 @@ function linkQuery() {
   if (sideMode === "hot") q.set("panel", "hotspots");
   if (prState) q.set("pr", prState.n);
   if (picked) q.set("file", picked.userData.f.path);
+  if (sideMode === "tour" && tourState && tourState.team) q.set("tour", tourState.w >= 0 ? `${tourState.w + 1}.${tourState.i + 1}` : "0");   // the team's tour, at this step
   return q.toString().replace(/%2F/gi, "/");
 }
 function syncUrl() {
@@ -1936,6 +1941,7 @@ function applyPendingView() {
   if (p.mode === "heat" && hist) setColorMode("heat");
   if (p.panel === "hotspots") openSide("hot");
   if (p.file && bmap.has(p.file)) openDrawer(bmap.get(p.file));
+  if (p.tour != null) openTeamTour(p.tour);
   if (p.pr) loadPR(p.pr); else syncUrl();
 }
 function onCityBuilt() {
@@ -1981,7 +1987,7 @@ function saveSession() {
     panel: [...inPanel].filter(([, st]) => !st.loading && !st.errorHtml).map(([p, st]) => [p, stepToJSON(st)]),
     picked: picked ? picked.userData.f.path : null,
     tour: tourState ? { title: tourState.title, story: tourState.story, overview: tourState.overview,
-      workflows: tourState.workflows.map(({ lines, handoff, ...w }) => w), w: tourState.w, i: tourState.i, seen: [...(tourState.seen || [])] } : null };
+      workflows: tourState.workflows.map(({ lines, handoff, ...w }) => w), w: tourState.w, i: tourState.i, seen: [...(tourState.seen || [])], team: !!tourState.team } : null };
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) { /* storage blocked: nothing to restore */ }
   if (audience !== "beginner") return;
   try {
@@ -2028,7 +2034,7 @@ function applySession(snap) {
   if (snap.ask) { askState = { ...snap.ask, files: new Map(snap.ask.order.map(f => [f.path, f.why])) }; openSide("ask"); }
   for (const [p, j] of snap.panel || []) { const st = stepFromJSON(j); inPanel.set(p, st); explainState.chain.push(st); }
   if (snap.tour && Array.isArray(snap.tour.workflows)) {   // the tour, where it was: no need to ask Gemini again
-    endTour(); tourState = tourFrom(snap.tour); openSide("tour");
+    endTour(); tourState = tourFrom(snap.tour); tourState.team = !!snap.tour.team; openSide("tour");
     if (snap.tour.w >= 0 && tourState.workflows[snap.tour.w]) goToWorkflow(snap.tour.w, snap.tour.i); else showOverview();
   } else if (snap.picked && bmap.get(snap.picked)) openDrawer(bmap.get(snap.picked));
   drawLinks();
@@ -2609,7 +2615,7 @@ function signinCues() {
   btn.textContent = need ? "Sign in" : "Ask";
   const tip = $("tourBtn2").querySelector("span");
   tip.querySelector(".needs-signin")?.remove();
-  if (need) tip.insertAdjacentHTML("beforeend", ` <em class="needs-signin">Needs a free GitHub sign-in.</em>`);
+  if (need && !hasTeamTour()) tip.insertAdjacentHTML("beforeend", ` <em class="needs-signin">Needs a free GitHub sign-in.</em>`);
   const ex = $("dActions").querySelector("[data-explain], [data-explain-signin]");
   if (ex) { ex.textContent = need ? "Sign in to explain this code" : "Explain this code"; ex.toggleAttribute("data-explain", !need); ex.toggleAttribute("data-explain-signin", need); }
 }
@@ -2719,10 +2725,13 @@ function usedLine(l) {   // "github-callback.js uses readCookies, page from oaut
 function explainCards(x) {
   const block = (cls, title, why, body) => `<section class="xb ${cls}"><h3>${title}</h3><p class="xb-why">${why}</p>${body}</section>`;
   const one = (x.paths ? x.paths.length : x.files.length) === 1, f0 = x.files[0] || {};   // one file asked about, whatever came back
-  const links = f => { const list = usesList(x, f); return list ? block("xb-links", "Connects to", "Click a name to see how it's implemented, or a file to open it.", list) : ""; };   // nothing left to show: no card
+  const links = f => { const list = usesList(x, f);   // read from the code's import lines; nothing found is said, not left blank
+    return block("xb-links", "Connects to", list ? "Click a name to see how it's implemented, or a file to open it."
+      : x.usedByKnown ? "No other file imports this one, and it imports none." : "It imports no other file. Which files use it isn't known yet: open it again in a moment.",
+      (list || "") + `<p class="xb-source">Only direct imports are found. Code loaded another way (by name, through settings) isn't shown.</p>`); };
   const partial = f => x.partial && x.partial.has(f.path) ? `<p class="side-note">Only the start of this file was read, so this covers part of it.</p>` : "";
   const what = block("xb-what", x.change ? "What changed" : x.range ? "What these lines do" : "What it does",
-    x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.",
+    (x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.") + " Written by AI: check it against the code.",
     `<p class="ask-answer">${one && f0.explanation ? rich(f0.explanation, f0.path) : rich(x.summary)}</p>` + (one ? partial(f0) : "") +
     (x.files.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(x.files.slice(0, 6).map(f => f.path)))}">View these ${Math.min(x.files.length, 6)} files side by side</button></div>` : ""));
   if (!x.files.length) return what;
@@ -2833,7 +2842,17 @@ async function explainCode(state, paths, question, from, range, panel) {   // pa
       Object.assign(st, data, { partial: new Set(code.filter(c => c.partial).map(c => c.path)) });
       if (Array.isArray(st.files)) {
         await getGraph().ready;
-        if (audience === "beginner") for (const f of st.files) f.links = (f.links || []).filter(l => linkKind(st, f.path, l.path));   // Beginner: nothing inferred
+        if (audience === "beginner") {   // Beginner: the connections the code's import lines show, every one; Gemini's list only adds how they connect
+          const g = getGraph();
+          if (!g.usedBy && !g.scanning && (citySource !== "github" || buildings.length <= 400)) scanUsedBy();   // who uses it: cheap here, a fetch a file on a big GitHub repo
+          if (!g.usedBy && g.scanning) await Promise.race([g.scanning, new Promise(r => setTimeout(r, 4000))]);
+          st.usedByKnown = !!g.usedBy;
+          for (const f of st.files) {
+            const said = new Map((f.links || []).filter(l => linkKind(st, f.path, l.path)).map(l => [l.path, l]));
+            const real = [...(st.real.get(f.path) || []), ...(g.usedBy ? g.usedBy.get(f.path) || [] : [])].filter(p => p !== f.path && bmap.has(p));
+            f.links = [...new Set([...said.keys(), ...real])].slice(0, 16).map(p => said.get(p) || { path: p, how: "" });
+          }
+        }
         await Promise.all(st.files.flatMap(f => (f.links || []).filter(l => linkKind(st, f.path, l.path)).map(async l => {   // which functions a connection an import line shows uses, and whose they are
           const mine = code.find(c => c.path === f.path), other = await pullCode(l.path);
           const [by, of] = linkKind(st, f.path, l.path) === "imports" ? [mine, other] : [other, mine];
@@ -2888,7 +2907,7 @@ async function explainConnection(from, to, name, line) {   // name and line: a n
   const lines = impl.end > impl.line ? `lines ${impl.line}–${impl.end}` : `line ${impl.line}`;
   explainCode(explainState, [to], `Explain only ${lines} of ${to}: ${impl.name}, which line ${at} of ${from} uses. Say what it does when ${from} uses it, step by step, ` +
     `and what it gives back. Use the rest of the file just as context, keep the key parts within those lines, and list what it connects to next.`, from,
-    { from: impl.line, to: impl.end, at, back: was && !was.loading ? was : null });
+    { from: impl.line, to: impl.end, at, back: was && !was.loading ? was : null, of: impl.full === 0 || impl.full > impl.end - impl.line + 1 ? impl.full : null });
   lineUp([codePane(from), codePane(to)]);   // the line that uses it and the code it runs, side by side, once the explanation has widened its window
 }
 // Where a name is defined in a file: from the parsed functions and classes when they're read, else a plain
@@ -2897,7 +2916,7 @@ async function implementationOf(path, text, names) {
   if (!names.length) return null;
   if (!callsReady() && callGrammar(path)) await loadCalls().catch(() => null);
   const fx = callsReady() && callsReady().files.get(path);
-  if (fx) for (const n of names) { const d = fx.defs.find(d => d.name === n && d.kind !== "alias"); if (d) return { name: n, line: d.line, end: Math.max(d.line, Math.min(d.end, d.line + MAX_IMPL_LINES - 1)) }; }
+  if (fx) for (const n of names) { const d = fx.defs.find(d => d.name === n && d.kind !== "alias"); if (d) return { name: n, line: d.line, end: Math.max(d.line, Math.min(d.end, d.line + MAX_IMPL_LINES - 1)), full: d.end - d.line + 1 }; }
   const lines = text.split("\n"), head = n => new RegExp(`^\\s*(export\\s+)?(default\\s+)?(async\\s+)?(def|function\\*?|class|const|let|var|func|fn|pub fn|type|interface|struct)\\s+${n.replace(/\$/g, "\\$")}\\b|^\\s*${n.replace(/\$/g, "\\$")}\\s*[:=]\\s*(async\\s*)?(function|\\()`);
   const anyDef = /^(export\s+)?(default\s+)?(async\s+)?(def|function\*?|class|func|fn|pub fn)\s+\w/;
   for (const n of names) {
@@ -2905,8 +2924,9 @@ async function implementationOf(path, text, names) {
     if (k < 0) continue;
     let e = k + 1;
     while (e < lines.length && e < k + MAX_IMPL_LINES && !anyDef.test(lines[e])) e++;
+    const cut = e === k + MAX_IMPL_LINES && e < lines.length && !anyDef.test(lines[e]);
     while (e > k + 1 && !lines[e - 1].trim()) e--;
-    return { name: n, line: k + 1, end: e };
+    return { name: n, line: k + 1, end: e, full: cut ? 0 : e - k };
   }
   return null;
 }
@@ -3145,7 +3165,7 @@ function lineUp(list) {   // windows side by side in this order, left to right; 
   renderViewer();
 }
 function explainCol(st) {
-  return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">${st.range && st.range.at ? `Used on <button type="button" class="flink" data-file="${esc(st.from)}" data-line="${st.range.at}" title="Show that line">line ${st.range.at}</button> of ${fileLink(st.from)}` : `Followed from ${fileLink(st.from)}`}</p>` : ""}
+  return `${st.range ? `<div class="explain-range"><span>${st.range.to > st.range.from ? "Lines" : "Line"} ${st.range.from}${st.range.to > st.range.from ? `–${st.range.to}` : ""}${st.range.of != null ? ` <em class="cut-note">(the first ${st.range.to - st.range.from + 1} of ${st.range.of ? `${st.range.of} lines` : "a longer function"})</em>` : ""}</span>${st.range.back ? `<button type="button" class="mini" data-explain-back>← Back to the file</button>` : askEnabled ? `<button type="button" class="mini" data-explain-full>Explain the whole file</button>` : ""}</div>` : ""}${st.from ? `<p class="side-note">${st.range && st.range.at ? `Used on <button type="button" class="flink" data-file="${esc(st.from)}" data-line="${st.range.at}" title="Show that line">line ${st.range.at}</button> of ${fileLink(st.from)}` : `Followed from ${fileLink(st.from)}`}</p>` : ""}
     ${st.loading ? `<p class="side-note">Reading the ${st.change ? "change" : "code"}…</p>` : st.errorHtml ? `<p class="side-note">${st.errorHtml}</p>` : st.files ? explainHtml(st) : audience === "beginner" ? `<p class="side-note">Gemini's answer came back in a shape Code City couldn't read. Close this and try again.</p>` : ""}
 `;
 }
@@ -4898,8 +4918,9 @@ function doneStartHint() {
 }
 $("startHintGo").onclick = () => $("tourBtn2").click();
 $("startHintClose").onclick = doneStartHint;
-$("tourBtn2").onclick = () => {   // a workflow named below focuses the tour
+$("tourBtn2").onclick = async () => {   // a workflow named below focuses the tour
   if (audience === "beginner") doneStartHint();
+  if (audience === "beginner" && await openTeamTour()) return;   // the team's own tour, when the repo has one
   if (audience === "beginner") {   // Beginner's one way in: Code structure in plain English at once, then the tour if there is one
     if (sideMode !== "map") openSide("map");
     if (!askEnabled || !canAsk()) return;
@@ -4962,6 +4983,42 @@ function nextUnseen(t) {   // { w, i } of the next step not seen yet: in this wo
   return null;
 }
 function tourStep() { const t = tourState; return t && t.w >= 0 ? t.workflows[t.w].steps[t.i] : null; }
+// Beginner: a tour the team owns. "Save this tour for your team" downloads it as codecity-tour.json; committed at
+// the top of the repo, it's the tour everyone gets, the same each time, with no Gemini call and no sign-in. Its
+// text is the team's to edit. Links can open it at a step (?tour=2.3).
+const TEAM_TOUR = "codecity-tour.json";
+const hasTeamTour = () => !!(bmap && bmap.get(TEAM_TOUR) && bmap.get(TEAM_TOUR).userData.lines > 0);
+async function teamTour() {   // the repo's saved tour, its steps checked against the files here, or null
+  if (!hasTeamTour()) return null;
+  const c = await pullCode(TEAM_TOUR).catch(() => null);
+  let d; try { d = c && JSON.parse(c.text); } catch (e) { return null; }
+  if (!d || !Array.isArray(d.workflows)) return null;
+  const live = p => { const b = bmap.get(p); return b && b.userData.lines > 0; };
+  const workflows = d.workflows.filter(w => w && Array.isArray(w.steps)).map(w => ({ name: String(w.name || "A workflow").slice(0, 60), feature: String(w.feature || ""), summary: String(w.summary || ""),
+    steps: w.steps.filter(st => st && live(st.path)).map(st => ({ path: st.path, title: String(st.title || st.path.split("/").pop()).slice(0, 80), narration: String(st.narration || "") })),
+    feeds: Array.isArray(w.feeds) ? w.feeds.map(String) : [] })).filter(w => w.steps.length);
+  return workflows.length ? { title: String(d.title || "Our codebase"), story: String(d.story || ""), overview: String(d.overview || ""), workflows } : null;
+}
+async function openTeamTour(at) {   // at: "2.3" (workflow 2, step 3), "0" or nothing for the overview
+  const data = await teamTour();
+  if (!data) return false;
+  endTour(); tourState = tourFrom(data); tourState.team = true;
+  if (plainTour() && !drawer.hidden) closeDrawer();
+  openSide("tour");
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(at || ""), w = m ? +m[1] - 1 : -1, i = m && m[2] ? +m[2] - 1 : 0;
+  if (w >= 0 && tourState.workflows[w]) goToWorkflow(w, Math.min(i, tourState.workflows[w].steps.length - 1)); else showOverview();
+  syncUrl();
+  return true;
+}
+function saveTeamTour() {
+  const t = tourState; if (!t) return;
+  const file = { codecityTour: 1, title: t.title, story: t.story || "", overview: t.overview || "",
+    workflows: t.workflows.map(w => ({ name: w.name, feature: w.feature || "", summary: w.summary || "", steps: w.steps.map(st => ({ path: st.path, title: st.title, narration: st.narration })), feeds: w.feeds || [] })) };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2) + "\n"], { type: "application/json" }));
+  a.download = TEAM_TOUR; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`Saved ${TEAM_TOUR}. Commit it at the top of your repo and everyone gets this tour.`);
+}
 function showOverview(end) {   // end: Beginner's closing card instead of the overview
   const t = tourState;
   if (!t) return;
@@ -4986,6 +5043,7 @@ function goToStop(i) {
   if (b) flyToBuilding(b);
   renderTour();
   drawLinks();
+  if (t.team) syncUrl();
   focusStepWindow();
   clearTimeout(t.timer);
   if (t.playing) {   // auto-play runs through every step of every workflow, then back to the overview
@@ -5026,6 +5084,7 @@ async function loadKeyLines(w) {
   const code = new Map((await Promise.all(paths.map(pullCode))).filter(Boolean).map(c => [c.path, c]));
   await getGraph().ready;
   wf.handoff = new Map(wf.steps.map((st, k) => [k, k < wf.steps.length - 1 && code.has(st.path) ? handoffLines(st.path, code.get(st.path).text, wf.steps[k + 1].path) : []]));
+  if (t.team) { wf.lines = {}; return redraw(); }   // the team's tour stays AI-free: hand-offs are read from the code, no lines picked by Gemini
   redraw();
   const send = paths.filter(p => code.has(p)).slice(0, plainTour() ? 6 : 4).map(p => ({ path: p, text: code.get(p).text }));   // Beginner: every step's file (a workflow has at most 6)
   if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
@@ -5201,6 +5260,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div class="side-actions tour-end-acts">
         <button type="button" data-tour="overview">Back to the overview</button>
         ${askEnabled ? `<button type="button" data-tour="ask">Ask a question</button>` : ""}
+        ${t.team ? "" : `<button type="button" data-tour="save">Save this tour for your team</button>`}
         <button type="button" class="primary" data-tour="close">Close the tour</button>
       </div>`;
   } else if (t.w < 0) {
@@ -5212,6 +5272,8 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}${t.seen && wfDone(t, k) ? `<span class="wf-done">Done</span>` : ""}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
       ${coverageHtml(t)}
+      ${plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
+        : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button></div>`) : ""}
       <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
         ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
         <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
@@ -5240,6 +5302,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
             <span class="wf-file-text"><b>${esc(st.path.slice(st.path.lastIndexOf("/") + 1))}</b>${st.path.includes("/") ? `<i>${esc(st.path.slice(0, st.path.lastIndexOf("/") + 1))}</i>` : ""}</span></button>
             <button type="button" class="wf-file-view" data-view="${esc(st.path)}">View code</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
+          ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by AI. Check it against the code."}</p>` : ""}
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${plain ? (code.trim() ? `<details class="more"><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
         </li>`; }).join("")}</ol>
@@ -5341,6 +5404,7 @@ sideBody.addEventListener("click", e => {
     else if (t.w < t.workflows.length - 1) goToWorkflow(t.w + 1, 0);
     else { closeSide(); resetView(true); }
   } else if (act.dataset.tour === "close") { closeSide(); resetView(true); }
+  else if (act.dataset.tour === "save") saveTeamTour();
   else if (act.dataset.tour === "ask") { const q = $("askInput"); if (q && q.offsetParent) q.focus(); else openSeg("understand"); }
   else {   // play / pause
     t.playing = !t.playing;
