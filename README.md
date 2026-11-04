@@ -21,7 +21,7 @@ The top bar names the repo on screen, its size, and holds **Ask**. The icons dow
 
 | Word | Meaning |
 |---|---|
-| Building | One file. Height is lines of code, width is the number of functions. |
+| Building | One file. Height is the number of functions, width is lines of code. |
 | District | A folder, raised one step for each level of nesting. |
 | Fire | A TODO, FIXME or HACK comment on that file's roof. |
 | Entry point | Where execution starts: a file the project declares (package.json `main`/`bin`, pyproject scripts…), one named like an entry point (`main.py`, `cmd/x/main.go`…), or one no other file imports. |
@@ -50,7 +50,7 @@ Without signing in, GitHub allows **60 requests an hour** per network. **Sign in
 
 The timeline follows the default branch's main line: each merge is one step for the branch it brought in, and commits are placed by the date they landed (the committer date), so rebased work shows up where it was merged. Files left out of the city (too big, or past the 4,000-file limit) are left out of the history too. A load can be stopped with **Cancel**; starting another load stops the one before.
 
-Building heights are estimated from file size until you click a building, which loads its real source. Loading all time from the first commit replays real line counts.
+Building sizes are estimated from file size until you click a building, which loads its real source and counts its functions. Loading all time from the first commit replays real line counts; heights in the past are today's functions scaled by the lines the file had then.
 
 ### Code structure
 

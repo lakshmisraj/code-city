@@ -803,3 +803,13 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 /* Beginner: where a piece of text comes from, and what Code City can't see */
 .xb-source { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-dim); }
 .cut-note { font-style: normal; color: var(--ink-dim); font-weight: 400; }
+/* Beginner's Start from a task, in Understand under the tour */
+.task-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.task-form[hidden] { display: none; }
+.task-form label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.task-form label span { font-size: 12.5px; color: var(--ink-dim); }
+.task-row { display: flex; flex-direction: column; gap: 6px; }
+.task-row input { flex: 1; min-width: 0; }
+.task-row button { flex: none; align-self: flex-start; }
+#taskStatus { font-size: 12.5px; color: var(--ink-dim); }
+#taskStatus:empty { display: none; }

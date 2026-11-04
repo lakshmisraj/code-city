@@ -112,6 +112,9 @@
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts and the main paths through it</span></button>
       <button id="reportBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Status report</b><span>What changed lately, who did it, and what's still open, ready to share</span></button>
       <button id="tourBtn2" type="button" class="seg-action" hidden><b>Workflows tour</b><span>A guided walk through what the code does. For a custom workflow, write its name below.</span></button>
+      <form id="taskForm" class="task-form beginner-only" hidden autocomplete="off"><label for="taskInput"><b>Start from a task</b><span>Describe your ticket and see which files to open first.</span></label>
+        <div class="task-row"><input id="taskInput" type="text" maxlength="160" placeholder="e.g. add a remember-me box to sign-in" spellcheck="false"><button type="submit">Find the files</button></div>
+        <small id="taskStatus" aria-live="polite"></small></form>
       <form id="tourForm" class="tour-topic not-beginner" hidden autocomplete="off"><label class="sr" for="tourTopic">A workflow to tour</label><input id="tourTopic" type="text" placeholder="A workflow, e.g. signing up" spellcheck="false"></form>
     </div>
   </section>
@@ -151,7 +154,7 @@
   <section class="segment guide" data-seg="info">
     <div><h3>What this is</h3><p>Code City shows a code project as a city, so you can see its shape at a glance.</p></div>
     <div><h3>Reading the city</h3><ul>
-      <li>Each <b>building</b> is a file. Taller means more lines of code.</li>
+      <li>Each <b>building</b> is a file. Taller means more functions; wider means more lines of code.</li>
       <li>Each <b>district</b> is a folder.</li>
       <li><b>Fire</b> on a roof means a TODO note in the code.</li>
       <li><b>Lines</b> between buildings show which file uses which.</li>

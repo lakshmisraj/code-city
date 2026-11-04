@@ -436,8 +436,11 @@ function buildTree(list) {
   return root;
 }
 const GAP = 1.1, PAD = 0.9, STEP = 0.35;
-function fileSide(f) { return Math.min(7, 1 + Math.sqrt(f.funcs) * 0.75); }
-function fileHeight(lines) { return lines > 0 ? 0.5 + Math.sqrt(lines) * 0.42 : 0; }
+// A building's height is its number of functions (a file with none is a low slab); its width is its size in lines.
+function fileSide(f) { return Math.min(7, 1 + Math.sqrt(f.maxLines || f.lines || 1) * 0.12); }
+function fileHeight(funcs, lines) { return lines > 0 ? (funcs > 0 ? 0.5 + Math.sqrt(funcs) * 1.3 : 0.3) : 0; }
+// Functions at a point in history: only today's count is known, so it's scaled by the lines the file had then
+function funcsAt(f, lines) { const now = f.nowLines || f.maxLines || lines; return lines > 0 && f.funcs > 0 ? Math.max(1, Math.round(f.funcs * Math.min(1, lines / Math.max(1, now)))) : 0; }
 function weigh(node) {
   if (node.file) { const s = fileSide(node.file) + GAP; return (node.w = s * s); }
   let sum = 0; for (const c of node.children.values()) sum += weigh(c);
@@ -750,7 +753,7 @@ function buildCity(data) {
 function setTargets(linesOf) {
   for (const b of buildings) {
     const L = linesOf(b.userData.f);
-    b.userData.lines = L; b.userData.target = fileHeight(L);
+    b.userData.lines = L; b.userData.target = fileHeight(funcsAt(b.userData.f, L), L);
     if (reduceMotion) b.userData.shown = b.userData.target;
   }
   const prevMax = maxChurn;
@@ -1069,7 +1072,7 @@ function placeTip(x, y) {
 }
 function showTip(b, x, y) {
   const f = b.userData.f, c = churnSrc.get(f.path) || 0;
-  tip.innerHTML = `${esc(f.path)} · <b>${fmt(b.userData.lines)}</b> lines` +
+  tip.innerHTML = `${esc(f.path)} · <b>${fmt(f.funcs || 0)}</b> function${f.funcs === 1 ? "" : "s"} · <b>${fmt(b.userData.lines)}</b> lines` +
     (hist ? ` · <b>${fmt(c)}</b> commit${c === 1 ? "" : "s"}` : "") +
     (viewNow && f.todos.length ? ` · <b class="f">${f.todos.length} fires</b>` : "");
   placeTip(x, y);
@@ -1104,12 +1107,11 @@ function openDrawer(b) {
   const commits = hist ? (churnSrc.get(f.path) || 0) : null;
   const stat = (dt, dd, cls) => `<div><dt>${dt}</dt><dd${cls ? ` class="${cls}"` : ""}>${dd}</dd></div>`;   // only what the file has: no rows of zeros
   const easy = audience === "beginner", todos = easy ? f.todos.filter(t => NOTE_RE.test(t.text)) : f.todos;
-  const floors = !hist && !easy;   // Beginner: floors are just lines again, so they aren't shown
   const size = (f.estimated && viewNow ? "~" : "") + fmt(b.userData.lines);
   document.getElementById("dStats").innerHTML = (easy ? stat("Size", `${size} lines`) : stat("Lines", size)) +
-    (!(ghRepo && f.text == null) && f.funcs && !easy ? stat("Functions", fmt(f.funcs)) : "") +   // Beginner: What's inside lists them
+    (!(ghRepo && f.text == null) && f.funcs ? stat("Functions", fmt(f.funcs)) : "") +   // the building's height
     (viewNow && todos.length ? stat(easy ? "Notes" : "Fires", fmt(todos.length), "fire") : "") +
-    (hist ? (commits ? (easy ? stat("Changes", `${fmt(commits)} time${commits === 1 ? "" : "s"}`) : stat("Commits", fmt(commits))) : "") : floors ? stat("Floors", Math.max(1, Math.round(b.userData.target))) : "");
+    (hist ? (commits ? (easy ? stat("Changes", `${fmt(commits)} time${commits === 1 ? "" : "s"}`) : stat("Commits", fmt(commits))) : "") : "");
   document.getElementById("dTodos").innerHTML = viewNow && todos.length
     ? easy ? `<h3>Notes the authors left</h3><p class="note">Comments marked TODO, FIXME or HACK: things someone meant to come back to.</p><ul class="todos">${todos.slice(0, 40).map(t => `<li><button type="button" class="lnum" data-oline="${t.line}" title="Open the code at line ${t.line}">L${t.line}</button><span>${esc(noteText(t.text))}</span></li>`).join("")}</ul>`
       : `<h3>Fires to put out</h3><ul class="todos">${f.todos.slice(0, 40).map(t => `<li><em>L${t.line}</em>${esc(t.text)}</li>`).join("")}</ul>` : "";
@@ -1766,7 +1768,7 @@ async function loadSource(b) {
     if (text == null) throw new Error("not read");
     const a = analyze(f.path, text);
     Object.assign(f, { text: a.text, funcs: a.funcs, todos: a.todos, nowLines: a.lines, estimated: false });
-    if (viewNow) { b.userData.lines = a.lines; b.userData.target = fileHeight(a.lines); updateStats(); }
+    if (viewNow) { b.userData.lines = a.lines; b.userData.target = fileHeight(a.funcs, a.lines); updateStats(); }
   } catch (e) { f.failed = true; }
   f.loading = false;
   if (picked === b) openDrawer(b);
@@ -1992,7 +1994,7 @@ function saveSession() {
   const geo = p => ({ x: p.x, y: p.y, w: p.w, h: p.h, collapsed: !!p.collapsed });
   const snap = { at: Date.now(), repo,
     windows: panes.filter(p => p.kind !== "diff").map(p => ({ kind: p.kind, path: p.path, line: p.line, st: p.st ? stepToJSON(p.st) : null, ...geo(p) })),
-    ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order } : null,
+    ask: askState && sideMode === "ask" ? { question: askState.question, answer: askState.answer, order: askState.order, task: askState.task || null } : null,
     panel: [...inPanel].filter(([, st]) => !st.loading && !st.errorHtml).map(([p, st]) => [p, stepToJSON(st)]),
     picked: picked ? picked.userData.f.path : null,
     tour: tourState ? { title: tourState.title, story: tourState.story, overview: tourState.overview,
@@ -2608,6 +2610,7 @@ async function initAsk() {
   catch (e) { askEnabled = false; }   // the claude.ai copy has no ask function, nor the local app without a Gemini key
   $("askForm").hidden = !askEnabled;
   $("tourForm").hidden = !askEnabled;
+  $("taskForm").hidden = !askEnabled;
   understandOrder();
   signinCues();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button
@@ -2622,6 +2625,7 @@ function signinCues() {
   const need = needsSignin(), btn = $("askForm").querySelector('button[type="submit"]');
   $("askInput").placeholder = need ? "Sign in with GitHub to ask about the code" : ASK_HOLDER;
   btn.textContent = need ? "Sign in" : "Ask";
+  $("taskForm").querySelector('button[type="submit"]').textContent = need ? "Sign in" : "Find the files";
   const tip = $("tourBtn2").querySelector("span");
   tip.querySelector(".needs-signin")?.remove();
   if (need && !hasTeamTour()) tip.insertAdjacentHTML("beforeend", ` <em class="needs-signin">Needs a free GitHub sign-in.</em>`);
@@ -2638,14 +2642,22 @@ function okToSendPrivate() {
 }
 const askHeaders = () => ({ "Content-Type": "application/json", "X-Code-City": "1", ...(oauthToken && !askOpen ? { Authorization: "Bearer " + oauthToken } : {}) });
 $("askForm").addEventListener("submit", e => { e.preventDefault(); if (needsSignin()) return startSignin(); askCity($("askInput").value); });
+// Beginner: a ticket in plain words, asked as "where do I start?", answered with the files to open in order
+$("taskForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const task = $("taskInput").value.trim().replace(/\s+/g, " ");
+  if (!task) return;
+  if (needsSignin()) return startSignin();
+  askCity(`I'm new to this codebase and my task is: ${task}. In plain words, where do I start? Name the files I'd read or change, in the order I'd open them.`, task);
+});
 // Ask sits in the middle of the top bar; on narrower screens, where the bar has no room, under Understand.
 {
   const wide = matchMedia("(min-width: 760px)"), form = $("askForm"), home = document.querySelector('#segPanel .segment[data-seg="understand"]');
   const placeAsk = () => { if (wide.matches) $("askSlot").appendChild(form); else home.appendChild(form); };
   wide.addEventListener("change", placeAsk); placeAsk();
 }
-async function askCity(question) {
-  const q = question.trim(), status = $("askStatus");
+async function askCity(question, task) {   // task: Beginner's "Start from a task", the ticket in the hire's words
+  const q = question.trim(), status = task ? $("taskStatus") : $("askStatus");
   if (!q) return;
   if (!canAsk()) { status.innerHTML = needSignin("ask questions"); return; }
   if (!okToSendPrivate()) return;
@@ -2668,15 +2680,17 @@ async function askCity(question) {
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
       return;
     }
-    askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])) };
+    askState = { question: q, answer: data.answer, order: data.files, files: new Map(data.files.map(f => [f.path, f.why])), task: task || null };
     status.textContent = "";
     openSide("ask");
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function renderAsk() {
-  $("sideTitle").textContent = askState.answer ? "Ask the city" : "Explain the code";
-  $("sideSub").textContent = askState.question;
+  const task = askState.task;
+  $("sideTitle").textContent = task ? "Your task" : askState.answer ? "Ask the city" : "Explain the code";
+  $("sideSub").textContent = task || askState.question;
   sideBody.innerHTML = (askState.answer ? `<p class="ask-answer">${rich(askState.answer)}</p>` : "") +
+    (task && askState.order.length ? `<h3>Open these, in this order</h3>` : "") +
     (askState.order.length ? `<ol class="rank">${askState.order.map((f, i) => {
       const b = bmap.get(f.path), live = b && b.userData.lines > 0;
       return `<li><button type="button" ${live ? `data-path="${esc(f.path)}"` : `class="gone" tabindex="-1"`}>
@@ -5591,7 +5605,7 @@ function frame() {
 // (closing it hides it for that visit), and once for each GitHub account the first time it signs in. Where there's
 // no sign-in at all (the local app, VS Code) it shows on the first visit only. The Guide can start it any time.
 const SITE_TOUR = [
-  { title: "Welcome to Code City", text: "Every file is a building. Taller means more code, and folders are districts. Here's a quick look around." },
+  { title: "Welcome to Code City", text: "Every file is a building. Taller means more functions, wider means more lines, and folders are districts. Here's a quick look around." },
   { at: ".tb-repo", title: "The repo on screen", text: "The project you're looking at, and how big it is. Click the commit count to see its history." },
   { at: "#askSlot", title: "Ask", text: "Type a question about the code. The files that answer it light up." },
   { at: '.rail-btn[data-seg="repo"]', title: "Repo", text: "Open a project from GitHub, or a folder on your computer." },
@@ -5607,7 +5621,7 @@ const SITE_TOUR = [
 ];
 // Beginner: four stops, the ones that get someone started; the rest is in Help
 const SITE_TOUR_EASY = [
-  { title: "Welcome to Code City", text: "Every file in the project is a building. Taller means more code, and folders are districts." },
+  { title: "Welcome to Code City", text: "Every file in the project is a building. Taller means more functions, wider means more lines, and folders are districts." },
   { at: '.rail-btn[data-seg="understand"]', title: "Start with the tour", text: "Understand walks you through what the code does, step by step, in plain English." },
   { title: "Click any building", text: "See what that file is for, and have it explained. Drag to turn the city, scroll to zoom." },
   { at: "#askSlot", title: "Ask a question", text: "Type a question about the code. The files that answer it light up.", when: () => askEnabled },
