@@ -2769,8 +2769,10 @@ function explainCards(x) {
     (x.change ? "The change, in plain words." : x.range ? "Just these lines, in plain words." : one ? "This file, in plain words." : "These files together, in plain words.") + " Written by AI: check it against the code.",
     `<p class="ask-answer">${one && f0.explanation ? rich(f0.explanation, f0.path) : rich(x.summary)}</p>` + (one ? partial(f0) : "") +
     (x.files.length > 1 ? `<div class="side-actions"><button type="button" class="mini" data-view-all="${esc(JSON.stringify(x.files.slice(0, 6).map(f => f.path)))}">View these ${Math.min(x.files.length, 6)} files side by side</button></div>` : ""));
+  const keyLines = f => !x.range || !f.parts || !f.parts.length ? "" : block("xb-lines", "Lines to look at", "The lines in it that matter most. Click a number to see it in the code.",
+    `<ul class="todos parts">${f.parts.map(pt => `<li><button type="button" class="lnum" data-line="${pt.line}" data-file="${esc(f.path)}" title="Show this line in the code">L${pt.line}</button>${rich(pt.note, f.path)}</li>`).join("")}</ul>`);
   if (!x.files.length) return what;
-  if (one) return what + inside(f0) + links(f0);
+  if (one) return what + keyLines(f0) + inside(f0) + links(f0);
   return what + x.files.map(f => `<div class="xb-file"><div class="explain-head"><button type="button" class="explain-path" data-path="${esc(f.path)}">${pathHtml(f.path)}</button><button type="button" class="mini" data-view="${esc(f.path)}">View</button></div>` +
     block("xb-how", "How it works", "What this file does, and how.", partial(f) + `<p class="explain-text">${rich(f.explanation, f.path)}</p>`) + inside(f) + links(f) + `</div>`).join("");
 }
@@ -2875,7 +2877,8 @@ async function explainCode(state, paths, question, from, range, panel) {   // pa
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code, plain: audience === "beginner" }),
+      body: JSON.stringify({ mode: "explain", question, repo: currentRepo || cityName, files, code, plain: audience === "beginner",
+        range: audience === "beginner" && range ? { from: range.from, to: range.to } : undefined }),   // Beginner, one function: with its lines to look at
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) return;

@@ -34,6 +34,15 @@ test("Beginner's explain asks in plain words and keeps the file's explanation an
   assert.match(lastInput.system_instruction, /never coded/);
   assert.doesNotMatch(lastInput.input, /=== block/);
 });
+test("Beginner's explain of one function also picks its lines to look at, kept inside it", async () => {
+  reply = { summary: "S", files: [{ path: "a.js", explanation: "It adds up.", links: [], lines: [{ line: 3, note: "Starts the count." }, { line: 1, note: "Outside." }, { line: 9, note: "Past the end." }] }] };
+  const [st, out] = await call({ mode: "explain", question: "Explain only lines 2–4 of a.js", repo: "r", files, plain: true, range: { from: 2, to: 4 },
+    code: [{ path: "a.js", text: "a\nb\nc\nd\ne", imports: [] }] });
+  assert.equal(st, 200);
+  assert.deepEqual(out.files[0].parts, [{ line: 3, name: "", note: "Starts the count." }]);
+  assert.match(lastInput.system_instruction, /lines within those lines/);
+});
+
 test("explain keeps a file whose path Gemini wrote short", async () => {
   reply = { summary: "S", files: [{ path: "./CardTest.jsx", explanation: "Draws a card.", links: [] }] };
   const [st, out] = await call({ mode: "explain", question: "x?", repo: "r", files, plain: true,
