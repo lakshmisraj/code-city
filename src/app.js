@@ -1054,21 +1054,30 @@ canvas.addEventListener("pointerup", ev => {
 });
 canvas.addEventListener("pointerleave", () => { lastPointer = null; tip.hidden = true; if (hovered) hovered = null; });
 
+// The hover label sits at the pointer, inside the window. Beginner: never over an open panel either; it flips to
+// the pointer's left where it would run into one.
+function placeTip(x, y) {
+  tip.hidden = false;
+  const w = tip.offsetWidth;
+  if (audience !== "beginner") tip.style.left = Math.min(x, innerWidth - w - 24) + "px";
+  else {
+    const panels = [$("side"), drawer].filter(el => !el.hidden && el.getClientRects().length);   // (fixed panels have no offsetParent)
+    const edge = Math.min(innerWidth - 24, ...panels.map(el => el.getBoundingClientRect().left - 8).filter(l => l > x));
+    tip.style.left = (x + w <= edge ? x : Math.max(8, x - w - 12)) + "px";
+  }
+  tip.style.top = y + "px";
+}
 function showTip(b, x, y) {
   const f = b.userData.f, c = churnSrc.get(f.path) || 0;
   tip.innerHTML = `${esc(f.path)} · <b>${fmt(b.userData.lines)}</b> lines` +
     (hist ? ` · <b>${fmt(c)}</b> commit${c === 1 ? "" : "s"}` : "") +
     (viewNow && f.todos.length ? ` · <b class="f">${f.todos.length} fires</b>` : "");
-  tip.hidden = false;
-  tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
-  tip.style.top = y + "px";
+  placeTip(x, y);
 }
 function showFolderTip(dir, x, y) {
   const st = folderStats(dir);
   tip.innerHTML = `${esc(dir)}/ · <b>${fmt(st.files.length)}</b> file${st.files.length === 1 ? "" : "s"} · <b>${fmt(st.lines)}</b> lines · click to open`;
-  tip.hidden = false;
-  tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 24) + "px";
-  tip.style.top = y + "px";
+  placeTip(x, y);
 }
 function updateHover() {
   if (!pointerMoved) return; pointerMoved = false;

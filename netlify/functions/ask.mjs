@@ -604,7 +604,9 @@ async function handle(event) {
     })).filter(w => w.name && w.steps.length).slice(0, every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS);
     const names = new Set(workflows.map(w => w.name));
     workflows.forEach(w => { w.feeds = w.feeds.filter(f => f !== w.name && names.has(f)); });   // only workflows that are in the tour
-    if (!every) workflows.splice(0, workflows.length, ...foldOverlapping(workflows));
+    const folded = every ? null : foldOverlapping(workflows);
+    if (folded && (folded.length > 1 || !plain)) workflows.splice(0, workflows.length, ...folded);   // Beginner: a tour is never folded down to one workflow
+    else if (folded) workflows.forEach(w => { w.merged = []; });
     else workflows.forEach(w => { w.merged = []; });
     if (!workflows.length) return json(502, { error: "Gemini couldn't plan a tour for that. Try a different topic." });
     return done({ title: String(reply.title || "A tour of the city").slice(0, 100), ...(plain ? { story: String(reply.story || "").slice(0, 1500) } : {}), overview: String(reply.overview || "").slice(0, 1000), workflows });
