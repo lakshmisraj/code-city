@@ -6502,7 +6502,8 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
           ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
-            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Lines to look at are picked in the first four files only.</p>` : ""}
+            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Lines to look at are picked in the first four files only.</p>`
+            : L.byPath ? `<p class="side-note">No lines stood out in this file. <b>View code</b> shows all of it.</p>` : ""}
           ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
         return `<li class="wf-step current" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" aria-current="step"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
