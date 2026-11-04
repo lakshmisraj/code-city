@@ -2273,6 +2273,14 @@ function pathHtml(path) {
   const i = path.lastIndexOf("/");
   return i < 0 ? esc(path) : `<i>${esc(path.slice(0, i + 1))}</i>${esc(path.slice(i + 1))}`;
 }
+// Beginner's tour: opening "Show the code behind this step" asks for the lines to look at, and stays open as you go on
+sideBody.addEventListener("toggle", e => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.hasAttribute("data-key-lines") || sideMode !== "tour" || !tourState) return;
+  const was = tourState.linesOpen;   // a redraw with the fold open fires this too: only a real opening retries a failed read
+  tourState.linesOpen = d.open;
+  if (d.open && tourState.w >= 0) askKeyLines(tourState.w, !was);
+}, true);
 sideBody.addEventListener("click", e => {
   const row = e.target.closest("[data-path]");
   const b = row && bmap.get(row.dataset.path);
@@ -5153,9 +5161,23 @@ async function loadKeyLines(w) {
   const code = new Map((await Promise.all(paths.map(pullCode))).filter(Boolean).map(c => [c.path, c]));
   await getGraph().ready;
   wf.handoff = new Map(wf.steps.map((st, k) => [k, k < wf.steps.length - 1 && code.has(st.path) ? handoffLines(st.path, code.get(st.path).text, wf.steps[k + 1].path) : []]));
-  if (plainTour()) await stepPointers(wf, code);   // Beginner: where to start in each step, and what it hands on, from the code
+  if (plainTour()) stepPointers(wf, code).then(redraw, () => {});   // Beginner: where to start, and what it hands on, from the code (never in the way)
   if (t.team) { wf.lines = {}; return redraw(); }   // the team's tour stays AI-free: hand-offs are read from the code, no lines picked by Gemini
+  wf.code = code;
+  if (plainTour()) { wf.lines = { waiting: true }; redraw(); if (t.linesOpen) askKeyLines(w); return; }   // Beginner: asked for when "Show the code" is opened
   redraw();
+  await fetchKeyLines(t, wf, redraw);
+}
+// Beginner: the lines to look at are Gemini's pick, so they're only asked for once someone opens the fold
+function askKeyLines(w, retry) {
+  const t = tourState, wf = t && t.workflows[w];
+  if (!wf || !wf.code || !wf.lines || !(wf.lines.waiting || (retry && wf.lines.error))) return;
+  const redraw = () => { if (tourState === t && t.w === w && sideMode === "tour") renderTour(); };
+  wf.lines = { loading: true }; redraw();
+  fetchKeyLines(t, wf, redraw);
+}
+async function fetchKeyLines(t, wf, redraw) {
+  const code = wf.code, paths = [...new Set(wf.steps.map(st => st.path))];
   const send = paths.filter(p => code.has(p)).slice(0, plainTour() ? 6 : 4).map(p => ({ path: p, text: code.get(p).text }));   // Beginner: every step's file (a workflow has at most 6)
   if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
   try {
@@ -5375,7 +5397,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
           ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by AI. Check it against the code."}</p>` : ""}
           ${plain ? stepPointersHtml(t, w, k, st) : ""}
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
-          ${plain ? (code.trim() ? `<details class="more"><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
+          ${plain ? (code.trim() || L.waiting ? `<details class="more" data-key-lines${t.linesOpen ? " open" : ""}><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
         </li>`; }).join("")}</ol>
       <div class="side-actions tour-nav">
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
