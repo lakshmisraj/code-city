@@ -5040,7 +5040,7 @@ async function teamTour() {   // the repo's saved tour, its steps checked agains
   if (!d || !Array.isArray(d.workflows)) return null;
   const live = p => { const b = bmap.get(p); return b && b.userData.lines > 0; };
   const workflows = d.workflows.filter(w => w && Array.isArray(w.steps)).map(w => ({ name: String(w.name || "A workflow").slice(0, 60), feature: String(w.feature || ""), summary: String(w.summary || ""),
-    steps: w.steps.filter(st => st && live(st.path)).map(st => ({ path: st.path, title: String(st.title || st.path.split("/").pop()).slice(0, 80), narration: String(st.narration || "") })),
+    steps: w.steps.filter(st => st && live(st.path)).map(st => ({ path: st.path, title: String(st.title || st.path.split("/").pop()).slice(0, 80), narration: String(st.narration || ""), change: String(st.change || "") })),
     feeds: Array.isArray(w.feeds) ? w.feeds.map(String) : [] })).filter(w => w.steps.length);
   return workflows.length ? { title: String(d.title || "Our codebase"), story: String(d.story || ""), overview: String(d.overview || ""), workflows } : null;
 }
@@ -5058,7 +5058,7 @@ async function openTeamTour(at) {   // at: "2.3" (workflow 2, step 3), "0" or no
 function saveTeamTour() {
   const t = tourState; if (!t) return;
   const file = { codecityTour: 1, title: t.title, story: t.story || "", overview: t.overview || "",
-    workflows: t.workflows.map(w => ({ name: w.name, feature: w.feature || "", summary: w.summary || "", steps: w.steps.map(st => ({ path: st.path, title: st.title, narration: st.narration })), feeds: w.feeds || [] })) };
+    workflows: t.workflows.map(w => ({ name: w.name, feature: w.feature || "", summary: w.summary || "", steps: w.steps.map(st => ({ path: st.path, title: st.title, narration: st.narration, change: st.change || "" })), feeds: w.feeds || [] })) };
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2) + "\n"], { type: "application/json" }));
   a.download = TEAM_TOUR; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -5112,6 +5112,30 @@ function focusStepWindow() {
   if (key) { p.line = key.line; p.dirty = true; }
   toFront(p); renderViewer();
 }
+// Beginner: for each step, the function to start at, and the first name it takes from the next step's file
+// (the line that uses it). Read from the code: the function the previous step hands on to, else one the
+// narration names, else the file's first.
+function stepPointersHtml(t, w, k, st) {   // Start at…, You'd come here to…, Next: this calls…
+  const d = w.start && w.start.get(k), n = w.next && w.next.get(k), short = p => esc(p.split("/").pop());
+  const at = d && (d.to > d.from ? `L${d.from}–${d.to}` : `L${d.from}`);
+  return `${d ? `<p class="wf-ptr">Start at <button type="button" class="xb-name" data-explain-range data-file="${esc(st.path)}" data-from="${d.from}" data-to="${d.to}" title="Explain just ${esc(d.name)}">${esc(d.name)}</button> <span class="wf-at">${at}</span></p>` : ""}` +
+    `${st.change ? `<p class="wf-ptr"><b>You'd come here to</b> ${esc(st.change.replace(/^[A-Z]/, c => c.toLowerCase()))}</p>` : ""}` +
+    `${n ? `<p class="wf-ptr">Next: this calls <button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(st.path)}" title="Show line ${n.line}, where it's used">${esc(n.name)}</button> in <b>${short(n.of)}</b> →</p>` : ""}`;
+}
+async function stepPointers(wf, code) {
+  wf.next = new Map(); wf.start = new Map();
+  for (const [k, st] of wf.steps.entries()) {
+    const nx = wf.steps[k + 1], a = code.get(st.path), b = nx && code.get(nx.path);
+    if (a && b && nx.path !== st.path) { const n = (await namesUsed(st.path, a.text, nx.path, b.text).catch(() => []))[0]; if (n) wf.next.set(k, { name: n.name, line: n.line, of: n.of || nx.path }); }
+  }
+  for (const [k, st] of wf.steps.entries()) {
+    const a = code.get(st.path); if (!a) continue;
+    const inside = await insideOf(st.path, a.text).catch(() => []), prev = wf.next.get(k - 1), key = n => n.split(".").pop();
+    const named = d => new RegExp(`\\b${rxName(d.name)}\\b`).test(st.narration || "");
+    const d = (prev && inside.find(d => d.name === key(prev.name))) || inside.find(named) || inside[0];
+    if (d) wf.start.set(k, d);
+  }
+}
 function handoffLines(path, text, next) {   // the lines where a file imports the next step's file
   const lines = text.split("\n"), seen = new Set(), out = [];
   for (const imp of getGraph().resolver.importsOf(path, text, [next])) {
@@ -5129,6 +5153,7 @@ async function loadKeyLines(w) {
   const code = new Map((await Promise.all(paths.map(pullCode))).filter(Boolean).map(c => [c.path, c]));
   await getGraph().ready;
   wf.handoff = new Map(wf.steps.map((st, k) => [k, k < wf.steps.length - 1 && code.has(st.path) ? handoffLines(st.path, code.get(st.path).text, wf.steps[k + 1].path) : []]));
+  if (plainTour()) await stepPointers(wf, code);   // Beginner: where to start in each step, and what it hands on, from the code
   if (t.team) { wf.lines = {}; return redraw(); }   // the team's tour stays AI-free: hand-offs are read from the code, no lines picked by Gemini
   redraw();
   const send = paths.filter(p => code.has(p)).slice(0, plainTour() ? 6 : 4).map(p => ({ path: p, text: code.get(p).text }));   // Beginner: every step's file (a workflow has at most 6)
@@ -5348,6 +5373,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
             <button type="button" class="wf-file-view" data-view="${esc(st.path)}">View code</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
           ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by AI. Check it against the code."}</p>` : ""}
+          ${plain ? stepPointersHtml(t, w, k, st) : ""}
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${plain ? (code.trim() ? `<details class="more"><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
         </li>`; }).join("")}</ol>

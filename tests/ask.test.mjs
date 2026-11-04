@@ -53,11 +53,13 @@ test("explain counts separately from asks", async () => {
 });
 test("Beginner's tour isn't folded down to a single workflow", async () => {
   reply = { title: "T", story: "s", overview: "O", workflows: [
-    { name: "Sign in", feature: "f", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "b.js", title: "t", narration: "n" }], feeds: [] },
+    { name: "Sign in", feature: "f", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n", change: "  add a  sign-in provider " }, { path: "b.js", title: "t", narration: "n" }], feeds: [] },
     { name: "Sign out", feature: "f", summary: "S", steps: [{ path: "a.js", title: "t", narration: "n" }, { path: "b.js", title: "t", narration: "n" }], feeds: [] }] };
   const [st, out] = await call({ mode: "tour", files, digest: "README: two", plain: true });
   assert.equal(st, 200);
   assert.deepEqual(out.workflows.map(w => w.name), ["Sign in", "Sign out"]);   // they overlap fully, but folding would leave one
+  assert.equal(out.workflows[0].steps[0].change, "add a sign-in provider");   // the "you'd come here to" line, tidied
+  assert.equal(out.workflows[0].steps[1].change, "");
   const [, other] = await call({ mode: "tour", files, digest: "README: two again" });
   assert.equal(other.workflows.length, 1);   // Advanced and Manager still fold them
 });

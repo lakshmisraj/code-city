@@ -87,7 +87,7 @@ const tourSchema = (max, plain) => ({
           steps: {
             type: "array",
             maxItems: MAX_WORKFLOW_STEPS,
-            items: { type: "object", properties: { path: { type: "string" }, title: { type: "string" }, narration: { type: "string" } }, required: ["path", "title", "narration"] },
+            items: { type: "object", properties: { path: { type: "string" }, title: { type: "string" }, narration: { type: "string" }, ...(plain ? { change: { type: "string" } } : {}) }, required: ["path", "title", "narration"] },
           },
           feeds: { type: "array", items: { type: "string" } },
         },
@@ -135,6 +135,7 @@ You may also get what the code itself shows: the README, project manifests, whic
 It may also list main paths through the code: from each entry point, the functions the code really calls in order, read with a parser. When it does, build each workflow on one of those paths: its steps are the path's files in that order, its narration names the functions the path passes through, and the overview says where paths meet (functions or files that several paths reach).
 ${VOICE}${plain ? `
 A tour is read straight through, so it must not sound the same twice. Narrate each step like a guide walking beside the reader, but vary how you say it: open each narration differently (not "Here…", "This file…" or "In this step…" every time), lead with what happens rather than with the file's name, and don't reuse a phrase or sentence shape you have already used in this tour. Mix short and longer sentences. The same goes for workflow summaries${plain ? " and features" : ""}: each should read freshly, not as one pattern with different nouns. Skip the closing pointer on what to open next: the tour moves on by itself.
+For each step also give change: one short line, under fifteen words and starting with a verb, naming the kind of change a new team member would come to this file to make (for example "change the cookie rules or add a sign-in provider").
 Every summary, step title and narration is read by someone new to code, so keep them all simple: ${PLAIN_WORDS} Be descriptive but brief: give each narration two or three short sentences that say what happens at this step for the person using the software, then how the code does it and what it passes on to the next step. Name at most one function in a narration, and say what it does in the same sentence; never list several.` : ` Narrate each step as if walking the reader through it ("here the request lands in…, which hands it to…").`}`;
 
 const LINES_SCHEMA = {
@@ -599,7 +600,8 @@ async function handle(event) {
       ...(plain ? { feature: String(w.feature || "").slice(0, 400) } : {}),
       summary: String(w.summary || "").slice(0, 400),
       steps: w.steps.filter(st => st && known.has(st.path))
-        .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, plain ? 900 : 500) })).slice(0, MAX_WORKFLOW_STEPS),
+        .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, plain ? 900 : 500),
+          ...(plain ? { change: String(st.change || "").replace(/\s+/g, " ").trim().slice(0, 140) } : {}) })).slice(0, MAX_WORKFLOW_STEPS),
       feeds: (Array.isArray(w.feeds) ? w.feeds : []).map(f => String(f).slice(0, 60)),
     })).filter(w => w.name && w.steps.length).slice(0, every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS);
     const names = new Set(workflows.map(w => w.name));

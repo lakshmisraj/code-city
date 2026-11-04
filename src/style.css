@@ -822,3 +822,10 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .xb-fn .xb-kind { font-size: 12px; color: var(--ink-dim); }
 .xb-fn .xb-at { margin-left: auto; flex: none; font: 12px var(--f-mono); color: var(--ink-dim); }
 @media (pointer: coarse) { body.for-beginner .xb-fn { min-height: 44px; align-items: center; } }
+/* Beginner's tour step: where to start, why you'd come here, where it goes next */
+.wf-ptr { margin: 4px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink); }
+.wf-ptr b { font-weight: 600; }
+.wf-ptr .xb-name { all: unset; cursor: pointer; font: 12.5px var(--f-mono); padding: 1px 6px; border-radius: 4px; background: var(--street-2); color: var(--ink); }
+.wf-ptr .xb-name:hover { text-decoration: underline; }
+.wf-ptr .xb-name:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
+.wf-at { font: 12px var(--f-mono); color: var(--ink-dim); }
