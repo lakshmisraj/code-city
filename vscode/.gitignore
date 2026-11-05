@@ -2,4 +2,5 @@ server/
 node_modules/
 *.vsix
 LICENSE
+NOTICE
 .vscode-test/

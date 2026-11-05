@@ -1,0 +1,8 @@
+Code City
+Copyright (c) 2026 Lakshmi Shibu Raj
+
+Code City is licensed under the Elastic License 2.0 (see LICENSE). The licensor is
+Lakshmi Shibu Raj. Versions up to and including commit 2f5dbaa (5 November 2026)
+were released under the MIT License and stay available under it.
+
+The files in site/vendor/tree-sitter/ come from tree-sitter and keep their own licenses.

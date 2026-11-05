@@ -19,4 +19,5 @@ fs.copyFileSync(path.join(ROOT, "code-city.html"), path.join(ASSETS, "code-city.
 fs.cpSync(path.join(ROOT, "site", "vendor", "tree-sitter"), path.join(ASSETS, "site", "vendor", "tree-sitter"), { recursive: true });
 for (const f of ["ask-server.mjs", "ask-server.mjs.LEGAL.txt"]) fs.copyFileSync(path.join(ROOT, "build", f), path.join(ASSETS, f));
 fs.copyFileSync(path.join(ROOT, "LICENSE"), path.join(HERE, "LICENSE"));
+fs.copyFileSync(path.join(ROOT, "NOTICE"), path.join(HERE, "NOTICE"));
 console.log(`Prepared ${path.relative(ROOT, OUT)}/`);
