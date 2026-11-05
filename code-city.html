@@ -938,6 +938,7 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 
   <section class="segment" data-seg="understand">
     <p class="seg-note" id="understandNote">Start here, then take the tour.</p>
+    <p class="side-note ask-off" id="askOff" hidden></p>
     <div class="seg-actions">
       <button id="mapBtn" type="button" class="seg-action primary" aria-pressed="false"><b>Code structure</b><span>Where the code starts and the main paths through it</span></button>
       <button id="reportBtn" type="button" class="seg-action not-beginner" aria-pressed="false"><b>Status report</b><span>What changed lately, who did it, and what's still open, ready to share</span></button>
@@ -2374,6 +2375,7 @@ drawer.addEventListener("click", e => {
 // paths inside the repo, and only the page's own parent (the extension's panel) is listened to.
 const IN_VSCODE = new URLSearchParams(location.search).get("host") === "vscode" && window.parent !== window;
 function openInEditor(path, line) { window.parent.postMessage({ codeCity: "open", path, line: line || 0 }, "*"); }
+document.addEventListener("click", e => { if (IN_VSCODE && e.target.closest("[data-set-key]")) window.parent.postMessage({ codeCity: "setKey" }, "*"); });   // "Add your key": VS Code's Set Gemini API Key
 window.addEventListener("message", e => {
   if (!IN_VSCODE || e.source !== window.parent || !e.data || e.data.codeCity !== "reveal" || typeof e.data.path !== "string") return;
   const b = bmap.get(e.data.path);
@@ -3736,6 +3738,11 @@ async function initAsk() {
   $("askForm").hidden = !askEnabled;
   $("tourForm").hidden = !askEnabled;
   $("taskForm").hidden = !askEnabled;
+  const off = $("askOff");   // the local app and VS Code with no Gemini key: say how to turn Ask on
+  off.hidden = askEnabled || !LOCAL;
+  off.innerHTML = askEnabled || !LOCAL ? "" : IN_VSCODE
+    ? `Ask, tours and explanations need your own Gemini key, free from Google. <button type="button" class="linkish" data-set-key>Add your key</button>`
+    : `Ask, tours and explanations need your own Gemini key, free from Google: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">get a free key</a>, then start again with <code>GEMINI_API_KEY=your-key code-city .</code>`;
   understandOrder();
   signinCues();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button

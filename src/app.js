@@ -1257,6 +1257,7 @@ drawer.addEventListener("click", e => {
 // paths inside the repo, and only the page's own parent (the extension's panel) is listened to.
 const IN_VSCODE = new URLSearchParams(location.search).get("host") === "vscode" && window.parent !== window;
 function openInEditor(path, line) { window.parent.postMessage({ codeCity: "open", path, line: line || 0 }, "*"); }
+document.addEventListener("click", e => { if (IN_VSCODE && e.target.closest("[data-set-key]")) window.parent.postMessage({ codeCity: "setKey" }, "*"); });   // "Add your key": VS Code's Set Gemini API Key
 window.addEventListener("message", e => {
   if (!IN_VSCODE || e.source !== window.parent || !e.data || e.data.codeCity !== "reveal" || typeof e.data.path !== "string") return;
   const b = bmap.get(e.data.path);
@@ -2619,6 +2620,11 @@ async function initAsk() {
   $("askForm").hidden = !askEnabled;
   $("tourForm").hidden = !askEnabled;
   $("taskForm").hidden = !askEnabled;
+  const off = $("askOff");   // the local app and VS Code with no Gemini key: say how to turn Ask on
+  off.hidden = askEnabled || !LOCAL;
+  off.innerHTML = askEnabled || !LOCAL ? "" : IN_VSCODE
+    ? `Ask, tours and explanations need your own Gemini key, free from Google. <button type="button" class="linkish" data-set-key>Add your key</button>`
+    : `Ask, tours and explanations need your own Gemini key, free from Google: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">get a free key</a>, then start again with <code>GEMINI_API_KEY=your-key code-city .</code>`;
   understandOrder();
   signinCues();
   if (askEnabled && picked) openDrawer(picked);   // a file opened from the link before this answered: add its Explain button

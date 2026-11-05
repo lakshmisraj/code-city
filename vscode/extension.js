@@ -113,7 +113,7 @@ function webviewHtml(src) {
   window.addEventListener("message", e => {
     const d = e.data;
     if (!d || typeof d.codeCity !== "string") return;
-    if (e.source === frame.contentWindow) { if (d.codeCity === "open") vscode.postMessage(d); }
+    if (e.source === frame.contentWindow) { if (d.codeCity === "open" || d.codeCity === "setKey") vscode.postMessage(d); }
     else if (d.codeCity === "reveal") frame.contentWindow.postMessage(d, origin);
   });
 </script></body></html>`;
@@ -121,6 +121,7 @@ function webviewHtml(src) {
 
 // Open in editor: a path inside the workspace folder, and a line (1-based, 0 for none).
 async function onMessage(root, msg) {
+  if (msg && msg.codeCity === "setKey") return vscode.commands.executeCommand("codeCity.setGeminiKey");   // the page's "Add your key"
   if (!msg || msg.codeCity !== "open" || typeof msg.path !== "string") return;
   const file = path.resolve(root, ...msg.path.split("/"));
   if (file !== root && !file.startsWith(root + path.sep)) return;   // nothing outside the workspace folder
@@ -143,10 +144,15 @@ function revealFile(uri) {
   city.panel.webview.postMessage({ codeCity: "reveal", path: rel.split(path.sep).join("/") });
 }
 
+const KEY_PAGE = "https://aistudio.google.com/apikey";   // where to get a free Gemini key
 async function setKey(context) {
+  const paste = "Paste my key", get = "Get a free key";
+  const how = await vscode.window.showInformationMessage("Code City: Ask, tours and explanations use your own Gemini API key. It's free from Google AI Studio.", paste, get);
+  if (!how) return;
+  if (how === get) await vscode.env.openExternal(vscode.Uri.parse(KEY_PAGE));
   const key = await vscode.window.showInputBox({
     title: "Gemini API key for Code City",
-    prompt: "Used for Ask, tours and explanations, from this machine. Kept in VS Code's secret storage.",
+    prompt: "Used for Ask, tours and explanations, from this machine. Kept in VS Code's secret storage. Get one free at aistudio.google.com/apikey.",
     password: true, ignoreFocusOut: true,
   });
   if (!key) return;

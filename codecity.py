@@ -321,7 +321,7 @@ def page():
 # Ask, tours and explanations with your own Gemini key: local/ask-server.mjs runs the site's own ask.mjs under
 # Node, and this server passes the page's requests through to it. Off unless GEMINI_API_KEY is set.
 ASK = None   # {"port", "secret"} once it's running
-ASK_NO_KEY = "Set GEMINI_API_KEY before running code-city to use Ask here (it needs Node 18+)."
+ASK_NO_KEY = "Set GEMINI_API_KEY before running code-city to use Ask here (it needs Node 18+). Get a free key at https://aistudio.google.com/apikey"
 
 
 def ask_script():
