@@ -40,7 +40,9 @@ test("Beginner's explain of one function also picks its lines to look at, kept i
     code: [{ path: "a.js", text: "a\nb\nc\nd\ne", imports: [] }] });
   assert.equal(st, 200);
   assert.deepEqual(out.files[0].parts, [{ line: 3, name: "", note: "Starts the count." }]);
-  assert.match(lastInput.system_instruction, /lines within those lines/);
+  assert.match(lastInput.system_instruction, /lines within those lines that matter/);
+  assert.match(lastInput.system_instruction, /as few or as many as the code has/);
+  assert.doesNotMatch(lastInput.system_instruction, /up to \d+ lines/, "no fixed count of lines");
 });
 
 test("explain keeps a file whose path Gemini wrote short", async () => {
