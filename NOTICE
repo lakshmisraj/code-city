@@ -5,4 +5,7 @@ Code City is licensed under the Elastic License 2.0 (see LICENSE). The licensor 
 Lakshmi Shibu Raj. Versions up to and including commit 2f5dbaa (5 November 2026)
 were released under the MIT License and stay available under it.
 
+Code City(TM) is a trademark of Lakshmi Shibu Raj. Neither license gives permission
+to use the name or logo.
+
 The files in site/vendor/tree-sitter/ come from tree-sitter and keep their own licenses.

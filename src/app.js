@@ -5679,7 +5679,7 @@ function frame() {
 // (closing it hides it for that visit), and once for each GitHub account the first time it signs in. Where there's
 // no sign-in at all (the local app, VS Code) it shows on the first visit only. The Guide can start it any time.
 const SITE_TOUR = [
-  { title: "Welcome to Code City", text: "Every file is a building. Taller means more functions, wider means more lines, and folders are districts. Here's a quick look around." },
+  { title: "Welcome to Code City™", text: "Every file is a building. Taller means more functions, wider means more lines, and folders are districts. Here's a quick look around." },
   { at: ".tb-repo", title: "The repo on screen", text: "The project you're looking at, and how big it is. Click the commit count to see its history." },
   { at: "#askSlot", title: "Ask", text: "Type a question about the code. The files that answer it light up." },
   { at: '.rail-btn[data-seg="repo"]', title: "Repo", text: "Open a project from GitHub, or a folder on your computer." },
@@ -5695,7 +5695,7 @@ const SITE_TOUR = [
 ];
 // Beginner: four stops, the ones that get someone started; the rest is in Help
 const SITE_TOUR_EASY = [
-  { title: "Welcome to Code City", text: "Every file in the project is a building. Taller means more functions, wider means more lines, and folders are districts." },
+  { title: "Welcome to Code City™", text: "Every file in the project is a building. Taller means more functions, wider means more lines, and folders are districts." },
   { at: '.rail-btn[data-seg="understand"]', title: "Start with the tour", text: "Understand walks you through what the code does, step by step, in plain English." },
   { title: "Click any building", text: "See what that file is for, and have it explained. Drag to turn the city, scroll to zoom." },
   { at: "#askSlot", title: "Ask a question", text: "Type a question about the code. The files that answer it light up.", when: () => askEnabled },

@@ -1,4 +1,4 @@
-# Code City
+# Code City™
 
 **Live:** https://codecitydev.com
 
@@ -276,3 +276,5 @@ The timelapse follows the main line of history (first parents), with each merge 
 [Elastic License 2.0](LICENSE) (copyright and history in [NOTICE](NOTICE)). You can use, copy, change and share Code City for free, including at work and inside your company's own products. You can't offer it to others as a hosted or managed service, get around its license keys or paid features, or remove its notices.
 
 Versions up to commit `2f5dbaa` (5 November 2026) were released under the MIT License and stay available under it.
+
+Code City™ is a trademark of Lakshmi Shibu Raj. Neither license gives permission to use the name or logo.

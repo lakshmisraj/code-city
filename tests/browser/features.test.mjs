@@ -56,11 +56,11 @@ test("the local app: first-visit tour, language key, explaining selected lines, 
 
     // The site tour: shown by itself on the first visit here (no sign-in in the local app), never again after
     await page.waitForFunction(() => !document.getElementById("siteTour").hidden);
-    assert.equal(await page.textContent("#stTitle"), "Welcome to Code City");
+    assert.equal(await page.textContent("#stTitle"), "Welcome to Code City™");
     await page.click('#siteTour [data-st="next"]');
     assert.match(await page.textContent("#stCount"), /^2 of \d+$/);
     await page.click('#siteTour [data-st="back"]');
-    assert.equal(await page.textContent("#stTitle"), "Welcome to Code City");
+    assert.equal(await page.textContent("#stTitle"), "Welcome to Code City™");
     await page.keyboard.press("Escape");
     assert.equal(await tourShown(page), false);
     await page.reload();
