@@ -4,7 +4,7 @@
   "description": "See your workspace as a 3D city: where it starts, what it depends on, how its workflows run, and how it grew. Jump between buildings and files.",
   "version": "0.1.0",
   "publisher": "lakshmisraj",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/lakshmisraj/code-city"

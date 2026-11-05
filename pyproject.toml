@@ -10,7 +10,7 @@ name = "code-city"
 dynamic = ["version"]
 description = "See a codebase as a 3D city: where it starts, what it depends on, how its workflows run, and how it grew."
 readme = "README.md"
-license = "MIT"
+license = "Elastic-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.8"
 authors = [{ name = "Lakshmi Shibu Raj" }]
