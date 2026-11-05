@@ -94,5 +94,9 @@
   "devDependencies": {
     "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "3.9.2"
+  },
+  "overrides": {
+    "glob": "^14.0.2",
+    "minimatch": "^11.0.1"
   }
 }
