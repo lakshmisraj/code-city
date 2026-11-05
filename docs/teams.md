@@ -74,6 +74,8 @@ Replace `OWNER/NAME`. Add `&range=start..now` to load its whole history when it 
 | Piece | Reads | Sends |
 |---|---|---|
 | `code-city`, the VS Code extension | Your folder, on your machine | Nothing, unless you use Ask: then Gemini gets what you ask about, on your key |
-| Hosted site | GitHub's API (with your token for private repos) | Nothing to Code City, unless you use Ask |
+| Hosted site | GitHub's API (with your token for private repos) | An anonymous visit count (see below), and nothing else to Code City unless you use Ask |
 | Hosted site's Ask | What the page sends it | File names, a repo digest and the code you ask about, to Code City's server and Gemini |
 | PR summary bot | Your repo's history, in your Actions | One comment on the PR |
+
+The hosted site counts its visits itself: per day, the page loads, how many browsers are new that day (a date kept in the browser), the site a visitor came from (host only), a shared link's `?ref=`, and the country Netlify reports. It keeps no IP addresses, cookies, repos, files or GitHub accounts, and doesn't count browsers that send Do Not Track or Global Privacy Control. `code-city` and the VS Code extension don't count anything. The owner reads the counts at `/stats.html`, signed in with GitHub.

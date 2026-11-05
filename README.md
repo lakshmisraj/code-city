@@ -262,6 +262,7 @@ The timelapse follows the main line of history (first parents), with each merge 
 | `src/style.css`, `src/page.html` | Its styles, and the page's markup with the panels and the scripts it loads |
 | `code-city.html` | Built from `src/` by `python3 codecity.py build`: the same page as one file (the installed package and the claude.ai artifact use it). Don't edit it by hand |
 | `codecity.py` | Local server, repo exporter (git log → city JSON) and site builder |
+| `netlify/functions/visit.mjs`, `site/stats.html` | The hosted sites' own visit count, and the page where the owner reads it (`/stats.html`) |
 | `dev-server.mjs` | Dev server: the dev page signed in from `.env`, with `netlify/functions/ask.mjs` run locally |
 | `local/ask-server.mjs` | Runs `ask.mjs` for `code-city` with your own Gemini key; the installed package carries it bundled (`npm run bundle:ask`) |
 | `pyproject.toml`, `hatch_build.py` | The `code-city` package for PyPI: the command, the page, the parser and the bundled ask server |

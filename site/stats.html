@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Site stats · Code City</title>
+<style>
+  :root { --bg: #0b1020; --panel: #141a2e; --line: #2c3657; --fg: #e6e9f2; --dim: #9aa3bd; --accent: #f2a541; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px 64px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  h1 { margin: 0; font-size: 24px; } h1 span { color: var(--accent); }
+  h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  p { margin: 0; color: var(--dim); } a { color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card, section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .card b { display: block; font-size: 28px; font-variant-numeric: tabular-nums; }
+  .card span { font-size: 13px; color: var(--dim); }
+  .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td, th { padding: 4px 0; text-align: right; } td:first-child, th:first-child { text-align: left; overflow-wrap: anywhere; }
+  th { font-size: 12px; font-weight: 500; color: var(--dim); }
+  tr + tr td { border-top: 1px solid var(--line); }
+  .bar { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
+  .bar i { flex: 1; min-width: 2px; background: var(--accent); border-radius: 2px 2px 0 0; }
+  select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Code <span>City</span> site stats</h1>
+  <p id="note">Reading the stats…</p>
+  <div id="out" hidden>
+    <p style="margin-bottom:12px"><label>Show <select id="range"><option value="7">the last 7 days</option><option value="30" selected>the last 30 days</option><option value="90">the last 90 days</option></select></label></p>
+    <div class="cards" style="margin-bottom:12px">
+      <div class="card"><b id="visitors">0</b><span>Visitors (each browser counted once a day)</span></div>
+      <div class="card"><b id="views">0</b><span>Page loads</span></div>
+    </div>
+    <section style="margin-bottom:12px"><h2>Visitors per day</h2><div class="bar" id="bar"></div></section>
+    <div class="three" style="margin-bottom:12px">
+      <section><h2>Personal links (?ref=)</h2><table id="refs"></table></section>
+      <section><h2>Came from</h2><table id="from"></table></section>
+      <section><h2>Countries</h2><table id="countries"></table></section>
+    </div>
+    <p>Only counts are kept: no IP addresses, cookies, repos, files or GitHub accounts, and browsers asking not to be tracked aren't counted. This site's version only; each version of Code City keeps its own.</p>
+  </div>
+</main>
+<script>
+(async () => {
+  const $ = id => document.getElementById(id), note = $("note");
+  const fail = html => { note.innerHTML = html; };
+  let token = null;
+  try { token = localStorage.getItem("codecity.githubOAuth"); } catch (e) { /* storage blocked */ }
+  if (!token) return fail('Sign in with GitHub on <a href="/">the main page</a> first, then come back here.');
+  let r, data;
+  try { r = await fetch("/.netlify/functions/visit", { headers: { Authorization: "Bearer " + token }, cache: "no-store" }); data = await r.json(); }
+  catch (e) { return fail("Couldn't read the stats. Check your connection and reload."); }
+  if (!r.ok) { const p = document.createElement("span"); p.textContent = data.error || "Couldn't read the stats."; note.textContent = ""; return note.append(p); }
+  note.hidden = true; $("out").hidden = false;
+  const fill = (id, map) => {
+    const rows = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 15), t = $(id); t.textContent = "";
+    if (!rows.length) { const tr = t.insertRow(), c = tr.insertCell(); c.textContent = "None yet"; c.style.color = "var(--dim)"; return; }
+    for (const [k, v] of rows) { const tr = t.insertRow(); tr.insertCell().textContent = k; tr.insertCell().textContent = v.toLocaleString(); }
+  };
+  const show = n => {
+    const cutoff = new Date(Date.now() - (n - 1) * 864e5).toISOString().slice(0, 10), days = data.days.filter(d => d.day >= cutoff).sort((a, b) => a.day < b.day ? -1 : 1);
+    const sum = k => days.reduce((a, d) => a + (d[k] || 0), 0), merge = k => { const m = {}; for (const d of days) for (const [a, b] of Object.entries(d[k] || {})) m[a] = (m[a] || 0) + b; return m; };
+    $("visitors").textContent = sum("visitors").toLocaleString(); $("views").textContent = sum("views").toLocaleString();
+    fill("refs", merge("refs")); fill("from", merge("from")); fill("countries", merge("countries"));
+    const by = new Map(days.map(d => [d.day, d.visitors || 0])), bar = $("bar"), series = Array.from({ length: n }, (_, k) => { const day = new Date(Date.now() - (n - 1 - k) * 864e5).toISOString().slice(0, 10); return [day, by.get(day) || 0]; }), top = Math.max(1, ...series.map(s => s[1]));
+    bar.textContent = "";
+    for (const [day, v] of series) { const i = document.createElement("i"); i.style.height = Math.max(2, v / top * 80) + "px"; i.title = `${day}: ${v}`; bar.append(i); }
+  };
+  $("range").onchange = e => show(+e.target.value);
+  show(30);
+})();
+</script>
+</body>
+</html>

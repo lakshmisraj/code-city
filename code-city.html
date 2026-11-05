@@ -6893,7 +6893,21 @@ function siteTourOnLoad() {
   } catch (e) { show = false; }   // storage blocked: it would show on every page, so it waits for the Guide
   if (show) setTimeout(startSiteTour, 900);   // once the first panels have settled
 }
+// The hosted site's own visit count (netlify/functions/visit.mjs): a page load, whether this browser is new today,
+// the site it came from and a shared link's ?ref=. Never a repo, a file or who you are. Not sent by the local app or
+// VS Code, or when the browser asks not to be tracked.
+function countVisit() {
+  if (!/(^|\.)codecitydev\.com$/.test(location.hostname) || navigator.doNotTrack === "1" || navigator.globalPrivacyControl) return;
+  const today = new Date().toISOString().slice(0, 10);
+  let first = false;
+  try { first = localStorage.getItem("codecity.visitDay") !== today; localStorage.setItem("codecity.visitDay", today); } catch (e) { /* storage blocked: counted as a page load only */ }
+  let from = null;
+  try { const r = document.referrer && new URL(document.referrer); if (r && r.hostname !== location.hostname) from = r.hostname; } catch (e) { /* no usable referrer */ }
+  fetch("/.netlify/functions/visit", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ first, from, ref: new URLSearchParams(location.search).get("ref") }) }).catch(() => { /* a count isn't worth an error */ });
+}
 const start = () => {
+  countVisit();
   const link = readLink();
   openSeg(audience === "beginner" ? null : segOpen, false, true);   // Beginner starts with just the city
   buildCity(sampleCity()); frame();
