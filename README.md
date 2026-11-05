@@ -211,7 +211,7 @@ From a checkout of this repo, `python3 codecity.py` takes the same arguments.
 
 ### In VS Code
 
-The Code City extension (in [`vscode/`](vscode/)) opens the city for your workspace in an editor panel: **Code City: Open the City**. Click a building and press **Open in editor**, or use **Code City: Show This File in the City** (also in the editor tab's and the Explorer's right-click menus) to fly to the file you're in. **Code City: Set Gemini API Key** turns on Ask, kept in VS Code's secret storage. It needs Python 3.8+ and git. Until it's on the Marketplace, build it with `npm install && npm run package` in `vscode/` and install the `.vsix` with `code --install-extension`.
+The Code City extension (in [`vscode/`](vscode/)) opens the city for your workspace in an editor panel: **Code City: Open the City**. Click a building and press **Open in editor**, or use **Code City: Show This File in the City** (also in the editor tab's and the Explorer's right-click menus) to fly to the file you're in. **Code City: Set Gemini API Key** turns on Ask, kept in VS Code's secret storage. It needs Python 3.8+ and git. On the Marketplace it's [CodeCityDev: 3D Codebase Map](https://marketplace.visualstudio.com/items?itemName=lakshmisraj.codecitydev) (`lakshmisraj.codecitydev`). To build it yourself with `npm install && npm run package` in `vscode/` and install the `.vsix` with `code --install-extension`.
 
 ### Ask, tours and explanations on your own machine
 

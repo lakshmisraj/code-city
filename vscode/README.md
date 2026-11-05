@@ -21,4 +21,4 @@ Run **Code City: Set Gemini API Key** with your own [Gemini key](https://aistudi
 
 ## Building the extension
 
-From this folder: `npm install`, then `npm run package` writes `code-city-<version>.vsix` (it first copies Code City's server, page and the bundled ask server into `server/`). Install it with `code --install-extension code-city-0.1.0.vsix`.
+From this folder: `npm install`, then `npm run package` writes `codecitydev-<version>.vsix` (it first copies Code City's server, page and the bundled ask server into `server/`). Install it with `code --install-extension codecitydev-0.1.0.vsix`.

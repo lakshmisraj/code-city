@@ -1,6 +1,6 @@
 {
-  "name": "code-city",
-  "displayName": "Code City",
+  "name": "codecitydev",
+  "displayName": "CodeCityDev: 3D Codebase Map",
   "description": "See your workspace as a 3D city: where it starts, what it depends on, how its workflows run, and how it grew. Jump between buildings and files.",
   "version": "0.1.0",
   "publisher": "lakshmisraj",

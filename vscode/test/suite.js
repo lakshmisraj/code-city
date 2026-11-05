@@ -10,7 +10,7 @@ async function until(check, what, ms = 60000) {
 }
 
 exports.run = async function run() {
-  const ext = vscode.extensions.all.find(e => e.packageJSON.name === "code-city" && e.extensionPath.endsWith("vscode"));
+  const ext = vscode.extensions.all.find(e => e.packageJSON.name === "codecitydev" && e.extensionPath.endsWith("vscode"));
   assert.ok(ext, "the extension is loaded");
   const api = await ext.activate();
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;

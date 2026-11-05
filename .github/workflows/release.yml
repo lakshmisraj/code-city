@@ -62,7 +62,7 @@ jobs:
         working-directory: vscode
       - name: Publish to the VS Code Marketplace
         if: env.VSCE_PAT != ''
-        run: npx vsce publish --packagePath code-city-*.vsix
+        run: npx vsce publish --packagePath codecitydev-*.vsix
         working-directory: vscode
       - name: No Marketplace token yet
         if: env.VSCE_PAT == ''
