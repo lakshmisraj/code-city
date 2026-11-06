@@ -17,7 +17,7 @@ A guide for whoever is setting Code City up for a team: which pieces to use, how
     pipx install code-city
     code-city .
 
-The city is read by a server on their own computer, so this works for private code and nothing is uploaded. For Ask, the workflows tour and explanations, each developer uses their own Gemini key (`export GEMINI_API_KEY=...`, Node 18+ needed). The terminal says whether Ask is on.
+The city is read by a server on their own computer, so this works for private code and nothing is uploaded. For Ask, the workflows tour and explanations, each developer uses their own Gemini key (Node 18+ needed): `code-city` asks for it when it starts, or they can set `GEMINI_API_KEY` first. The terminal says whether Ask is on.
 
 In VS Code, the Code City extension does the same for the open workspace (**Code City: Open the City**), and the Gemini key goes in VS Code's secret storage (**Code City: Set Gemini API Key**).
 

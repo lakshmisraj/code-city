@@ -215,7 +215,7 @@ The Code City extension (in [`vscode/`](vscode/)) opens the city for your worksp
 
 ### Ask, tours and explanations on your own machine
 
-Set your own [Gemini API key](https://aistudio.google.com/apikey) before running `code-city`, and Ask, the workflows tour, Explain and Explain this commit work locally with no sign-in:
+With your own [Gemini API key](https://aistudio.google.com/apikey), Ask, the workflows tour, Explain and Explain this commit work locally with no sign-in. When no key is set, `code-city` asks for one as it starts: paste it (it's hidden, and used for that run only) or press Enter to skip. To skip the question, set the key first:
 
     export GEMINI_API_KEY=your-key
     code-city .

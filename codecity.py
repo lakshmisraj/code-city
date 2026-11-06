@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import errno
+import getpass
 import secrets
 import shutil
 import threading
@@ -335,6 +336,21 @@ def ask_script():
     return None
 
 
+def ask_for_key():
+    """At a terminal with no key set, offer to take one for this run. It stays in this process's memory, never in a file."""
+    if os.environ.get("GEMINI_API_KEY") or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return   # already set, or nobody to ask: the VS Code extension, a script, CI
+    if not (os.environ.get("CODE_CITY_NODE") or shutil.which("node")) or not ask_script():
+        return   # a key couldn't turn Ask on, and start_ask says why
+    print("Ask, tours and explanations need a Gemini key, free at https://aistudio.google.com/apikey", flush=True)
+    try:
+        key = getpass.getpass("Paste your key (hidden, used for this run only), or press Enter to skip: ").strip()
+    except EOFError:
+        return
+    if key:
+        os.environ["GEMINI_API_KEY"] = key
+
+
 def start_ask():
     """Start the ask server if there's a key, Node and the script; returns a line for the terminal."""
     global ASK
@@ -488,7 +504,7 @@ def main(argv=None):
         return
 
     global START
-    if args.src:
+    if args.src:   # checked before the key prompt, so a mistyped name fails straight away
         local = os.path.expanduser(args.src)
         if os.path.isdir(local):
             START = os.path.realpath(local)
@@ -496,6 +512,11 @@ def main(argv=None):
             START = args.src.strip()
         else:
             ap.exit(2, f"code-city: {args.src} isn't a folder, a repo URL or owner/name\n")
+    try:
+        ask_for_key()
+    except KeyboardInterrupt:
+        print()
+        return
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     except OSError as e:

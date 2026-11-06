@@ -86,6 +86,80 @@ test("with GEMINI_API_KEY set, Ask runs locally with no sign-in", { timeout: 300
   } finally { p.kill(); }
 });
 
+// The key prompt needs a real terminal, so this runs code-city in one, answers the prompt, and returns what it showed.
+const IN_TERMINAL = `
+import os, pty, re, select, signal, sys, time
+cli, answer = sys.argv[1], sys.argv[2]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(sys.executable, [sys.executable, cli, "--no-open", "--port", "0"])
+out, sent, end = b"", False, time.time() + 25
+while time.time() < end and not re.search(rb"Ask is [^\\r\\n]*\\r?\\n", out):
+    if select.select([fd], [], [], 0.5)[0]:
+        try:
+            got = os.read(fd, 4096)
+        except OSError:
+            break
+        if not got:
+            break
+        out += got
+    if not sent and b"press Enter to skip" in out:
+        os.write(fd, answer.encode())
+        sent = True
+try:
+    os.kill(pid, signal.SIGTERM)
+except ProcessLookupError:
+    pass
+sys.stdout.write(out.decode())
+`;
+const atTerminal = (answer, env = {}) => {
+  const clean = { ...process.env, ...env };
+  if (!env.GEMINI_API_KEY) delete clean.GEMINI_API_KEY;
+  return execFileSync("python3", ["-c", IN_TERMINAL, CLI, answer], { encoding: "utf8", env: clean, timeout: 30000 });
+};
+const PROMPT = /press Enter to skip/;
+test("at a terminal with no key, it asks; the key turns Ask on and isn't shown", { timeout: 35000 }, () => {
+  const out = atTerminal("dummy-pasted-key\n");
+  assert.match(out, PROMPT);
+  assert.match(out, /aistudio\.google\.com\/apikey/);
+  assert.match(out, /Ask is on/);
+  assert.doesNotMatch(out, /dummy-pasted-key/);
+});
+test("pressing Enter skips the key and the city still opens", { timeout: 35000 }, () => {
+  const out = atTerminal("\n");
+  assert.match(out, /running at http:\/\/localhost/);
+  assert.match(out, /Ask is off/);
+});
+test("Ctrl+C at the prompt quits", { timeout: 35000 }, () => {
+  const out = atTerminal("\x03");
+  assert.match(out, PROMPT);
+  assert.doesNotMatch(out, /running at/);
+});
+test("a key that's already set isn't asked for again", { timeout: 35000 }, () => {
+  const out = atTerminal("\n", { GEMINI_API_KEY: "dummy" });
+  assert.doesNotMatch(out, PROMPT);
+  assert.match(out, /Ask is on/);
+});
+test("with no Node a key couldn't help, so it doesn't ask", { timeout: 35000 }, () => {
+  const python = execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
+  const clean = { ...process.env, PATH: "/nonexistent" }; delete clean.GEMINI_API_KEY; delete clean.CODE_CITY_NODE;
+  const out = execFileSync(python, ["-c", IN_TERMINAL, CLI, "\n"], { encoding: "utf8", env: clean, timeout: 30000 });
+  assert.doesNotMatch(out, PROMPT);
+  assert.match(out, /Ask is off/);
+});
+test("with no terminal, as under VS Code, it doesn't ask", { timeout: 35000 }, async () => {
+  const clean = { ...process.env }; delete clean.GEMINI_API_KEY;
+  const p = spawn("python3", [CLI, "--no-open", "--port", "0"], { stdio: ["pipe", "pipe", "pipe"], env: clean });
+  try {
+    const out = await new Promise((resolve, reject) => {
+      let got = "";
+      p.stdout.on("data", d => { got += d; if (/Ask is off/.test(got)) resolve(got); });
+      p.on("exit", code => reject(new Error(`code-city exited (${code}): ${got}`)));
+    });
+    assert.doesNotMatch(out, /need a Gemini key/);
+  } finally { p.kill(); }
+});
+
 test("new files that aren't committed yet are in the city, ignored ones aren't", async () => {
   fs.writeFileSync(path.join(repo, "src", "new.py"), "def fresh():\n    pass\n");
   fs.writeFileSync(path.join(repo, ".gitignore"), "secret.py\n");
