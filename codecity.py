@@ -27,7 +27,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # In a checkout the page sits next to this file; an installed copy carries it in codecity_assets/.
