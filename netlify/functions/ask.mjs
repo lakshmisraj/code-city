@@ -442,6 +442,7 @@ async function cachePut(key, body) {
   try { await getStore("ask-cache").setJSON(key, { at: Date.now(), body }); } catch (e) { /* not saved: asked again next time */ }
 }
 
+function oncePerLine(list) { const seen = new Set(); return list.filter(l => !seen.has(l.line) && seen.add(l.line)); }   // a line picked twice is shown once
 function dedupe(list) { const seen = new Set(); return list.filter(x => !seen.has(x.path) && seen.add(x.path)); }   // one entry per file
 
 function json(statusCode, body) {
@@ -601,7 +602,7 @@ async function handle(event) {
       path: f.path,
       explanation: String(f.explanation || "").slice(0, 1200),
       parts: range   // Beginner, one function: its lines to look at, kept inside it
-        ? (Array.isArray(f.lines) ? f.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= range.from && l.line <= Math.min(range.to, sent.get(f.path)))
+        ? oncePerLine((Array.isArray(f.lines) ? f.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= range.from && l.line <= Math.min(range.to, sent.get(f.path))))
           .map(l => ({ line: l.line, name: "", note: String(l.note || "").slice(0, 160) }))
         : (Array.isArray(f.parts) ? f.parts : []).filter(pt => pt && Number.isInteger(pt.line) && pt.line >= 1 && pt.line <= sent.get(f.path))
         .map(pt => ({ line: pt.line, name: String(pt.name || "").slice(0, 80), note: String(pt.note || "").slice(0, 160) })).slice(0, MAX_PARTS),
@@ -625,7 +626,7 @@ async function handle(event) {
     const sent = new Map(flow.map(c => [c.path, c.text.split("\n").length]));
     return done({ steps: dedupe(reply.steps.filter(st => st && sent.has(st.path))).map(st => ({
       path: st.path,
-      lines: (Array.isArray(st.lines) ? st.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= 1 && l.line <= sent.get(st.path))
+      lines: oncePerLine((Array.isArray(st.lines) ? st.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= 1 && l.line <= sent.get(st.path)))
         .map(l => ({ line: l.line, note: String(l.note || "").slice(0, 160) })),
     })) });
   }

@@ -314,3 +314,11 @@ test("explanations ask their own models first; questions keep the usual ones", a
   await call({ question: "where is x?", files });
   assert.notEqual(models[0], "strong-model");
 });
+test("a line Gemini picks twice in a file is shown once", async () => {
+  const before = new Map(counts);
+  reply = { steps: [{ path: "a.js", lines: [{ line: 2, note: "one" }, { line: 2, note: "again" }, { line: 3, note: "two" }] }] };
+  const [st, out] = await call({ mode: "lines", question: "Twice", files, code: [{ path: "a.js", text: "x\ny\nz" }] });
+  assert.equal(st, 200);
+  assert.deepEqual(out.steps[0].lines.map(l => l.line), [2, 3]);
+  counts.clear(); for (const [k, v] of before) counts.set(k, v);
+});

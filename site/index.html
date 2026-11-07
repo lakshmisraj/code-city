@@ -6271,6 +6271,14 @@ async function stepPointers(wf, code) {
     if (d) wf.start.set(k, d);
   }
 }
+// A step's lines, each shown once in the workflow: a file's lines to look at go with the first step that visits it
+// (a later visit points back there), and a hand-off line that's already one of them isn't listed again.
+function stepLines(w, k) {
+  const L = w.lines || {}, st = w.steps[k], first = w.steps.findIndex(s => s.path === st.path);
+  const lines = first < k ? [] : (L.byPath && L.byPath.get(st.path)) || [], picked = new Set(lines.map(l => l.line));
+  const handoff = (w.handoff && w.handoff.get(k)) || [];
+  return { lines, shownAt: first < k && L.byPath && (L.byPath.get(st.path) || []).length ? first : -1, handoff, hand: handoff.filter(h => !picked.has(h.line)) };
+}
 function handoffLines(path, text, next) {   // the lines where a file imports the next step's file
   const lines = text.split("\n"), seen = new Set(), out = [];
   for (const imp of getGraph().resolver.importsOf(path, text, [next])) {
@@ -6508,10 +6516,11 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p></div>
       ${w.steps.length < 2 ? "" : `<div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>`}
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
-        const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
+        const { lines, shownAt, hand } = stepLines(w, k);
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
           ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
+            : shownAt >= 0 ? `<p class="side-note">This file's lines to look at are in <button type="button" class="linkish" data-stop="${shownAt}">step ${shownAt + 1}</button>.</p>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">This file's code couldn't be read, so no lines were picked. <b>View code</b> may still show it.</p>`
             : L.byPath ? `<p class="side-note">No lines stood out in this file. <b>View code</b> shows all of it.</p>` : ""}
           ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
@@ -6572,15 +6581,16 @@ function renderTourClassic() {   // Advanced and Manager: the tour panel as it w
         ${w.feeds.length ? `<p class="side-note">Leads to ${w.feeds.map(n => { const k = t.workflows.findIndex(x => x.name === n); return k < 0 ? esc(n) : `<button type="button" class="linkish" data-wf="${k}">${esc(n)}</button>`; }).join(", ")}</p>` : ""}</div>
       ${L.loading ? `<p class="side-note">Reading the code for the important lines…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
       <ol class="wf-steps">${w.steps.map((st, k) => {
-        const lines = (L.byPath && L.byPath.get(st.path)) || [], hand = (w.handoff && w.handoff.get(k)) || [];
+        const { lines, shownAt, handoff, hand } = stepLines(w, k);
         return `<li class="wf-step${k === t.i ? " current" : ""}" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" ${k === t.i ? `aria-current="step"` : ""}><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
           <div class="explain-head"><button type="button" class="explain-path" data-path="${esc(st.path)}" title="Open this file">${pathHtml(st.path)}</button><button type="button" class="mini" data-view="${esc(st.path)}">View</button></div>
           <p class="explain-text">${rich(st.narration)}</p>
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">Merges here with ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
+            : shownAt >= 0 ? `<p class="side-note">This file's important lines are in <button type="button" class="linkish" data-stop="${shownAt}">step ${shownAt + 1}</button>.</p>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">This file's code couldn't be read, so no important lines were picked.</p>` : ""}
-          ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
+          ${!handoff.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
           ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
         </li>`; }).join("")}</ol>
       <div class="side-actions">

@@ -43,3 +43,19 @@ test("the page's script parses", () => {
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("a workflow shows each line once: a file's lines at its first step, hand-offs not listed twice", () => {
+  const src = fs.readFileSync(path.join(ROOT, "src", "app.js"), "utf8");
+  const body = /\nfunction stepLines\(w, k\) \{[\s\S]*?\n\}\n/.exec(src)[0];
+  const stepLines = new Function(`${body}; return stepLines;`)();
+  const a = [{ line: 3, note: "starts" }, { line: 9, note: "hands on" }];
+  const w = { steps: [{ path: "a.js" }, { path: "b.js" }, { path: "a.js" }], lines: { byPath: new Map([["a.js", a], ["b.js", []]]) },
+    handoff: new Map([[0, [{ line: 9, text: "import b" }, { line: 2, text: "import c" }]], [1, []], [2, []]]) };
+  const first = stepLines(w, 0), again = stepLines(w, 2);
+  assert.deepEqual(first.lines, a);
+  assert.deepEqual(first.hand.map(h => h.line), [2], "line 9 is already a line to look at");
+  assert.equal(first.handoff.length, 2, "the raw hand-off still says an import line leads on");
+  assert.deepEqual(again.lines, [], "the second visit doesn't repeat them");
+  assert.equal(again.shownAt, 0, "it points back to step 1");
+  assert.equal(stepLines(w, 1).shownAt, -1);
+});
