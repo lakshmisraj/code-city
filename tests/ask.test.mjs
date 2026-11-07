@@ -112,6 +112,29 @@ test("a Beginner tour is asked to cover every main area of the product, tests an
   assert.doesNotMatch(lastInput.system_instruction, /must cover the whole product|must not sound the same twice/);
   assert.match(lastInput.system_instruction, /here the request lands in/);
 });
+test("every kind of answer is told not to repeat itself across its parts", async () => {
+  const patch = "@@ -1,1 +1,2 @@\n       1 | keep\n+      2 | new";
+  const asks = [
+    [{ mode: "explain", question: "rep 1", repo: "r", files, code: [{ path: "a.js", text: "x", imports: [] }] }, /covers only what is particular to that file/],
+    [{ mode: "explain", question: "rep 2", repo: "r", files, plain: true, code: [{ path: "a.js", text: "x", imports: [] }] }, /covers only what is particular to that file/],
+    [{ mode: "explain", question: "rep 3", repo: "r", files, plain: true, range: { from: 1, to: 1 }, code: [{ path: "a.js", text: "x", imports: [] }] }, /A note on a part, a line or a link adds a detail/],
+    [{ mode: "tour", files, digest: "README: rep plain", plain: true }, /never retell them/],
+    [{ mode: "tour", files, digest: "README: rep", every: true }, /never retelling the summary or an earlier step/],
+    [{ mode: "lines", question: "Rep", files, code: [{ path: "a.js", text: "x" }] }, /no two notes say the same thing/],
+    [{ mode: "change", question: "Rep", repo: "r", files, change: [{ path: "a.js", status: "modified", patch }] }, /leaves each file's details to that file/],
+  ];
+  const before = new Map(counts);   // these calls mustn't use up the daily limit the later tests count on
+  for (const [body, own] of asks) {
+    reply = { summary: "S", files: [], steps: [], title: "T", overview: "O", workflows: [] };
+    lastInput = null;
+    await call(body);
+    assert.ok(lastInput, `${body.mode} reached Gemini`);
+    assert.match(lastInput.system_instruction, own, `${body.mode}: its own rule`);
+    if (body.mode !== "lines") assert.match(lastInput.system_instruction, /Never restate in one part what another already says/, `${body.mode}: the shared rule`);
+    assert.doesNotMatch(lastInput.system_instruction, /Where it fits, end with one short pointer/, "a what-next pointer at most once, not in every part");
+  }
+  counts.clear(); for (const [k, v] of before) counts.set(k, v);
+});
 test("a key Gemini rejects says so, and that trying again won't help", async () => {
   badKey = true;
   try {
