@@ -112,6 +112,23 @@ test("a Beginner tour is asked to cover every main area of the product, tests an
   assert.doesNotMatch(lastInput.system_instruction, /must cover the whole product|must not sound the same twice/);
   assert.match(lastInput.system_instruction, /here the request lands in/);
 });
+test("lines to look at aren't capped: every line picked, in every step's file, on every site", async () => {
+  const before = new Map(counts);
+  const many = Array.from({ length: 40 }, (_, k) => ({ line: k + 1, note: `n${k}` }));
+  const text = Array.from({ length: 40 }, (_, k) => `x${k}`).join("\n");
+  const code = Array.from({ length: 6 }, (_, k) => ({ path: `f${k}.js`, text }));
+  reply = { steps: code.map(c => ({ path: c.path, lines: many })) };
+  const [st, out] = await call({ mode: "lines", question: "Uncapped", files, code });   // Advanced and Manager, which used to stop at four files
+  assert.equal(st, 200);
+  assert.equal(out.steps.length, 6);
+  assert.equal(out.steps[0].lines.length, 40);
+  assert.equal(lastInput.schema.properties.steps.items.properties.lines.maxItems, undefined);
+  reply = { summary: "S", files: [{ path: "a.js", explanation: "E", links: [], lines: many }] };
+  const [st2, out2] = await call({ mode: "explain", question: "Uncapped range", repo: "r", files, plain: true, range: { from: 1, to: 40 }, code: [{ path: "a.js", text, imports: [] }] });
+  assert.equal(st2, 200);
+  assert.equal(out2.files[0].parts.length, 40);
+  counts.clear(); for (const [k, v] of before) counts.set(k, v);
+});
 test("every kind of answer is told not to repeat itself across its parts", async () => {
   const patch = "@@ -1,1 +1,2 @@\n       1 | keep\n+      2 | new";
   const asks = [

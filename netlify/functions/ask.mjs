@@ -32,12 +32,13 @@ const PREFER_MS = 5 * 60 * 1000;
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
 const MAX_TRIES = 4;
-const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOWS_ALL = 5, MAX_WORKFLOW_STEPS = 6, MAX_KEY_LINES = 15, MAX_LINES_FILES = 4, MAX_LINES_CHARS = 12000;
+const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOWS_ALL = 5, MAX_WORKFLOW_STEPS = 6, MAX_LINES_CHARS = 60000;   // a file longer than this is read from its start
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, read by the page (it sends at most this)
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
-const OUTPUT_TOKENS = { ask: 1200, tour: 2500, plainTour: 4500, explain: 1800, lines: 800, plainLines: 1200, change: 1800 };   // plain…: Beginner's fuller narrations, and lines in every step's file
+// plainTour: Beginner's fuller narrations. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
+const OUTPUT_TOKENS = { ask: 1200, tour: 2500, plainTour: 4500, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800 };
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
@@ -142,7 +143,7 @@ A tour is read straight through, so it must not sound the same twice. Narrate ea
 For each step also give change: one short line, under fifteen words and starting with a verb, naming the kind of change a new team member would come to this file to make (for example "change the cookie rules or add a sign-in provider").
 Every summary, step title and narration is read by someone new to code, so keep them all simple: ${PLAIN_WORDS} Be descriptive but brief: give each narration two or three short sentences on what is new at this step: what this file adds that the steps before it didn't, and what it passes on to the next step. The reader has just read the workflow's feature and summary and the steps before, so never retell them; mention what the person using the software notices only when this step is where they notice it. Name at most one function in a narration, and say what it does in the same sentence; never list several.` : ` Narrate each step as if walking the reader through it ("here the request lands in…, which hands it to…").`}`;
 
-// Key lines: as many as the code has, which Gemini judges per file. MAX_KEY_LINES is only a ceiling against a runaway list.
+// Key lines: as many as the code has, which Gemini judges per file, with no cap.
 const KEY_LINES_HOW = `Pick the lines that matter, and only those: as few or as many as the code has. A short, simple file may have one or two; a long one with many decisions has more. Skip lines that only repeat what a picked line already shows, such as imports, closing brackets and logging.`;
 const LINES_SCHEMA = {
   type: "object",
@@ -153,7 +154,7 @@ const LINES_SCHEMA = {
         type: "object",
         properties: {
           path: { type: "string" },
-          lines: { type: "array", maxItems: MAX_KEY_LINES, items: { type: "object", properties: { line: { type: "integer" }, note: { type: "string" } }, required: ["line", "note"] } },
+          lines: { type: "array", items: { type: "object", properties: { line: { type: "integer" }, note: { type: "string" } }, required: ["line", "note"] } },
         },
         required: ["path", "lines"],
       },
@@ -247,7 +248,7 @@ const EXPLAIN_RANGE_PLAIN_SCHEMA = {
       items: {
         type: "object",
         properties: { ...EXPLAIN_PLAIN_SCHEMA.properties.files.items.properties,
-          lines: { type: "array", maxItems: MAX_KEY_LINES, items: { type: "object", properties: { line: { type: "integer" }, note: { type: "string" } }, required: ["line", "note"] } } },
+          lines: { type: "array", items: { type: "object", properties: { line: { type: "integer" }, note: { type: "string" } }, required: ["line", "note"] } } },
         required: ["path", "explanation", "lines", "links"],
       },
     },
@@ -499,7 +500,7 @@ async function handle(event) {
   if (explain && !code.length) return json(400, { error: "There's no code to explain." });
   const flow = !keyLines ? [] : (Array.isArray(body.code) ? body.code : [])   // a workflow's files, in order
     .filter(c => c && typeof c.path === "string" && c.path.length <= 300 && typeof c.text === "string")
-    .slice(0, plain ? MAX_WORKFLOW_STEPS : MAX_LINES_FILES).map(c => ({ path: c.path, text: c.text.slice(0, MAX_LINES_CHARS), partial: c.text.length > MAX_LINES_CHARS, imports: [] }));
+    .slice(0, MAX_WORKFLOW_STEPS).map(c => ({ path: c.path, text: c.text.slice(0, MAX_LINES_CHARS), partial: c.text.length > MAX_LINES_CHARS, imports: [] }));
   if (keyLines && !flow.length) return json(400, { error: "There's no code to read." });
   const diffs = !changed ? [] : (Array.isArray(body.change) ? body.change : [])   // a commit's files: their diffs, numbered by the page
     .filter(c => c && typeof c.path === "string" && c.path.length <= 300 && typeof c.patch === "string" && c.patch)
@@ -540,7 +541,7 @@ async function handle(event) {
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
-      maxOutputTokens: OUTPUT_TOKENS[tour && plain ? "plainTour" : keyLines && plain ? "plainLines" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
+      maxOutputTokens: OUTPUT_TOKENS[tour && plain ? "plainTour" : explain && range ? "rangeExplain" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
       ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1000, left()))]) } });
     const tryModel = async (model, signal) => {   // a model that doesn't take a thinking level gets the next one, then its default
       const levels = /^gemini-2\./.test(model) ? [null] : [...THINKING, null];   // 2.5 models take no thinking level
@@ -601,7 +602,7 @@ async function handle(event) {
       explanation: String(f.explanation || "").slice(0, 1200),
       parts: range   // Beginner, one function: its lines to look at, kept inside it
         ? (Array.isArray(f.lines) ? f.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= range.from && l.line <= Math.min(range.to, sent.get(f.path)))
-          .map(l => ({ line: l.line, name: "", note: String(l.note || "").slice(0, 160) })).slice(0, MAX_KEY_LINES)
+          .map(l => ({ line: l.line, name: "", note: String(l.note || "").slice(0, 160) }))
         : (Array.isArray(f.parts) ? f.parts : []).filter(pt => pt && Number.isInteger(pt.line) && pt.line >= 1 && pt.line <= sent.get(f.path))
         .map(pt => ({ line: pt.line, name: String(pt.name || "").slice(0, 80), note: String(pt.note || "").slice(0, 160) })).slice(0, MAX_PARTS),
       links: (Array.isArray(f.links) ? f.links : []).filter(l => l && l.path !== f.path && (known.has(l.path) || sent.has(l.path)))
@@ -625,7 +626,7 @@ async function handle(event) {
     return done({ steps: dedupe(reply.steps.filter(st => st && sent.has(st.path))).map(st => ({
       path: st.path,
       lines: (Array.isArray(st.lines) ? st.lines : []).filter(l => l && Number.isInteger(l.line) && l.line >= 1 && l.line <= sent.get(st.path))
-        .map(l => ({ line: l.line, note: String(l.note || "").slice(0, 160) })).slice(0, MAX_KEY_LINES),
+        .map(l => ({ line: l.line, note: String(l.note || "").slice(0, 160) })),
     })) });
   }
   if (tour) {

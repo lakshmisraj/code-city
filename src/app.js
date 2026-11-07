@@ -5187,7 +5187,7 @@ function askKeyLines(w, retry) {
 }
 async function fetchKeyLines(t, wf, redraw) {
   const code = wf.code, paths = [...new Set(wf.steps.map(st => st.path))];
-  const send = paths.filter(p => code.has(p)).slice(0, plainTour() ? 6 : 4).map(p => ({ path: p, text: code.get(p).text }));   // Beginner: every step's file (a workflow has at most 6)
+  const send = paths.filter(p => code.has(p)).map(p => ({ path: p, text: code.get(p).text }));   // every step's file (a workflow has at most 6)
   if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
   try {
     const r = await fetch(ASK_URL, {
@@ -5394,7 +5394,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
           ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
-            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Lines to look at are picked in the first four files only.</p>`
+            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">This file's code couldn't be read, so no lines were picked. <b>View code</b> may still show it.</p>`
             : L.byPath ? `<p class="side-note">No lines stood out in this file. <b>View code</b> shows all of it.</p>` : ""}
           ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
         return `<li class="wf-step current" data-stop-box="${k}">
@@ -5461,7 +5461,7 @@ function renderTourClassic() {   // Advanced and Manager: the tour panel as it w
           <p class="explain-text">${rich(st.narration)}</p>
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">Merges here with ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${lines.length ? `<div><h3>Important lines</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
-            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">Only the first four files are read for important lines.</p>` : ""}
+            : L.byPath && !L.read.has(st.path) ? `<p class="side-note">This file's code couldn't be read, so no important lines were picked.</p>` : ""}
           ${!hand.length && w.handoff && k < w.steps.length - 1 && w.steps[k + 1].path !== st.path ? `<p class="side-note"><span class="chip guess">inferred</span> No import line leads from here to step ${k + 2}; Gemini inferred this hand-off.</p>` : ""}
           ${hand.length ? `<div><h3>Hands off to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}
         </li>`; }).join("")}</ol>
