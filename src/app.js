@@ -5036,6 +5036,12 @@ function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved o
 }
 // Beginner: the tour ends only once every step of every workflow has been seen. These find what's left.
 const wfDone = (t, k) => t.workflows[k].steps.every((_, i) => t.seen.has(`${k}:${i}`));
+// On the overview: Done for a workflow whose every step was seen, how far you got in one you started, nothing otherwise
+function wfProgress(t, k) {
+  if (!t.seen) return "";
+  const n = t.workflows[k].steps.length, got = t.workflows[k].steps.filter((_, i) => t.seen.has(`${k}:${i}`)).length;
+  return got >= n ? `<span class="wf-done">✓ Done</span>` : got ? `<span class="wf-done wf-part">${got} of ${n} steps</span>` : "";
+}
 function nextUnseen(t) {   // { w, i } of the next step not seen yet: in this workflow first, then the next workflows; null when none
   const n = t.workflows.length;
   for (let d = 0; d < n; d++) {
@@ -5378,8 +5384,8 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
-      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}${t.seen && wfDone(t, k) ? `<span class="wf-done">Done</span>` : ""}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
+      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}${wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
       ${coverageHtml(t)}
       ${plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
         : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button></div>`) : ""}
@@ -5443,8 +5449,8 @@ function renderTourClassic() {   // Advanced and Manager: the tour panel as it w
     sideBody.innerHTML = `
       <div class="tour-stop"><h3>How it all fits together</h3><p class="ask-answer">${rich(t.overview)}</p></div>
       <div><h3>How they merge</h3>${classicMapSvg(t)}<p class="side-note">Each line is a workflow; where lines pinch together they pass through the same file. Pick a station to open its file, or a line to walk it.</p></div>
-      <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card" data-wf="${k}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}</span><span class="wf-sum">${esc(w.summary)}</span>
+      <div><h3>Workflows</h3><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}">
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}${wfProgress(t, k)}</span><span class="wf-sum">${esc(w.summary)}</span>
         <span class="wf-meta">${w.steps.length} step${w.steps.length === 1 ? "" : "s"}${(w.merged || []).length ? ` · takes in ${w.merged.map(n => esc(n)).join(", ")}` : ""}${w.feeds.length ? ` · leads to ${w.feeds.map(n => esc(n)).join(", ")}` : ""}</span></button></li>`).join("")}</ol></div>
       ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
         <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
