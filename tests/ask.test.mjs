@@ -114,6 +114,7 @@ test("a Beginner tour is asked to cover every main area of the product, tests an
 });
 test("lines to look at aren't capped: every line picked, in every step's file, on every site", async () => {
   const before = new Map(counts);
+  counts.clear();   // a fresh allowance for these calls; the counts are put back at the end
   const many = Array.from({ length: 40 }, (_, k) => ({ line: k + 1, note: `n${k}` }));
   const text = Array.from({ length: 40 }, (_, k) => `x${k}`).join("\n");
   const code = Array.from({ length: 6 }, (_, k) => ({ path: `f${k}.js`, text }));
@@ -141,6 +142,7 @@ test("every kind of answer is told not to repeat itself across its parts", async
     [{ mode: "change", question: "Rep", repo: "r", files, change: [{ path: "a.js", status: "modified", patch }] }, /leaves each file's details to that file/],
   ];
   const before = new Map(counts);   // these calls mustn't use up the daily limit the later tests count on
+  counts.clear();   // a fresh allowance for these calls; the counts are put back at the end
   for (const [body, own] of asks) {
     reply = { summary: "S", files: [], steps: [], title: "T", overview: "O", workflows: [] };
     lastInput = null;
@@ -187,7 +189,7 @@ test("workflows that walk mostly the same files become one, and feeds follow it"
   assert.deepEqual(out.workflows[1].feeds, ["Serve again"], "feeds to folded workflows name the one they joined, once");
   assert.deepEqual(out.workflows[0].feeds, [], "never feeds itself");
 });
-test("an Advanced tour (every) keeps every workflow, overlapping or not, up to five", async () => {
+test("an Advanced tour (every) keeps every workflow, overlapping or not, with no cap", async () => {
   const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));
   reply = { title: "T", overview: "O", workflows: [
     { name: "Start", summary: "S", steps: st("a.js", "b.js"), feeds: [] },
@@ -195,10 +197,11 @@ test("an Advanced tour (every) keeps every workflow, overlapping or not, up to f
   const [code, out] = await call({ mode: "tour", files, question: "every", every: true });
   assert.equal(code, 200);
   assert.deepEqual(out.workflows.map(w => w.name), ["Start", "Start again"], "nothing folds");
-  assert.match(lastInput.system_instruction, /two to 5 things/);
+  assert.match(lastInput.system_instruction, /as many as it really has/);
+  assert.doesNotMatch(lastInput.system_instruction, /two to \d+ things/);
   assert.doesNotMatch(lastInput.system_instruction, /Don't tell the same walk twice/);
   await call({ mode: "tour", files, question: "every-not" });
-  assert.match(lastInput.system_instruction, /two to 4 things[\s\S]*Don't tell the same walk twice/);
+  assert.match(lastInput.system_instruction, /as many as it really has[\s\S]*Don't tell the same walk twice/);
 });
 test("lines keeps real line numbers of files that were sent", async () => {
   reply = { steps: [{ path: "a.js", lines: [{ line: 2, note: "n" }, { line: 9, note: "past the end" }] }, { path: "zz.js", lines: [{ line: 1, note: "x" }] }] };
@@ -316,9 +319,21 @@ test("explanations ask their own models first; questions keep the usual ones", a
 });
 test("a line Gemini picks twice in a file is shown once", async () => {
   const before = new Map(counts);
+  counts.clear();   // a fresh allowance for these calls; the counts are put back at the end
   reply = { steps: [{ path: "a.js", lines: [{ line: 2, note: "one" }, { line: 2, note: "again" }, { line: 3, note: "two" }] }] };
   const [st, out] = await call({ mode: "lines", question: "Twice", files, code: [{ path: "a.js", text: "x\ny\nz" }] });
   assert.equal(st, 200);
   assert.deepEqual(out.steps[0].lines.map(l => l.line), [2, 3]);
+  counts.clear(); for (const [k, v] of before) counts.set(k, v);
+});
+test("a tour keeps as many workflows as Gemini finds", async () => {
+  const before = new Map(counts);
+  counts.clear();   // a fresh allowance for these calls; the counts are put back at the end
+  const st = (...ps) => ps.map(path => ({ path, title: "t", narration: "n" }));
+  reply = { title: "T", overview: "O", workflows: Array.from({ length: 9 }, (_, k) => ({ name: `Flow ${k}`, summary: "S", steps: st(k % 2 ? "a.js" : "b.js", "c/d.js"), feeds: [] })) };
+  const [code, out] = await call({ mode: "tour", files, question: "nine flows", every: true });
+  assert.equal(code, 200);
+  assert.equal(out.workflows.length, 9);
+  assert.doesNotMatch(lastInput.system_instruction, /"workflows":\{"type":"array","maxItems"/);
   counts.clear(); for (const [k, v] of before) counts.set(k, v);
 });

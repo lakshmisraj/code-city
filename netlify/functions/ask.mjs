@@ -32,13 +32,13 @@ const PREFER_MS = 5 * 60 * 1000;
 const HEDGE_MS = +process.env.ASK_HEDGE_MS || 6000;   // no answer by then: send another copy alongside
 const RETRY_MS = +process.env.ASK_RETRY_MS || 1500;   // pause before retrying a busy reply
 const MAX_TRIES = 4;
-const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOWS = 4, MAX_WORKFLOWS_ALL = 5, MAX_WORKFLOW_STEPS = 6, MAX_LINES_CHARS = 60000;   // a file longer than this is read from its start
+const MAX_QUESTION = 300, MAX_FILES = 2500, MAX_ANSWER_FILES = 12, MAX_WORKFLOW_STEPS = 6, MAX_LINES_CHARS = 60000;   // a file longer than this is read from its start
 const MAX_EXPLAIN_FILES = 3, MAX_CODE_CHARS = 24000, MAX_PARTS = 6, MAX_LINKS = 8;
 const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, read by the page (it sends at most this)
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
-// plainTour: Beginner's fuller narrations. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
-const OUTPUT_TOKENS = { ask: 1200, tour: 2500, plainTour: 4500, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800 };
+// tour and plainTour (Beginner's fuller narrations): room for as many workflows as the software has. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
+const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800 };
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
@@ -74,7 +74,7 @@ You may also get what the code itself shows: the README, project manifests, whic
 If nothing in the list answers the question, say so and return no files.
 ${VOICE}`;
 
-const tourSchema = (max, plain) => ({
+const tourSchema = plain => ({
   type: "object",
   properties: {
     title: { type: "string" },
@@ -82,7 +82,6 @@ const tourSchema = (max, plain) => ({
     overview: { type: "string" },
     workflows: {
       type: "array",
-      maxItems: max,
       items: {
         type: "object",
         properties: {
@@ -131,7 +130,7 @@ function foldOnce(workflows) {
 const PLAIN_WORDS = `Write for someone who has never coded: when a technical idea is needed (a cookie, a redirect, a request header), say what it is in everyday words in the same sentence, and leave out the names of settings, flags, protocols and attacks; say what they protect against or allow instead.`;
 const tourSystem = (every, plain) => `You are a friendly guide giving a newcomer a tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-Split the software into its main workflows: two to ${every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS} things it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words; ${plain ? `a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); a one or two sentence technical summary of how the code does it, which doesn't say again what the feature already said;` : "a one or two sentence summary;"} and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
+Split the software into its main workflows: as many as it really has, at least two: each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". For each workflow give a name of two to five words; ${plain ? `a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); a one or two sentence technical summary of how the code does it, which doesn't say again what the feature already said;` : "a one or two sentence summary;"} and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, and one or two sentences of narration on what happens there and what it hands to the next step.
 ${plain ? `Unless the topic names one part of the software, the workflows together must cover the whole product. Begin at its entry points, and treat the main areas you are given as a checklist: every one must appear in at least one workflow's steps, including side products such as an editor extension, a command line tool or server functions. Before you answer, check each area off; if one is missing, add a step or a workflow for it. When there are more areas than workflows, fold a small area into the workflow it serves rather than leave it out. When the topic does name one part, cover that part well instead.
 ` : ""}Within a workflow, each step's narration says only what is new at that step, never retelling the summary or an earlier step. Workflows often share files; reuse the same path when they do, since that is where they meet.${every ? "" : " Don't tell the same walk twice: when two workflows would pass through mostly the same files, make them one."} Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
 ${plain ? `Then write the story: the whole system end to end in simple English that anyone can follow, whether or not they code, in four to seven short sentences. Say what the software is for and who uses it, then follow one person or one piece of data through it from the first thing that happens to the end result, touching each workflow in the order they happen. No file names, function names or jargon; when a technical idea is needed, say what it does instead (not "an API" but "the part that answers the app's requests"). Tell it in your own words: don't copy the workflows' feature sentences into it.
@@ -538,7 +537,7 @@ async function handle(event) {
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
     const system = tour ? tourSystem(every, plain) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? tourSchema(every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS, plain) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const schema = tour ? tourSchema(plain) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
@@ -640,7 +639,7 @@ async function handle(event) {
         .map(st => ({ path: st.path, title: String(st.title || "").slice(0, 80), narration: String(st.narration || "").slice(0, plain ? 900 : 500),
           ...(plain ? { change: String(st.change || "").replace(/\s+/g, " ").trim().slice(0, 140) } : {}) })).slice(0, MAX_WORKFLOW_STEPS),
       feeds: (Array.isArray(w.feeds) ? w.feeds : []).map(f => String(f).slice(0, 60)),
-    })).filter(w => w.name && w.steps.length).slice(0, every ? MAX_WORKFLOWS_ALL : MAX_WORKFLOWS);
+    })).filter(w => w.name && w.steps.length);
     const names = new Set(workflows.map(w => w.name));
     workflows.forEach(w => { w.feeds = w.feeds.filter(f => f !== w.name && names.has(f)); });   // only workflows that are in the tour
     const folded = every ? null : foldOverlapping(workflows);
