@@ -623,6 +623,10 @@ let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, bu
 let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
 let panes = [];   // files open in the code viewer: [{ path, text, partial, line }]
 let cityGen = 0;   // bumped for each new city; work that finishes after a switch checks it and stops
+// A repo's history arriving rebuilds the same city, which bumps cityGen too. A tour or a question that started on
+// this repo carries on through that; only a different city on screen stops it.
+const cityId = () => `${citySource}:${currentRepo || cityName}`;
+const sameCity = (gen, id) => gen === cityGen || id === cityId();
 const FOLDER_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4330, emissive: 0xf2a541, emissiveIntensity: 0.18, roughness: 0.9 });
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -2675,10 +2679,10 @@ async function askCity(question, task) {   // task: Beginner's "Start from a tas
   if (!q) return;
   if (!canAsk()) { status.innerHTML = needSignin("ask questions"); return; }
   if (!okToSendPrivate()) return;
-  const gen = cityGen;
+  const gen = cityGen, id = cityId();
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Asking")).catch(() => "");
-  if (gen !== cityGen) { status.textContent = ""; return; }
+  if (!sameCity(gen, id)) { status.textContent = ""; return; }
   status.textContent = "Asking Gemini… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
@@ -2688,7 +2692,7 @@ async function askCity(question, task) {   // task: Beginner's "Start from a tas
       body: JSON.stringify({ question: q, repo: currentRepo || cityName, files, digest }),
     });
     const data = await r.json().catch(() => ({}));
-    if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
+    if (!sameCity(gen, id)) { status.textContent = ""; return; }   // another repo is on screen now
     if (!r.ok) {
       status.innerHTML = esc(data.error || `Couldn't get an answer (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
@@ -4997,12 +5001,12 @@ async function startTour(topic) {
   if (!okToSendPrivate()) return;
   tourLoading = true;
   if (sideMode === "map") renderSide();
-  try { await planTour(topic, gen, status); } finally { tourLoading = false; if (sideMode === "map") renderSide(); }
+  try { await planTour(topic, gen, status, cityId()); } finally { tourLoading = false; if (sideMode === "map") renderSide(); }
 }
-async function planTour(topic, gen, status) {
+async function planTour(topic, gen, status, id) {
   status.textContent = "Reading the repo…";
   const digest = await repoDigest(digestProgress(status, "Tour")).catch(() => "");
-  if (gen !== cityGen) { status.textContent = ""; return; }
+  if (!sameCity(gen, id)) { status.textContent = ""; return; }
   status.textContent = "Planning a tour… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
@@ -5013,7 +5017,7 @@ async function planTour(topic, gen, status) {
       body: JSON.stringify(plainTour() ? { ...base, stage: "outline" } : base),   // Beginner: the outline first, then each workflow's words
     });
     const data = await r.json().catch(() => ({}));
-    if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
+    if (!sameCity(gen, id)) { status.textContent = ""; return; }   // another repo is on screen now
     if (!r.ok || !Array.isArray(data.workflows)) {
       status.innerHTML = esc(data.error || `Couldn't plan a tour (error ${r.status}). Try again.`) +
         (r.status === 401 && signinEnabled ? ` <button class="linkish" type="button" data-signin>Sign in again</button>` : "");
