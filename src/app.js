@@ -369,7 +369,7 @@ let hist = null;              // { commits, base, baseChurn, total }
 let totalChurn = new Map();
 let state = null;             // replay state while viewing history: { lines: Map, churn: Map }
 let cursor = -1, viewNow = true, playing = false, churnSrc = new Map(), maxChurn = 1;
-let colorMode = "lang", cityName = "", citySource = "sample";
+let colorMode = "lang", cityName = "", citySource = "sample", cityCodeFiles = 0;
 let langSel = null;   // a language picked in the colour key: its files lit, the rest dimmed
 
 function freshState() {
@@ -716,6 +716,7 @@ function buildCity(data) {
   if (data.source !== "github") closeHistoryPanel();   // its Load button would rebuild the previous repo
   resetRecording();
   cityName = data.name; citySource = data.source;
+  cityCodeFiles = +data.codeFiles || 0;   // how many code files the repo has, when the city shows only some of them
   clearCity();
   const root = buildTree([...nodes.values()]);
   dirCount = root.dirs;
@@ -787,7 +788,9 @@ function viewAt(i) {
 function updateStats() {
   let files = 0, lines = 0, fireCount = 0;
   for (const b of buildings) if (b.userData.lines > 0) { files++; lines += b.userData.lines; if (viewNow) fireCount += b.userData.f.todos.length; }
-  document.getElementById("sFiles").textContent = fmt(files);
+  const sf = document.getElementById("sFiles"), some = viewNow && cityCodeFiles > files;   // a big repo: only some of its files
+  sf.textContent = some ? `${fmt(files)} of ${fmt(cityCodeFiles)}` : fmt(files);
+  sf.parentElement.title = some ? `This repo has ${fmt(cityCodeFiles)} code files, more than the city can hold. It shows ${fmt(files)}: a fair share of each part, the product's own code first.` : "";
   document.getElementById("sLines").textContent = short(lines);
   document.getElementById("sCommits").textContent = hist ? fmt(viewNow ? hist.total || hist.commits.length : cursorCommitCount()) : "–";
   document.getElementById("sFires").textContent = viewNow ? fmt(fireCount) : "–";
@@ -1401,6 +1404,48 @@ async function callsLeft() {   // asking doesn't use up a call
   return fetch(API + "/rate_limit", { headers: ghHeaders(), signal: loadCtl.signal }).then(r => r.ok ? r.json() : null).then(d => d && d.resources.core).catch(e => { if (isAbort(e)) throw e; return null; });
 }
 function keepPath(p) { return !p.split("/").slice(0, -1).some(s => SKIP_DIRS.has(s)) && !!langOf(p); }
+// A repo's parts, by folder: one per top folder, and a part holding more than `share` of the whole is split by its
+// subfolders (through a folder with only one), again until none is or there would be more than `most` parts.
+// Items are { path, ... }; weight(item) says how much each counts. Returns Map(folder key -> items), "" for the top.
+// Keep in step with splitParts in netlify/functions/ask.mjs, which finds the same main areas for a tour.
+function splitParts(items, weight, share, most) {
+  const sum = list => list.reduce((n, it) => n + weight(it), 0), total = sum(items);
+  const kids = (prefix, list) => { const m = new Map();
+    for (const it of list) { const rest = it.path.slice(prefix.length), i = rest.indexOf("/"), k = i < 0 ? prefix : prefix + rest.slice(0, i + 1); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }
+    return m; };
+  const parts = kids("", items);
+  for (let split = true; split;) {
+    split = false;
+    for (const [k, list] of [...parts].filter(([, l]) => sum(l) > total * share).sort((a, b) => sum(b[1]) - sum(a[1]))) {
+      let prefix = k, sub = kids(prefix, list);
+      while (sub.size === 1 && !sub.has(prefix)) { prefix = [...sub.keys()][0]; sub = kids(prefix, list); }   // down through single subfolders
+      if (sub.size < 2 || parts.size - 1 + sub.size > most) continue;
+      parts.delete(k); for (const [kk, l] of sub) parts.set(kk, l);
+      split = true; break;
+    }
+  }
+  return parts;
+}
+// Tests, stories, mocks, docs, examples, generated code and migrations: kept after the product's own code.
+const MINOR_FILE = /(^|\/)(tests?|spec|__tests__|__mocks__|mocks?|fixtures?|examples?|docs?|stories|storybook|benchmarks?|e2e|generated|__generated__|migrations?)\/|\.(test|spec|stories|story|d)\.[cm]?[jt]sx?$|_test\.go$|\.generated\./i;
+// A repo with more files than the city holds keeps a fair share of each part, by how much of the product's own code
+// is there, and not just the first files in alphabetical order (which could leave out a monorepo's main packages).
+// Within a part: the product's code first, then tests and the like, then the rest; shallower files first.
+// Returns them in their original order. Keep in step with pick_files in codecity.py.
+function pickFiles(entries, max) {
+  if (entries.length <= max) return entries;
+  const rank = e => SOURCE_FILE.test(e.path) ? (MINOR_FILE.test(e.path) ? 1 : 0) : 2, weight = e => rank(e) === 0 ? 1 : 0.2;
+  const order = list => list.slice().sort((a, b) => rank(a) - rank(b) || a.path.split("/").length - b.path.split("/").length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const parts = [...splitParts(entries, weight, 0.1, 60).values()], total = entries.reduce((n, e) => n + weight(e), 0);
+  const take = new Set();
+  for (const list of parts) {   // each part's share of the room, and at least a few files from every part
+    const w = list.reduce((n, e) => n + weight(e), 0);
+    for (const e of order(list).slice(0, Math.max(Math.min(list.length, 5), Math.floor(max * w / total)))) take.add(e);
+  }
+  for (const e of order(entries)) { if (take.size >= max) break; take.add(e); }   // room left: the best of the rest
+  const keep = take.size > max ? new Set(order([...take]).slice(0, max)) : take;
+  return entries.filter(e => keep.has(e));
+}
 // When a commit landed on its branch (the committer date). Rebased commits keep their old author date, and
 // GitHub lists commits in committer-date order, so this is the date that ranges and paging can trust.
 function when(c) { return Math.round(Date.parse((c.commit.committer || c.commit.author).date) / 1000); }
@@ -1466,7 +1511,7 @@ async function loadFromGitHub(key, signal) {
   const info = await gh(base), branch = info.default_branch, isPrivate = !!info.private;
   const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
   const kept = tree.tree.filter(e => e.type === "blob" && keepPath(e.path));
-  const files = kept.filter(e => e.size <= maxBytes(e.path)).slice(0, MAX_FILES)
+  const files = pickFiles(kept.filter(e => e.size <= maxBytes(e.path)), MAX_FILES)
     .map(e => ({ path: e.path, bytes: e.size, lines: Math.max(1, Math.round(e.size / (NB_RE.test(e.path) ? BYTES_PER_LINE * 8 : BYTES_PER_LINE))), funcs: null, todos: [], text: null, estimated: true }));
   // Files that exist today but are left out of the city (too big, or past the file limit): their history is left out too,
   // or their buildings would rise during the replay and vanish at today.
@@ -1483,8 +1528,8 @@ async function loadFromGitHub(key, signal) {
   if (pages > 1) { const last = await gh(listPath(pages)); total = (pages - 1) * 100 + last.length; oldest = last[last.length - 1]; }
 
   stillCurrent(signal);
-  ghProbe = page1.length ? { key, owner, repo, base, branch, private: isPrivate, tree: tree.sha, files, leftOut, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
-  buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch, private: isPrivate, tree: tree.sha }, history: null });
+  ghProbe = page1.length ? { key, owner, repo, base, branch, private: isPrivate, tree: tree.sha, files, leftOut, codeFiles: kept.length, listPath, page1, pages, total, oldestT: when(oldest), times: page1.map(when) } : null;
+  buildCity({ name: key, repoKey: key, source: "github", files: files.map(f => ({ ...f })), gh: { owner, repo, branch, private: isPrivate, tree: tree.sha }, history: null, codeFiles: kept.length });
   if (!ghProbe) { setRepoStatus(`Showing ${key}'s files. It has no commits to replay.`); return; }
   setRepoStatus("");
   await openHistoryPanel();
@@ -1738,7 +1783,7 @@ async function loadHistory(pl, signal) {
   stillCurrent(signal);
   closeHistoryPanel();
   buildCity({
-    name: key, repoKey: key, source: "github", files, gh: { owner: p.owner, repo: p.repo, branch: p.branch, private: p.private, tree: p.tree },
+    name: key, repoKey: key, source: "github", files, codeFiles: p.codeFiles, gh: { owner: p.owner, repo: p.repo, branch: p.branch, private: p.private, tree: p.tree },
     history: commits.length ? { base: Object.fromEntries([...lines].filter(([path]) => !p.leftOut.has(path))), baseChurn: {}, commits, total: list.length } : null,
   });
   setRepoStatus(`Loaded ${fmt(list.length)} commit${list.length === 1 ? "" : "s"} of ${key}, ${day(when(list[0]))} to ${later.length ? day(when(list[list.length - 1])) : "today"}` +
@@ -1825,7 +1870,8 @@ function loadJsonText(text, fallbackName) {
 }
 
 async function ingest(entries, repoName) {
-  const kept = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= maxBytes(e.path)).slice(0, MAX_FILES);
+  const code = entries.filter(e => !e.path.split("/").some(s => SKIP_DIRS.has(s)) && langOf(e.path) && e.file.size <= maxBytes(e.path));
+  const kept = pickFiles(code, MAX_FILES);
   if (!kept.length) { setRepoStatus("No source files found in that folder."); return; }
   const signal = newLoad();
   busy.hidden = false;
@@ -1838,7 +1884,7 @@ async function ingest(entries, repoName) {
       busyText.textContent = `Surveying files… ${files.length} / ${kept.length}`;
     }
     stillCurrent(signal);
-    if (buildCity({ name: repoName + "/", source: "folder", files, history: null })) setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
+    if (buildCity({ name: repoName + "/", source: "folder", files, history: null, codeFiles: code.length })) setRepoStatus("Folders opened here have no git history. Use the local app for timelapse and heat.");
   } catch (e) { if (!isAbort(e)) throw e; }
   finally { doneLoading(signal); }
 }
@@ -3458,6 +3504,14 @@ function depsOf(path) {   // the files this file imports (a promise; cached)
 function knownDeps(path) { const p = graph && graph.out.get(path); return p ? p.done : undefined; }   // already loaded, or undefined
 async function loadDeps(path) { const p = depsOf(path), d = await p; p.done = d; return d; }
 // "Used by" needs every file's imports, so it's built once per city on request (one fetch per source file).
+// Lets the page draw and answer clicks during long work: hands control back when the work has run for a while.
+// Without it a big repo's import reading froze the page for half a second at a time, so clicks were lost and
+// hover highlights flickered.
+let breathedAt = 0;
+function breathe() {
+  if (performance.now() - breathedAt < 12) return Promise.resolve();
+  return new Promise(r => setTimeout(() => { breathedAt = performance.now(); r(); }, 0));
+}
 function scanUsedBy(progress) {
   const g = getGraph();
   if (g.usedBy) return Promise.resolve(g.usedBy);
@@ -3468,6 +3522,7 @@ function scanUsedBy(progress) {
     const queue = files.slice(), usedBy = new Map();
     await Promise.all(Array.from({ length: 8 }, async () => {
       while (queue.length) {
+        await breathe();   // files already read come back at once: without this, thousands run as one long freeze
         const f = queue.shift();
         for (const d of await loadDeps(f)) { if (!usedBy.has(d)) usedBy.set(d, new Set()); usedBy.get(d).add(f); }
         done++; if (progress && done % 10 === 0) progress(done, files.length);
@@ -5048,7 +5103,7 @@ function indexTour(t) {   // which workflows pass through each file
 // its steps' files and titles), then each workflow's words, a few at a time, and, unless the tour is about one
 // topic, more workflows for any main area the outline missed. The overview says what's still being written, and a
 // workflow opened early fills in when its words arrive.
-const NARRATE_AT_ONCE = 3;
+const NARRATE_AT_ONCE = 3, GAP_PASSES = 2;
 async function askTour(body) {
   try {
     const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(), body: JSON.stringify(body) });
@@ -5087,15 +5142,17 @@ async function fillTour(t, topic) {
   const run = () => { while (running < NARRATE_AT_ONCE && queue.length && tourState === t) { running++; narrateWorkflow(t, queue.shift()).finally(() => { running--; run(); }); } };
   run();
   if (topic) return;   // a tour about one part covers that part, not the whole product
-  const missed = missingAreas(t);
-  if (!missed.length) return;
-  t.filling = true; redrawTour(t);
-  const { ok, data } = await askTour({ ...t.base, stage: "outline", missing: missed.map(a => a.name), existing: t.workflows.map(w => w.name) });
-  t.filling = false;
-  if (tourState !== t) return;
-  const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
-  queue.push(...added); run(); redrawTour(t);
-  if (added.length) drawLinks();
+  for (let pass = 0; pass < GAP_PASSES; pass++) {   // a second try for what the first left out
+    const missed = missingAreas(t);
+    if (!missed.length || tourState !== t) break;
+    t.filling = true; redrawTour(t);
+    const { ok, data } = await askTour({ ...t.base, stage: "outline", missing: missed.map(a => a.name), existing: t.workflows.map(w => w.name) });
+    t.filling = false;
+    if (tourState !== t) return;
+    const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
+    queue.push(...added); run(); redrawTour(t);
+    if (added.length) drawLinks();
+  }
 }
 // Beginner: the tour ends only once every step of every workflow has been seen. These find what's left.
 const wfDone = (t, k) => t.workflows[k].steps.every((_, i) => t.seen.has(`${k}:${i}`));
@@ -5356,6 +5413,7 @@ function metroMapSvg(t) {   // Beginner
 }
 // The product's main areas (as the server's mainAreas in netlify/functions/ask.mjs works them out: top folders by
 // lines of source code, a folder with most of the code split one level down), and which of them a tour reaches.
+const AREA_SHARE = 0.25, MAX_AREAS = 12;   // keep in step with ask.mjs
 const AREA_PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
 const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
 function mainAreas() {   // by lines of source code: no markup, data, lock files or minified code; tests, docs, vendored and built folders aside
@@ -5363,11 +5421,12 @@ function mainAreas() {   // by lines of source code: no markup, data, lock files
     .filter(f => f.lines > 0 && SOURCE_FILE.test(f.path) && !/\.min\.js$/.test(f.path) && !aside(f.path) && !AREA_ASIDE.test(f.path));
   const total = live.reduce((n, f) => n + f.lines, 0);
   const top = p => p.includes("/") ? p.slice(0, p.indexOf("/") + 1) : "";
-  const sizes = key => { const m = new Map(); for (const f of live) m.set(key(f.path), (m.get(key(f.path)) || 0) + f.lines); return m; };
-  const [big] = [...sizes(top)].find(([k, n]) => k && n > total / 2 && live.some(f => f.path.startsWith(k) && f.path.slice(k.length).includes("/"))) || [];
-  const area = p => { const t = top(p), rest = p.slice(t.length); return t === big && rest.includes("/") ? t + rest.slice(0, rest.indexOf("/") + 1) : t; };
+  // a part with more than AREA_SHARE of the code is split by its subfolders, so a big repo's parts are its modules
+  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 2).keys()];
+  const area = p => keys.reduce((best, k) => p.startsWith(k) && k.length > best.length ? k : best, "");
+  const sizes = new Map(); for (const f of live) sizes.set(area(f.path), (sizes.get(area(f.path)) || 0) + f.lines);
   const own = new Set(buildings.map(b => b.userData.f.path).filter(p => AREA_PROJECT.test(p) && p.split("/").length === 2).map(top));   // a project of its own counts however small
-  const areas = [...sizes(area)].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, lines]) => ({ key, lines, name: key || "top-level files" }));
+  const areas = [...sizes].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, MAX_AREAS).map(([key, lines]) => ({ key, lines, name: key || "top-level files" }));
   return { areas, area, live };
 }
 function coverageHtml(t) {
@@ -5432,7 +5491,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   if (t.view !== view) { t.view = view; sideBody.scrollTop = 0; }   // a new page of the tour starts at its top, not where the last one was scrolled
   if (t.end) {
     $("sideSub").textContent = "Tour finished";
-    sideBody.innerHTML = `
+    if (!tourBody(`
       <div class="tour-stop tour-end"><h3>That's the tour</h3><p class="wf-plain">You walked through ${t.workflows.length === 1 ? "one workflow" : `${t.workflows.length} workflows`}: ${t.workflows.map((w, k) => `${wfDot(k)}${esc(w.name)}`).join(", ")}.</p></div>
       <div><h3>What next</h3><ul class="tour-next">
         <li>Click any building in the city to see what that file does.</li>
@@ -5443,12 +5502,12 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         ${askEnabled ? `<button type="button" data-tour="ask">Ask a question</button>` : ""}
         ${t.team ? "" : `<button type="button" data-tour="save">Save this tour for your team</button>`}
         <button type="button" class="primary" data-tour="close">Close the tour</button>
-      </div>`;
+      </div>`)) return;   // nothing changed: leave the panel as it is
   } else if (t.w < 0) {
     const shared = [...t.shared].filter(([, ws]) => ws.length > 1).sort((a, b) => b[1].length - a[1].length);
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
-    sideBody.innerHTML = `
+    if (!tourBody(`
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
@@ -5462,11 +5521,11 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
         ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
           <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
-      </div></details>`;
+      </div></details>`)) return;   // nothing changed: leave the panel as it is
   } else {
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
-    sideBody.innerHTML = `
+    if (!tourBody(`
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button></div>
       <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}${w.pending ? `<p class="side-note">Writing this workflow…</p>` : w.error ? `<p class="side-note">${w.error} <button type="button" class="linkish" data-tour="renarrate">Try again</button></p>` : `<p class="ask-answer">${rich(w.summary)}</p>`}</div>
       ${w.steps.length < 2 ? "" : `<div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>`}
@@ -5495,7 +5554,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
         <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : (u => !u ? "Finish tour" : u.w === t.w ? "Step you skipped" : "Next workflow")(nextUnseen(t))}</button>
       </div>
-      <p class="side-note kbd-tip">Tip: the ← and → keys step through the tour.</p>`;
+      <p class="side-note kbd-tip">Tip: the ← and → keys step through the tour.</p>`)) return;   // nothing changed: leave the panel as it is
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
     if (cur && !again) cur.scrollIntoView({ block: "nearest" });
   }
@@ -5504,6 +5563,15 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   if (wasIn) { const el = again && sideBody.querySelector(again), on = el && !el.disabled ? el : again ? sideBody.querySelector(t.end ? '[data-tour="close"]' : t.w < 0 ? ".wf-card" : '[data-tour="next"]') : null; if (on) on.focus(); }
   if (opened) reopenFolds(sideBody, opened);
   $("sideSub").setAttribute("aria-live", "polite");   // "Workflow 2 of 3 · step 1 of 2" is read out as it changes
+}
+// Puts the tour's page in the panel, unless it's already showing exactly that. The panel is asked to redraw many
+// times a second while a repo's imports are read, and replacing it each time swallowed clicks: a button changed
+// under the mouse between press and release, so a fold like "Covers 2 of 3 parts of the code" wouldn't open.
+function tourBody(html) {
+  if (sideBody.__html === html && sideBody.__first && sideBody.firstChild === sideBody.__first) return false;
+  sideBody.innerHTML = html;
+  sideBody.__html = html; sideBody.__first = sideBody.firstChild;
+  return true;
 }
 // A redrawn panel's folds (<details>) are matched by their class and their order among folds of that class.
 function foldKeys(el) { const seen = {}; return [...el.querySelectorAll("details")].map(d => [d, `${d.className}#${seen[d.className] = (seen[d.className] || 0) + 1}`]); }

@@ -343,10 +343,31 @@ ${VOICE}`;
 
 const DEFAULT_TOUR = "Walk a newcomer through the main workflows of this software and how they fit together.";
 
-// The product's main areas, for a tour to cover: its top folders by lines of source code (no markup, data, lock
-// files or minified code; tests, docs, examples, vendored and built folders aside), with a folder that holds most
-// of the code split one level down. The page works out the same areas (mainAreas in src/app.js) to show what a tour
-// covers; keep the two alike.
+// The product's main areas, for a tour to cover: its folders by lines of source code (no markup, data, lock files or
+// minified code; tests, docs, examples, vendored and built folders aside), a folder with more than AREA_SHARE of the
+// code split by its subfolders, so a big repo's areas are its modules. The page works out the same areas (mainAreas
+// and splitParts in src/app.js) to show what a tour covers; keep the two alike.
+const AREA_SHARE = 0.25, MAX_AREAS = 12;
+// How many workflows to ask a Beginner outline for, at least: more for a bigger codebase with more main areas.
+export const expectWorkflows = (files, areas) => Math.min(16, Math.max(3, areas + 2, files > 2000 ? 10 : files > 500 ? 6 : 3));
+export function splitParts(items, weight, share, most) {   // Map(folder key -> items); see splitParts in src/app.js
+  const sum = list => list.reduce((n, it) => n + weight(it), 0), total = sum(items);
+  const kids = (prefix, list) => { const m = new Map();
+    for (const it of list) { const rest = it.path.slice(prefix.length), i = rest.indexOf("/"), k = i < 0 ? prefix : prefix + rest.slice(0, i + 1); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }
+    return m; };
+  const parts = kids("", items);
+  for (let split = true; split;) {
+    split = false;
+    for (const [k, list] of [...parts].filter(([, l]) => sum(l) > total * share).sort((a, b) => sum(b[1]) - sum(a[1]))) {
+      let prefix = k, sub = kids(prefix, list);
+      while (sub.size === 1 && !sub.has(prefix)) { prefix = [...sub.keys()][0]; sub = kids(prefix, list); }
+      if (sub.size < 2 || parts.size - 1 + sub.size > most) continue;
+      parts.delete(k); for (const [kk, l] of sub) parts.set(kk, l);
+      split = true; break;
+    }
+  }
+  return parts;
+}
 const ASIDE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?|vendor|node_modules|third_party|dist|build|\.github)\//i;
 const PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
 const SOURCE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
@@ -354,11 +375,11 @@ export function mainAreas(files) {
   const live = files.filter(f => f.lines > 0 && SOURCE.test(f.path) && !/\.min\.js$/.test(f.path) && !ASIDE.test(f.path) && !/_test\.go$|\.(test|spec)\.[jt]sx?$/.test(f.path));
   const total = live.reduce((n, f) => n + f.lines, 0);
   const top = p => p.includes("/") ? p.slice(0, p.indexOf("/") + 1) : "";
-  const sizes = key => { const m = new Map(); for (const f of live) m.set(key(f.path), (m.get(key(f.path)) || 0) + f.lines); return m; };
-  const [big] = [...sizes(top)].find(([k, n]) => k && n > total / 2 && live.some(f => f.path.startsWith(k) && f.path.slice(k.length).includes("/"))) || [];
-  const area = p => { const t = top(p), rest = p.slice(t.length); return t === big && rest.includes("/") ? t + rest.slice(0, rest.indexOf("/") + 1) : t; };
+  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 2).keys()];
+  const area = p => keys.reduce((best, k) => p.startsWith(k) && k.length > best.length ? k : best, "");
+  const sizes = new Map(); for (const f of live) sizes.set(area(f.path), (sizes.get(area(f.path)) || 0) + f.lines);
   const own = new Set(files.filter(f => PROJECT.test(f.path) && f.path.split("/").length === 2).map(f => top(f.path)));   // a folder that is a project of its own (an editor extension, a CLI) counts however small
-  return [...sizes(area)].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  return [...sizes].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, MAX_AREAS)
     .map(([name, lines]) => ({ name: name || "top-level files", lines }));
 }
 
@@ -593,6 +614,7 @@ async function handle(event) {
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       (areas.length > 1 ? `Main areas of the product, by lines of source code (each should appear in at least one workflow's steps): ${areas.map(a => `${a.name} ${a.lines} lines`).join(", ")}\n\n` : "") +
+      (stage === "outline" && !gap ? `Size: ${total} files in ${Math.max(1, areas.length)} main area${areas.length === 1 ? "" : "s"}. A codebase this size does many things: give at least ${expectWorkflows(total, areas.length)} workflows, and more if it has them.\n\n` : "") +
       (gap ? `Workflows already in the tour: ${existing.join("; ") || "(none)"}\nAreas the tour still misses: ${missing.join(", ")}\n\n` : "") +
       (narrate ? `Workflows in this tour: ${[narrate.name, ...others].join("; ")}\n\nWorkflow to narrate: ${narrate.name}\nFeature: ${narrate.feature}\nSteps:\n${narrate.steps.map((st, i) => `${i + 1}. ${st.path}: ${st.title}`).join("\n")}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;

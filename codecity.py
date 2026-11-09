@@ -123,11 +123,69 @@ def notebook_code(text):
         return text
 
 
+# The product's own code, and what's around it (tests, stories, mocks, docs, examples, generated code, migrations).
+# Keep both in step with SOURCE_FILE and MINOR_FILE in src/app.js.
+SOURCE_RE = re.compile(r"\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$", re.I)
+MINOR_RE = re.compile(r"(^|/)(tests?|spec|__tests__|__mocks__|mocks?|fixtures?|examples?|docs?|stories|storybook|benchmarks?|e2e|generated|__generated__|migrations?)/"
+                      r"|\.(test|spec|stories|story|d)\.[cm]?[jt]sx?$|_test\.go$|\.generated\.", re.I)
+
+
+def split_parts(paths, weight, share, most):
+    """A repo's parts by folder: one per top folder, and a part holding more than `share` of the whole is split by its
+    subfolders (through a folder with only one), until none is or there would be more than `most`. Same as splitParts
+    in src/app.js."""
+    total = sum(weight(p) for p in paths)
+
+    def kids(prefix, items):
+        out = {}
+        for p in items:
+            rest = p[len(prefix):]
+            k = prefix + rest[:rest.index("/") + 1] if "/" in rest else prefix
+            out.setdefault(k, []).append(p)
+        return out
+
+    parts = kids("", paths)
+    split = True
+    while split:
+        split = False
+        for k, items in sorted(((k, v) for k, v in parts.items() if sum(map(weight, v)) > total * share), key=lambda kv: -sum(map(weight, kv[1]))):
+            prefix, sub = k, kids(k, items)
+            while len(sub) == 1 and prefix not in sub:   # down through single subfolders
+                prefix = next(iter(sub))
+                sub = kids(prefix, items)
+            if len(sub) < 2 or len(parts) - 1 + len(sub) > most:
+                continue
+            del parts[k]
+            parts.update(sub)
+            split = True
+            break
+    return parts
+
+
+def pick_order(paths, room=None):
+    """The order to read a big repo's files in, so the city's room goes to a fair share of each part (by how much of
+    the product's own code is there), not just the first files alphabetically, which could leave a monorepo's main
+    packages out. Within a part: its own code first, then tests and the like, then the rest; shallower files first.
+    Same as pickFiles in src/app.js."""
+    room = room or MAX_FILES
+    if len(paths) <= room:
+        return list(paths)
+    rank = lambda p: 2 if not SOURCE_RE.search(p) else 1 if MINOR_RE.search(p) else 0
+    weight = lambda p: 1 if rank(p) == 0 else 0.2
+    key = lambda p: (rank(p), p.count("/"), p)
+    total = sum(map(weight, paths))
+    first = []
+    for items in split_parts(paths, weight, 0.1, 60).values():   # each part's share of the room, and a few files from every part
+        first += sorted(items, key=key)[:max(min(len(items), 5), int(room * sum(map(weight, items)) / total))]
+    chosen = set(first)
+    return sorted(first, key=key) + [p for p in sorted(paths, key=key) if p not in chosen]
+
+
 def analyze(repo, paths, with_source):
+    """The city's files, read in pick_order until the city is full; returns them in path order, and how many code files there are."""
     files, root = [], os.path.realpath(repo)
-    for p in paths:
-        if not is_code(p):
-            continue
+    code = [p for p in paths if is_code(p)]
+    for p in pick_order(code):
         full = os.path.join(repo, p)
         # A symlink could point out of the repo (a cloned repo's x.txt -> ~/.ssh/id_rsa); its text would be shown and
         # could be sent to Gemini. Only files really inside the repo are read.
@@ -156,7 +214,9 @@ def analyze(repo, paths, with_source):
         files.append(f)
         if len(files) >= MAX_FILES:
             break
-    return files
+    at = {p: i for i, p in enumerate(code)}
+    files.sort(key=lambda f: at[f["path"]])
+    return files, len(code)
 
 
 def apply_commit(lines, churn, commit):
@@ -253,7 +313,7 @@ def build_city(src, with_source=True, from_page=False):
             for root, dirs, names in os.walk(repo):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
                 paths += [os.path.relpath(os.path.join(root, n), repo).replace(os.sep, "/") for n in names]
-        files = analyze(repo, sorted(paths), with_source)
+        files, code_files = analyze(repo, sorted(paths), with_source)
         hist = history(repo) if is_git and has_commits(repo) else None   # a brand-new repo: today's files, no history
         if hist:
             # Files that exist today but are left out of the city (too big, binary, past the file limit) are left out
@@ -263,7 +323,10 @@ def build_city(src, with_source=True, from_page=False):
             for c in hist["commits"]:
                 c["c"] = [row for row in c["c"] if row[0] not in left_out]
             hist["commits"] = [c for c in hist["commits"] if c["c"]]
-        return {"name": name, "source": "git" if is_git else "folder", "files": files, "history": hist}
+        city = {"name": name, "source": "git" if is_git else "folder", "files": files, "history": hist}
+        if code_files > len(files):
+            city["codeFiles"] = code_files   # the page says the city shows only some of them
+        return city
 
 
 FAVICON = ("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E"

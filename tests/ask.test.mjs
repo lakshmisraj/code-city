@@ -396,3 +396,14 @@ test("a tour's narrations have their own allowance, so one tour doesn't use up t
   const [ask] = await call({ question: "still free to ask?", files: many10 });
   assert.equal(ask, 200, "questions keep their own allowance");
 }));
+test("a big repo's main areas are its modules, and its outline asks for more workflows", () => fresh(async () => {
+  const mono = [...Array.from({ length: 30 }, (_, i) => ({ path: `packages/server/src/modules/m${i % 6}/s${i}.ts`, lines: 300 })),
+    ...Array.from({ length: 30 }, (_, i) => ({ path: `packages/web/src/c${i % 5}/w${i}.tsx`, lines: 300 })), { path: "packages/cli/run.ts", lines: 400 }];
+  const names = mainAreas(mono).map(a => a.name);
+  assert.ok(names.some(n => n.startsWith("packages/server/src/modules/")), `split down to modules: ${names}`);
+  assert.ok(names.length > 3);
+  reply = { title: "T", story: "S", overview: "O", workflows: [{ name: "A", feature: "f", steps: stp("packages/cli/run.ts"), feeds: [] }] };
+  const big = [...mono, ...Array.from({ length: 2500 }, (_, i) => ({ path: `packages/web/src/c${i % 5}/x${i}.tsx`, lines: 20 }))];
+  await call({ mode: "tour", stage: "outline", plain: true, files: big, digest: "README: big" });
+  assert.match(lastInput.input, /Size: 2561 files in \d+ main areas\. A codebase this size does many things: give at least 1\d workflows/);
+}));

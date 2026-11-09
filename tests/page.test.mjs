@@ -59,3 +59,18 @@ test("a workflow shows each line once: a file's lines at its first step, hand-of
   assert.equal(again.shownAt, 0, "it points back to step 1");
   assert.equal(stepLines(w, 1).shownAt, -1);
 });
+
+test("a repo too big for the city keeps a fair share of each part, the product's own code first", () => {
+  const src = fs.readFileSync(path.join(ROOT, "src", "app.js"), "utf8"), grab = re => re.exec(src)[0];
+  const { pickFiles } = new Function(`${grab(/\nconst AREA_ASIDE = [^\n]*\n/)}${grab(/\nfunction splitParts\([\s\S]*?\n}\n/)}${grab(/\nconst MINOR_FILE = [^\n]*\n/)}${grab(/\nfunction pickFiles\([\s\S]*?\n}\n/)}; return { pickFiles };`)();
+  // a monorepo whose small package comes first alphabetically: the first 400 files would all be it
+  const files = [...Array.from({ length: 500 }, (_, i) => `packages/a-apps/x${i}.ts`), ...Array.from({ length: 1000 }, (_, i) => `packages/server/src/m${i % 9}/s${i}.ts`),
+    ...Array.from({ length: 1000 }, (_, i) => `packages/web/src/c${i % 9}/w${i}.tsx`), ...Array.from({ length: 300 }, (_, i) => `packages/server/test/t${i}.spec.ts`)].map(p => ({ path: p }));
+  const kept = pickFiles(files, 400), count = re => kept.filter(f => re.test(f.path)).length;
+  assert.equal(kept.length, 400);
+  assert.ok(count(/^packages\/server\/src\//) > 120 && count(/^packages\/web\//) > 120, "the big packages are in");
+  assert.ok(count(/^packages\/a-apps\//) < 120, "the first package alphabetically doesn't take the room");
+  assert.ok(count(/\.spec\.ts$/) < 30, "tests come after the product's code");
+  assert.deepEqual(kept.map(f => f.path), files.map(f => f.path).filter(p => kept.some(f => f.path === p)), "in their original order");
+  assert.equal(pickFiles(files.slice(0, 10), 400).length, 10, "a repo that fits keeps everything");
+});

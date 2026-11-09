@@ -191,3 +191,13 @@ test("a symlink pointing out of the repo isn't read", () => {
     assert.deepEqual(JSON.parse(out), ["a.py"]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("the local app picks a big repo's files the same fair way as the page", () => {
+  const out = execFileSync("python3", ["-c", `
+import json, codecity as c
+paths = [f"packages/a-apps/x{i}.ts" for i in range(500)] + [f"packages/server/src/m{i % 9}/s{i}.ts" for i in range(1000)] + [f"packages/web/src/c{i % 9}/w{i}.tsx" for i in range(1000)]
+order = c.pick_order(paths, 400)[:400]
+print(json.dumps({k: sum(p.startswith(k) for p in order) for k in ["packages/a-apps/", "packages/server/", "packages/web/"]}))`], { cwd: ROOT, encoding: "utf8" });
+  const n = JSON.parse(out);
+  assert.ok(n["packages/server/"] > 120 && n["packages/web/"] > 120 && n["packages/a-apps/"] < 120, out);
+});
