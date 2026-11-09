@@ -5006,10 +5006,11 @@ async function planTour(topic, gen, status) {
   status.textContent = "Planning a tour… this can take up to half a minute.";
   const files = buildings.filter(b => b.userData.lines > 0).map(b => ({ path: b.userData.f.path, lines: b.userData.lines }));
   try {
+    const base = { mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced", plain: plainTour() };
     const r = await fetch(ASK_URL, {
       method: "POST",
       headers: askHeaders(),
-      body: JSON.stringify({ mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files, digest, every: audience === "advanced", plain: plainTour() }),
+      body: JSON.stringify(plainTour() ? { ...base, stage: "outline" } : base),   // Beginner: the outline first, then each workflow's words
     });
     const data = await r.json().catch(() => ({}));
     if (gen !== cityGen) { status.textContent = ""; return; }   // another repo is on screen now
@@ -5022,17 +5023,75 @@ async function planTour(topic, gen, status) {
     if (askState) askState = null;
     endTour();   // an old tour's auto-play timer must not drive the new one
     tourState = tourFrom(data);
+    if (plainTour()) { tourState.base = base; tourState.workflows.forEach(w => { w.pending = true; }); }
     if (plainTour()) loadMap();   // Beginner's tour shows where the program starts
     if (plainTour() && !drawer.hidden) closeDrawer();   // Beginner: the tour has the right edge to itself, not squeezed under a file
     openSide("tour");
     showOverview();
+    if (plainTour()) fillTour(tourState, topic.trim());
   } catch (e) { status.textContent = "Couldn't reach Code City's server. Check your connection and try again."; }
 }
 function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved one), at its overview
+  return indexTour({ title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
+    w: -1, i: 0, playing: false, timer: 0, seen: new Set(data.seen || []) });
+}
+function indexTour(t) {   // which workflows pass through each file
   const shared = new Map();
-  data.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
-  return { title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
-    w: -1, i: 0, playing: false, timer: 0, paths: new Set(shared.keys()), shared, seen: new Set(data.seen || []) };
+  t.workflows.forEach((w, k) => new Set(w.steps.map(st => st.path)).forEach(p => shared.set(p, [...(shared.get(p) || []), k])));
+  return Object.assign(t, { shared, paths: new Set(shared.keys()) });
+}
+// Beginner's tour arrives in stages, so no single reply has to hold all of it: the outline first (every workflow,
+// its steps' files and titles), then each workflow's words, a few at a time, and, unless the tour is about one
+// topic, more workflows for any main area the outline missed. The overview says what's still being written, and a
+// workflow opened early fills in when its words arrive.
+const NARRATE_AT_ONCE = 3;
+async function askTour(body) {
+  try {
+    const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(), body: JSON.stringify(body) });
+    return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
+  } catch (e) { return { ok: false, status: 0, data: { error: "Couldn't reach Code City's server." } }; }
+}
+function redrawTour(t) { if (tourState === t && sideMode === "tour") renderTour(); }
+async function narrateWorkflow(t, w) {
+  w.pending = true; w.error = null;
+  const { ok, status, data } = await askTour({ ...t.base, stage: "narrate", others: t.workflows.filter(x => x !== w).map(x => x.name),
+    workflow: { name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) } });
+  w.pending = false;
+  if (ok && Array.isArray(data.steps)) {
+    w.summary = String(data.summary || "");
+    w.steps.forEach((st, i) => { const d = data.steps[i] || {}; st.narration = String(d.narration || ""); st.change = String(d.change || ""); });
+  } else w.error = esc(data.error || `Couldn't write this workflow (error ${status}).`);
+  redrawTour(t);
+}
+function missingAreas(t) {   // the main areas no workflow's steps reach, as the coverage line counts them
+  const { areas, area } = mainAreas();
+  if (areas.length < 2) return [];
+  const walked = new Set([...t.paths].map(area));
+  return areas.filter(a => !walked.has(a.key));
+}
+function addWorkflows(t, list) {   // the gap pass's workflows: none already here by name, and no walk that stays inside one already here
+  const names = new Set(t.workflows.map(w => w.name)), have = t.workflows.map(w => new Set(w.steps.map(st => st.path)));
+  const added = list.filter(w => w && w.name && Array.isArray(w.steps) && w.steps.length && !names.has(w.name) && !have.some(h => w.steps.every(st => h.has(st.path))))
+    .map(w => ({ ...w, merged: w.merged || [], feeds: w.feeds || [], lines: null, handoff: null, pending: true }));
+  t.workflows.push(...added);
+  indexTour(t);
+  return added;
+}
+async function fillTour(t, topic) {
+  const queue = [...t.workflows];
+  let running = 0;
+  const run = () => { while (running < NARRATE_AT_ONCE && queue.length && tourState === t) { running++; narrateWorkflow(t, queue.shift()).finally(() => { running--; run(); }); } };
+  run();
+  if (topic) return;   // a tour about one part covers that part, not the whole product
+  const missed = missingAreas(t);
+  if (!missed.length) return;
+  t.filling = true; redrawTour(t);
+  const { ok, data } = await askTour({ ...t.base, stage: "outline", missing: missed.map(a => a.name), existing: t.workflows.map(w => w.name) });
+  t.filling = false;
+  if (tourState !== t) return;
+  const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
+  queue.push(...added); run(); redrawTour(t);
+  if (added.length) drawLinks();
 }
 // Beginner: the tour ends only once every step of every workflow has been seen. These find what's left.
 const wfDone = (t, k) => t.workflows[k].steps.every((_, i) => t.seen.has(`${k}:${i}`));
@@ -5201,7 +5260,7 @@ function askKeyLines(w, retry) {
 }
 async function fetchKeyLines(t, wf, redraw) {
   const code = wf.code, paths = [...new Set(wf.steps.map(st => st.path))];
-  const send = paths.filter(p => code.has(p)).map(p => ({ path: p, text: code.get(p).text }));   // every step's file (a workflow has at most 6)
+  const send = paths.filter(p => code.has(p)).map(p => ({ path: p, text: code.get(p).text }));   // every step's file (a workflow has at most 10)
   if (!send.length) { wf.lines = { error: "The source of these files isn't available here." }; return redraw(); }
   try {
     const r = await fetch(ASK_URL, {
@@ -5385,7 +5444,8 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     sideBody.innerHTML = `
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}${wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol></div>
+        <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
+        ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>
       ${coverageHtml(t)}
       ${plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
         : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button></div>`) : ""}
@@ -5401,7 +5461,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
     sideBody.innerHTML = `
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button></div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}<p class="ask-answer">${rich(w.summary)}</p></div>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}${w.pending ? `<p class="side-note">Writing this workflow…</p>` : w.error ? `<p class="side-note">${w.error} <button type="button" class="linkish" data-tour="renarrate">Try again</button></p>` : `<p class="ask-answer">${rich(w.summary)}</p>`}</div>
       ${w.steps.length < 2 ? "" : `<div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>`}
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
@@ -5418,7 +5478,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
             <span class="wf-file-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 2.5h8l4.5 4.5v14.5h-12.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 2.5v4.5h4.5M9 12.5h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
             <span class="wf-file-text"><b>${esc(st.path.slice(st.path.lastIndexOf("/") + 1))}</b>${st.path.includes("/") ? `<i>${esc(st.path.slice(0, st.path.lastIndexOf("/") + 1))}</i>` : ""}</span></button>
             <button type="button" class="wf-file-view" data-view="${esc(st.path)}">View code</button></div>
-          <p class="explain-text">${rich(st.narration)}</p>
+          ${st.narration ? `<p class="explain-text">${rich(st.narration)}</p>` : w.pending ? `<p class="side-note">Writing this step…</p>` : ""}
           ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by AI. Check it against the code."}</p>` : ""}
           ${plain ? stepPointersHtml(t, w, k, st) : ""}
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
@@ -5523,7 +5583,8 @@ sideBody.addEventListener("click", e => {
     else if (t.w < t.workflows.length - 1) goToWorkflow(t.w + 1, 0);
     else { closeSide(); resetView(true); }
   } else if (act.dataset.tour === "close") { closeSide(); resetView(true); }
-  else if (act.dataset.tour === "save") saveTeamTour();
+  else if (act.dataset.tour === "save") { if (t.workflows.some(x => x.pending)) toast("Wait until every workflow is written, then save the tour."); else saveTeamTour(); }
+  else if (act.dataset.tour === "renarrate") { narrateWorkflow(t, w); renderTour(); }
   else if (act.dataset.tour === "ask") { const q = $("askInput"); if (q && q.offsetParent) q.focus(); else openSeg("understand"); }
   else {   // play / pause
     t.playing = !t.playing;

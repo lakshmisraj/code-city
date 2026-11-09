@@ -337,3 +337,62 @@ test("a tour keeps as many workflows as Gemini finds", async () => {
   assert.doesNotMatch(lastInput.system_instruction, /"workflows":\{"type":"array","maxItems"/);
   counts.clear(); for (const [k, v] of before) counts.set(k, v);
 });
+
+// Beginner's tour in stages: the outline (every workflow, no narration), more workflows for areas it missed, then
+// each workflow's narration on its own.
+const many10 = Array.from({ length: 12 }, (_, k) => ({ path: `src/f${k}.js`, lines: 50 }));
+const stp = (...ps) => ps.map(path => ({ path, title: "t" }));
+const fresh = async f => { const before = new Map(counts); counts.clear(); try { await f(); } finally { counts.clear(); for (const [k, v] of before) counts.set(k, v); } };
+test("the outline lists every workflow and its steps, with no narration, and folds only nearly the same walk", () => fresh(async () => {
+  const ten = Array.from({ length: 10 }, (_, k) => `src/f${k}.js`);
+  reply = { title: "T", story: "S", overview: "O", workflows: [
+    { name: "Long", feature: "f", steps: stp(...ten), feeds: ["Shares a lot"] },
+    { name: "Shares a lot", feature: "f", steps: stp("src/f0.js", "src/f1.js", "src/f2.js", "src/f11.js"), feeds: [] },   // 3 of its 4 files in Long: a different walk
+    { name: "Same walk", feature: "f", steps: stp(...ten.slice(0, 9), "src/f11.js"), feeds: [] }] };   // 9 of Long's 10 files: nearly the same
+  const [st, out] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: outline" });
+  assert.equal(st, 200);
+  assert.deepEqual(out.workflows.map(w => w.name), ["Long", "Shares a lot"]);
+  assert.equal(out.workflows[0].steps.length, 10, "ten steps kept");
+  assert.deepEqual(out.workflows[0].merged, ["Same walk"]);
+  assert.equal(out.workflows[0].steps[0].narration, "");
+  assert.equal(out.story, "S");
+  assert.match(lastInput.system_instruction, /Don't write narration/);
+  assert.match(lastInput.system_instruction, /must cover the whole product/);
+  assert.doesNotMatch(lastInput.system_instruction, /"narration"/);
+}));
+test("an outline for the areas a tour missed returns only new workflows, and none is fine", () => fresh(async () => {
+  reply = { workflows: [{ name: "The CLI", feature: "f", steps: stp("src/f3.js", "src/f4.js"), feeds: ["Long", "Ghost"] }] };
+  const [st, out] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: gap", missing: ["cli/", "ext/"], existing: ["Long", "Shares a lot"] });
+  assert.equal(st, 200);
+  assert.deepEqual(out.workflows.map(w => w.name), ["The CLI"]);
+  assert.deepEqual(out.workflows[0].feeds, ["Long"], "it may feed a workflow already in the tour");
+  assert.equal(out.title, undefined);
+  assert.match(lastInput.input, /Workflows already in the tour: Long; Shares a lot\nAreas the tour still misses: cli\/, ext\//);
+  assert.doesNotMatch(lastInput.input, /Main areas of the product/);
+  assert.match(lastInput.system_instruction, /Areas the tour still misses/);
+  reply = { workflows: [] };
+  const [st2, out2] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: gap none", missing: ["cli/"], existing: ["Long"] });
+  assert.equal(st2, 200); assert.deepEqual(out2.workflows, []);
+}));
+test("narration writes one workflow's words, step by step in the order asked", () => fresh(async () => {
+  reply = { summary: "How it works.", steps: [{ path: "src/f2.js", narration: "Second.", change: "fix  two" }, { path: "src/f1.js", narration: "First.", change: "fix one" }] };
+  const [st, out] = await call({ mode: "tour", stage: "narrate", plain: true, files: many10, digest: "README: narrate", others: ["Saving"],
+    workflow: { name: "Start", feature: "Starts it.", steps: [{ path: "src/f1.js", title: "One" }, { path: "src/f2.js", title: "Two" }, { path: "nope.js", title: "Gone" }] } });
+  assert.equal(st, 200);
+  assert.equal(out.summary, "How it works.");
+  assert.deepEqual(out.steps.map(s => [s.path, s.narration, s.change]), [["src/f1.js", "First.", "fix one"], ["src/f2.js", "Second.", "fix two"]]);
+  assert.match(lastInput.input, /Workflows in this tour: Start; Saving\n\nWorkflow to narrate: Start\nFeature: Starts it\.\nSteps:\n1\. src\/f1\.js: One\n2\. src\/f2\.js: Two\n/);
+  assert.match(lastInput.system_instruction, /narrating one workflow/);
+  const [bad] = await call({ mode: "tour", stage: "narrate", plain: true, files: many10, workflow: { name: "X", steps: [{ path: "nope.js", title: "t" }] } });
+  assert.equal(bad, 400);
+}));
+test("a tour's narrations have their own allowance, so one tour doesn't use up the hour", () => fresh(async () => {
+  reply = { summary: "S", steps: [{ path: "src/f1.js", narration: "n", change: "c" }] };
+  for (let k = 0; k < 25; k++) {
+    const [st] = await call({ mode: "tour", stage: "narrate", plain: true, files: many10, digest: `README: allowance ${k}`, workflow: { name: `W${k}`, feature: "f", steps: [{ path: "src/f1.js", title: "t" }] } });
+    assert.equal(st, 200, `narration ${k + 1}`);
+  }
+  reply = { answer: "A", files: [] };
+  const [ask] = await call({ question: "still free to ask?", files: many10 });
+  assert.equal(ask, 200, "questions keep their own allowance");
+}));
