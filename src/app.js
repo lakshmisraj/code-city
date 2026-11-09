@@ -5426,6 +5426,9 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     ? (f.dataset.tour ? `[data-tour="${f.dataset.tour}"]` : f.dataset.wf ? `[data-wf="${f.dataset.wf}"]` : f.dataset.stop ? `[data-stop="${f.dataset.stop}"]` : null) : null;
   $("sideTitle").textContent = t.title;
   const plain = plainTour(), story = plain && t.story, view = `${t.w}:${t.i}:${!!t.end}`;
+  // The panel is redrawn while the tour is still being written (and while the repo's imports are read): a fold you
+  // opened on this page stays open through that. A new page starts with them closed.
+  const opened = t.view === view ? openFolds(sideBody) : null;
   if (t.view !== view) { t.view = view; sideBody.scrollTop = 0; }   // a new page of the tour starts at its top, not where the last one was scrolled
   if (t.end) {
     $("sideSub").textContent = "Tour finished";
@@ -5499,8 +5502,13 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   // the panel was redrawn: keep keyboard focus, or when its button is gone (a workflow was opened, or the
   // overview), move it on to Next, or the first workflow
   if (wasIn) { const el = again && sideBody.querySelector(again), on = el && !el.disabled ? el : again ? sideBody.querySelector(t.end ? '[data-tour="close"]' : t.w < 0 ? ".wf-card" : '[data-tour="next"]') : null; if (on) on.focus(); }
+  if (opened) reopenFolds(sideBody, opened);
   $("sideSub").setAttribute("aria-live", "polite");   // "Workflow 2 of 3 · step 1 of 2" is read out as it changes
 }
+// A redrawn panel's folds (<details>) are matched by their class and their order among folds of that class.
+function foldKeys(el) { const seen = {}; return [...el.querySelectorAll("details")].map(d => [d, `${d.className}#${seen[d.className] = (seen[d.className] || 0) + 1}`]); }
+function openFolds(el) { return new Set(foldKeys(el).filter(([d]) => d.open).map(([, k]) => k)); }
+function reopenFolds(el, keys) { for (const [d, k] of foldKeys(el)) if (keys.has(k)) d.open = true; }
 function renderTourClassic() {   // Advanced and Manager: the tour panel as it was when the sites split
 
   const t = tourState;
