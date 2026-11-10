@@ -5673,6 +5673,27 @@ function mainAreasNow() {
   const areas = ranked.filter(a => a.main).slice(0, MAX_AREAS), all = [...areas, ...ranked.filter(a => !areas.includes(a))];   // all: the small parts too, after the main ones
   return { areas, area, live, all };
 }
+// A workflow's card on the overview
+function wfCard(t, w, k, plain) {
+  return `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+    <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`;
+}
+// Every workflow, grouped by part (the one it was found for, or where it starts), in the parts row's order: each
+// part shows its first few, and the rest on request. The part's name picks it.
+const GROUP_SHOWN = 3;
+function wfGroupsHtml(t, plain) {
+  const { all, area } = mainAreas(), groups = new Map();
+  t.workflows.forEach((w, k) => { const key = t.byPart && w.parts && w.parts.length ? w.parts[0] : area(w.steps[0].path); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(k); });
+  const rank = new Map(all.map((a, i) => [a.key, i]));
+  const keys = [...groups.keys()].sort((a, b) => (rank.has(a) ? rank.get(a) : 1e9) - (rank.has(b) ? rank.get(b) : 1e9));
+  t.openGroups = t.openGroups || new Set();
+  return keys.map(key => {
+    const ks = groups.get(key), open = t.openGroups.has(key), shown = open ? ks : ks.slice(0, GROUP_SHOWN);
+    return `<div class="wf-group"><button type="button" class="wf-group-head" data-part="${esc(key)}" title="Pick this part">${esc(partLabel(key))}<span>${ks.length}</span></button>
+      <ol class="wf-list">${shown.map(k => wfCard(t, t.workflows[k], k, plain)).join("")}</ol>
+      ${ks.length > GROUP_SHOWN ? `<button type="button" class="linkish wf-group-more" data-group-more="${esc(key)}">${open ? "Show fewer" : `Show ${fmt(ks.length - GROUP_SHOWN)} more`}</button>` : ""}</div>`;
+  }).join("");
+}
 // Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
 // Picking one shows only its workflows; a part with none can have one added to this tour.
 // A part's short name: its package (or top folder) and its own folder, so two "src/modules" in different packages
@@ -5696,8 +5717,11 @@ function partsHtml(t) {
   const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(covered)} of ${fmt(areas.length)} parts. Pick a part to see all its workflows.`)
     : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
+  const left = t.byPart && t.base && !t.team ? areas.filter(a => !made(a.key) && !finding(a.key)) : [], fa = t.findingAll;
+  const allBtn = fa ? `<p class="side-note">Finding workflows in all parts: ${fmt(fa.done)} of ${fmt(fa.total)} done…</p>`
+    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each of these parts, two at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
   return `<div class="tour-parts"><h3>Parts of the code</h3>
-    <p class="side-note">${note}</p>
+    <p class="side-note">${note}</p>${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
@@ -5708,6 +5732,17 @@ function partsHtml(t) {
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
 // writes them a few to a request. The tour remembers which parts it has asked about.
+// Every main part not explored yet, two at a time (each is a request to list its workflows, then their words)
+async function findAllParts(t) {
+  if (t.findingAll) return;
+  const keys = mainAreas().areas.map(a => a.key).filter(k => !(t.partsAsked && t.partsAsked.has(k)) && !(t.finding && t.finding.has(k)));
+  if (!keys.length) return;
+  t.findingAll = { done: 0, total: keys.length };
+  const queue = keys.slice();
+  const run = async () => { for (let k; tourState === t && (k = queue.shift()) != null;) { await explorePart(t, k); if (t.findingAll) t.findingAll.done++; redrawTour(t); } };
+  await Promise.all([run(), run()]);
+  t.findingAll = null; redrawTour(t);
+}
 async function explorePart(t, key) {
   const a = mainAreas().all.find(x => x.key === key);
   if (!a || !t.base || t.team) return;
@@ -5797,8 +5832,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     if (!tourBody(`
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       ${partsHtml(t)}
-      ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}<ol class="wf-list">${t.workflows.map((w, k) => t.part != null && !wfInPart(w, t.part) ? "" : `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
-        <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
+      ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}${t.part != null ? `<ol class="wf-list">${t.workflows.map((w, k) => wfInPart(w, t.part) ? wfCard(t, w, k, plain) : "").join("")}</ol>` : wfGroupsHtml(t, plain)}
         ${t.part != null && !t.byPart && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
         ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>`}
       ${!t.workflows.length ? "" : plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
@@ -5935,6 +5969,9 @@ sideBody.addEventListener("click", e => {
   if (e.target.closest("[data-all-parts]")) { e.stopPropagation(); tourState.allParts = !tourState.allParts; return renderTour(); }
   const again = e.target.closest("[data-refind]");
   if (again) { e.stopPropagation(); const t = tourState; if (t.partsAsked) t.partsAsked.delete(again.dataset.refind); explorePart(t, again.dataset.refind); return; }
+  if (e.target.closest("[data-find-all]")) { e.stopPropagation(); findAllParts(tourState); return renderTour(); }
+  const groupMore = e.target.closest("[data-group-more]");
+  if (groupMore) { e.stopPropagation(); const t = tourState, k = groupMore.dataset.groupMore; t.openGroups = t.openGroups || new Set(); if (t.openGroups.has(k)) t.openGroups.delete(k); else t.openGroups.add(k); return renderTour(); }
   const pick = e.target.closest("[data-part]");
   if (pick) { e.stopPropagation(); const t = tourState, k = pick.dataset.part; t.part = t.part !== k ? k : null; renderTour(); if (t.part != null) explorePart(t, k); return; }
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
