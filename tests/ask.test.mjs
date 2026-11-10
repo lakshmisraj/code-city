@@ -123,7 +123,8 @@ test("lines to look at aren't capped: every line picked, in every step's file, o
   assert.equal(st, 200);
   assert.equal(out.steps.length, 6);
   assert.equal(out.steps[0].lines.length, 40);
-  assert.equal(lastInput.schema.properties.steps.items.properties.lines.maxItems, undefined);
+  const schema = lastInput.schema || JSON.parse(/JSON Schema:\n([\s\S]*)$/.exec(lastInput.system_instruction)[1]);   // half the calls put the shape in the prompt
+  assert.equal(schema.properties.steps.items.properties.lines.maxItems, undefined);
   reply = { summary: "S", files: [{ path: "a.js", explanation: "E", links: [], lines: many }] };
   const [st2, out2] = await call({ mode: "explain", question: "Uncapped range", repo: "r", files, plain: true, range: { from: 1, to: 40 }, code: [{ path: "a.js", text, imports: [] }] });
   assert.equal(st2, 200);

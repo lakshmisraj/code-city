@@ -420,10 +420,6 @@ ul.cycles li.warn b { color: var(--ink); font-family: var(--f-mono); font-size: 
 .wf-file-view:hover { background: color-mix(in srgb, var(--wf) 18%, transparent); }
 .wf-step:not(.current) .wf-step-head { font-size: 13px; color: var(--ink-dim); }
 .wf-step:not(.current) .wf-step-head:hover { color: var(--ink); }
-.rank.cover li { display: flex; align-items: center; gap: 6px; }
-.rank.cover li > button[data-area] { flex: 1; min-width: 0; }
-.rank.cover li.missed .n { color: var(--ink-dim); }
-.rank.cover li:not(.missed) .n { color: #7ed49b; }
 .wf-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin: 2px 0 4px; }
 .wf-progress > span { flex: 0 1 14px; height: 2px; background: var(--line); }
 .wf-dot-step { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--f-mono); color: var(--ink-dim); border: 2px solid var(--line); background: var(--street); }
@@ -670,7 +666,7 @@ button.mini { padding: 3px 8px; font-size: 11px; }
 body.for-beginner #sideBody h3, body.for-beginner #sideBody .tour-stop h3 { margin: 0 0 6px; font: 600 15px var(--f-display); letter-spacing: .01em; text-transform: none; color: var(--ink); }
 body.for-beginner #sideBody details h3 { font-size: 13px; }
 body.for-beginner #sideBody .tour-stop:has(> h3 > .wf-dot) h3 { font-size: 18px; }   /* a workflow's own page: its name is the title */
-.tour-more > summary, .cover-line > summary { font: 600 13px var(--f-body); color: var(--ink); }
+.tour-more > summary { font: 600 13px var(--f-body); color: var(--ink); }
 .tour-more > .d-stack { margin-top: 10px; }
 /* Beginner: an explanation is a stack of blocks, each with a line saying what it's for. Notes read as prose;
    only the names of things are set as code. */
@@ -831,3 +827,13 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .wf-ptr .xb-name:hover { text-decoration: underline; }
 .wf-ptr .xb-name:focus-visible { outline: 2px solid var(--sodium); outline-offset: 1px; }
 .wf-at { font: 12px var(--f-mono); color: var(--ink-dim); }
+
+/* Beginner tour overview: the parts of the code, each with how many workflows pass through it */
+.part-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.part-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink); font: 500 12.5px var(--f-body); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.part-chip span { font: 600 11px var(--f-mono); color: var(--ink-dim); }
+.part-chip:hover, .part-chip:focus-visible { border-color: var(--sodium); }
+.part-chip.on { border-color: var(--sodium); background: color-mix(in srgb, var(--sodium) 16%, transparent); }
+.part-chip.on span { color: var(--sodium); }
+.part-chip.missed { border-style: dashed; color: var(--ink-dim); }
+.part-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 8px; }

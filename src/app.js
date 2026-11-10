@@ -3522,8 +3522,8 @@ function scanUsedBy(progress) {
     const queue = files.slice(), usedBy = new Map();
     await Promise.all(Array.from({ length: 8 }, async () => {
       while (queue.length) {
+        const f = queue.shift();   // taken before the pause, so two workers can't both wait for the last one
         await breathe();   // files already read come back at once: without this, thousands run as one long freeze
-        const f = queue.shift();
         for (const d of await loadDeps(f)) { if (!usedBy.has(d)) usedBy.set(d, new Set()); usedBy.get(d).add(f); }
         done++; if (progress && done % 10 === 0) progress(done, files.length);
       }
@@ -5429,14 +5429,37 @@ function mainAreas() {   // by lines of source code: no markup, data, lock files
   const areas = [...sizes].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, MAX_AREAS).map(([key, lines]) => ({ key, lines, name: key || "top-level files" }));
   return { areas, area, live };
 }
-function coverageHtml(t) {
-  const { areas, area, live } = mainAreas();
+// Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
+// Picking one shows only its workflows; a part with none can have one added to this tour.
+const partLabel = key => { const s = key.split("/").filter(Boolean); return !s.length ? "top-level files" : s.slice(-2).join("/"); };
+function wfInPart(w, key) { const { area } = mainAreas(); return w.steps.some(st => area(st.path) === key); }
+function partsHtml(t) {
+  const { areas } = mainAreas();
   if (areas.length < 2) return "";
-  const walked = new Set([...t.paths].map(area)), files = live.filter(f => t.paths.has(f.path)).length;
-  const missed = areas.filter(a => !walked.has(a.key));
-  const sum = missed.length ? `Covers ${fmt(areas.length - missed.length)} of ${fmt(areas.length)} parts of the code` : `Covers every part of the code`;
-  return `<details class="more cover-line"><summary>${sum}${audience === "beginner" ? "" : ` · ${fmt(files)} of ${fmt(live.length)} files`}</summary>
-    <ol class="rank cover">${areas.map(a => `<li${walked.has(a.key) ? "" : ` class="missed"`}><button type="button" data-area="${esc(a.key ? a.key.slice(0, -1) : "(top)")}" title="Show this folder"><span class="n">${walked.has(a.key) ? "✓" : "–"}</span><span class="path">${esc(a.name)}</span><span class="meta">${fmt(a.lines)} lines${walked.has(a.key) ? "" : " · not in the tour"}</span></button>${walked.has(a.key) ? "" : `<button type="button" class="mini" data-tour-area="${esc(a.name)}">Tour this part</button>`}</li>`).join("")}</ol></details>`;
+  const count = key => t.workflows.filter(w => wfInPart(w, key)).length, covered = areas.filter(a => count(a.key)).length;
+  const sel = t.part != null && areas.find(a => a.key === t.part);
+  if (t.part != null && !sel) t.part = null;   // that part isn't a main area any more
+  const chip = a => { const n = count(a.key);
+    return `<button type="button" class="part-chip${n ? "" : " missed"}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(a.name)} · ${fmt(a.lines)} lines">${esc(partLabel(a.key))}<span>${n}</span></button>`; };
+  return `<div class="tour-parts"><h3>Parts of the code</h3>
+    <p class="side-note">${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see its workflows.</p>
+    <div class="part-chips">${areas.map(chip).join("")}</div>
+    ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
+      <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
+      ${!count(sel.key) ? (t.filling ? ` · Looking for its workflows…` : `<button type="button" class="mini" data-add-part="${esc(sel.name)}">Add a workflow for this part</button>`) : ""}
+      <button type="button" class="linkish" data-part="">Show all workflows</button></p>` : ""}
+  </div>`;
+}
+async function addForPart(t, name) {   // a workflow for one part, added to this tour and written like the rest
+  t.filling = true; redrawTour(t);
+  const { ok, data } = await askTour({ ...t.base, stage: "outline", missing: [name], existing: t.workflows.map(w => w.name) });
+  t.filling = false;
+  if (tourState !== t) return;
+  const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
+  if (!added.length) toast(ok ? "Gemini didn't find a workflow of its own there." : esc(data.error || "Couldn't add a workflow just now."));
+  redrawTour(t);
+  if (added.length) drawLinks();
+  for (const w of added) narrateWorkflow(t, w);
 }
 // Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
 // line in its colour, left to right in the order the work flows. Where workflows
@@ -5509,10 +5532,11 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
     if (!tourBody(`
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
-      <div><h3>Workflows</h3><p class="side-note">Pick one to walk through it, a step at a time.</p><ol class="wf-list">${t.workflows.map((w, k) => `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+      ${partsHtml(t)}
+      <div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}<ol class="wf-list">${t.workflows.map((w, k) => t.part != null && !wfInPart(w, t.part) ? "" : `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
+        ${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
         ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>
-      ${coverageHtml(t)}
       ${plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
         : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button></div>`) : ""}
       <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
@@ -5644,8 +5668,10 @@ document.addEventListener("keydown", e => {   // Beginner: ← and → step thro
 });
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
-  const part = e.target.closest("[data-tour-area]");
-  if (part) { e.stopPropagation(); return startTour(`the ${part.dataset.tourArea} part of the code`); }   // a tour of a part the first one missed
+  const pick = e.target.closest("[data-part]");
+  if (pick) { e.stopPropagation(); const k = pick.dataset.part; tourState.part = pick.classList.contains("part-chip") && tourState.part !== k ? k : null; return renderTour(); }
+  const add = e.target.closest("[data-add-part]");
+  if (add) { e.stopPropagation(); const t = tourState; if (t.base) addForPart(t, add.dataset.addPart); else startTour(`the ${add.dataset.addPart} part of the code`); return; }
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
   if (wf) { e.stopPropagation(); return goToWorkflow(+wf.dataset.wf, 0); }
   if (stop) { e.stopPropagation(); return goToStop(+stop.dataset.stop); }
