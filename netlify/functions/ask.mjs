@@ -152,9 +152,9 @@ ${PLAIN_NARRATE}` : ` Narrate each step as if walking the reader through it ("he
 // Beginner's tour in stages, so no one reply has to hold the whole tour (a function gets 60 seconds): the outline is
 // every workflow with its steps' files and titles, the story and the overview; then the page asks for each workflow's
 // narration on its own. An outline given the areas the tour still misses returns only new workflows, for them.
-const outlineSystem = gap => `You are a friendly guide planning a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
+const outlineSystem = (gap, part) => `You are a friendly guide planning a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-${gap ? `The tour already has the workflows listed under "Workflows already in the tour", but it doesn't reach the main areas listed under "Areas the tour still misses". Add workflows for those areas, and only those: every new workflow must pass through at least one of them, and none may repeat a workflow already in the tour. An area too small for a workflow of its own goes in as a step of the new workflow it serves.` : `Split the software into its main workflows: as many as it really has, at least two, each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". Make two workflows whenever they do different things for the person using the software, even if they share files; only a walk that does the same thing twice is one workflow.
+${part ? `The reader picked one part of the code, named under "Part to show". List every workflow that passes through it: as many as it really has, with no limit, each one thing it does from start to finish. The tour already has the workflows listed under "Workflows already in the tour"; don't repeat any of them, but do add every workflow of this part that they don't already tell. Each new workflow's steps must include files in that part, and may go on into other parts where the work goes.` : gap ? `The tour already has the workflows listed under "Workflows already in the tour", but it doesn't reach the main areas listed under "Areas the tour still misses". Add workflows for those areas, and only those: every new workflow must pass through at least one of them, and none may repeat a workflow already in the tour. An area too small for a workflow of its own goes in as a step of the new workflow it serves.` : `Split the software into its main workflows: as many as it really has, at least two, each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". Make two workflows whenever they do different things for the person using the software, even if they share files; only a walk that does the same thing twice is one workflow.
 ${PLAIN_COVER}`}
 For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code, enough to follow the work from where it starts to where it ends. Each step is one file, with its path exactly as it appears in the list (joined with its folder), and a title of two to five words. Don't write narration: each workflow is narrated separately.
 Workflows often share files; reuse the same path when they do, since that is where they meet. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
@@ -509,7 +509,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), NARRATE_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), outlineSystem(true, true), NARRATE_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -561,7 +561,8 @@ async function handle(event) {
   // Beginner's tour in stages: "outline" (with missing: the areas a tour still misses, for more workflows), then "narrate", one workflow at a time
   const stage = tour && plain && (body.stage === "outline" || body.stage === "narrate") ? body.stage : null;
   const clip = (v, n) => String(v == null ? "" : v).slice(0, n), names = (a, n) => (Array.isArray(a) ? a : []).map(x => clip(x, n).trim()).filter(Boolean).slice(0, 60);
-  const missing = stage === "outline" ? names(body.missing, 120).slice(0, 20) : [], gap = missing.length > 0;
+  const part = stage === "outline" ? clip(body.part, 120).trim() : "";   // every workflow of one part
+  const missing = stage === "outline" && !part ? names(body.missing, 120).slice(0, 20) : [], gap = missing.length > 0 || !!part;
   const existing = gap ? names(body.existing, 60) : [], others = stage === "narrate" ? names(body.others, 60) : [];
   const question = (String(body.question || "").trim() || (tour ? DEFAULT_TOUR : explain ? DEFAULT_EXPLAIN : keyLines ? "This workflow." : changed ? "(no message)" : "")).slice(0, keyLines || changed ? 600 : MAX_QUESTION);   // lines: a workflow's name and summary; change: the commit message
   const repo = String(body.repo || "this repository").slice(0, 120);
@@ -597,7 +598,7 @@ async function handle(event) {
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
   const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : changed ? "change" : "ask";
-  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : "") + (plain || plainExplain ? "/plain" : "") + (range ? `/range${range.from}-${range.to}` : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs, stage || "", missing, existing, narrate, others]);
+  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : "") + (plain || plainExplain ? "/plain" : "") + (range ? `/range${range.from}-${range.to}` : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs, stage || "", missing, part, existing, narrate, others]);
   const saved = await cacheGet(ckey);
   if (saved) { console.log(`ask: ${mode} answered from a saved copy`); return json(200, { ...saved, cached: true }); }
   const done = async body => { await cachePut(ckey, body); return json(200, body); };
@@ -615,7 +616,7 @@ async function handle(event) {
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
       (areas.length > 1 ? `Main areas of the product, by lines of source code (each should appear in at least one workflow's steps): ${areas.map(a => `${a.name} ${a.lines} lines`).join(", ")}\n\n` : "") +
       (stage === "outline" && !gap ? `Size: ${total} files in ${Math.max(1, areas.length)} main area${areas.length === 1 ? "" : "s"}. A codebase this size does many things: give at least ${expectWorkflows(total, areas.length)} workflows, and more if it has them.\n\n` : "") +
-      (gap ? `Workflows already in the tour: ${existing.join("; ") || "(none)"}\nAreas the tour still misses: ${missing.join(", ")}\n\n` : "") +
+      (gap ? `Workflows already in the tour: ${existing.join("; ") || "(none)"}\n${part ? `Part to show: ${part}` : `Areas the tour still misses: ${missing.join(", ")}`}\n\n` : "") +
       (narrate ? `Workflows in this tour: ${[narrate.name, ...others].join("; ")}\n\nWorkflow to narrate: ${narrate.name}\nFeature: ${narrate.feature}\nSteps:\n${narrate.steps.map((st, i) => `${i + 1}. ${st.path}: ${st.title}`).join("\n")}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
   let reply, pre = 0, used = {};
@@ -627,7 +628,7 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? (stage === "outline" ? outlineSystem(gap) : stage === "narrate" ? NARRATE_SYSTEM : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
+    const system = tour ? (stage === "outline" ? outlineSystem(gap, !!part) : stage === "narrate" ? NARRATE_SYSTEM : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
     const schema = tour ? (stage === "outline" ? outlineSchema(gap) : stage === "narrate" ? NARRATE_SCHEMA : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {

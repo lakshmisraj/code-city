@@ -408,3 +408,12 @@ test("a big repo's main areas are its modules, and its outline asks for more wor
   await call({ mode: "tour", stage: "outline", plain: true, files: big, digest: "README: big" });
   assert.match(lastInput.input, /Size: 2561 files in \d+ main areas\. A codebase this size does many things: give at least 1\d workflows/);
 }));
+test("picking a part asks for every workflow through it, with the tour's workflows not to repeat", () => fresh(async () => {
+  reply = { workflows: [{ name: "Math helpers", feature: "f", steps: stp("src/f2.js", "src/f3.js"), feeds: [] }, { name: "Long", feature: "f", steps: stp("src/f2.js"), feeds: [] }] };
+  const [st, out] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: part", part: "src/", existing: ["Long", "Shares a lot"] });
+  assert.equal(st, 200);
+  assert.ok(out.workflows.some(w => w.name === "Math helpers"));
+  assert.match(lastInput.input, /Workflows already in the tour: Long; Shares a lot\nPart to show: src\//);
+  assert.match(lastInput.system_instruction, /List every workflow that passes through it: as many as it really has, with no limit/);
+  assert.doesNotMatch(lastInput.input, /Areas the tour still misses/);
+}));
