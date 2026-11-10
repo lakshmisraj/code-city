@@ -510,7 +510,7 @@ function keepCityClear() {
   scene.fog.near = dist + citySize * 0.8;
   scene.fog.far = dist + citySize * 3.5;
   const grow = Math.round(Math.min(2.2, Math.max(1, dist / (citySize * 1.3))) * 50) / 50;   // in small steps, so labels resize only now and then
-  for (const l of labels) if (l.userData.grow !== grow) { l.userData.grow = grow; l.scale.copy(l.userData.base).multiplyScalar(grow); l.updateMatrix(); }
+  for (const l of labels) if (l.userData.drawn && l.userData.grow !== grow) { l.userData.grow = grow; l.scale.copy(l.userData.base).multiplyScalar(grow); l.updateMatrix(); }
 }
 function placeBackLight() {
   const away = controls.target.clone().sub(camera.position).setY(0).normalize();
@@ -674,7 +674,7 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 function clearCity() {
   cityGen++;
   scene.remove(city);
-  for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
+  for (const l of labels) { if (l.material.map) l.material.map.dispose(); l.material.dispose(); }   // a label never shown has no picture
   city = fixed(new THREE.Group()); scene.add(city);
   for (const k in batches) { for (const im of batches[k].values()) if (im.dispose) im.dispose(); batches[k] = new Map(); }
   batchDirty = true;
@@ -689,7 +689,7 @@ function label(text, x, y, z, size, dir, depth = 1, area = 0) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
   sp.position.set(x, y, z); sp.renderOrder = 10; sp.userData.text = text; sp.userData.size = size; sp.userData.dir = dir;
   sp.userData.depth = depth; sp.userData.area = area;
-  drawLabel(sp); city.add(sp); labels.push(sp);
+  sp.visible = false; sp.userData.drawn = false; fixed(sp); city.add(sp); labels.push(sp);   // drawn the first time it's shown (showLabel)
   return sp;
 }
 // A district's name over the city. Beginner's are quieter: the folder's own name, smaller, in the body face and a
@@ -705,14 +705,17 @@ function drawLabel(sp) {
   ctx.fillStyle = easy ? "rgba(214,220,235,.88)" : "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
   if (sp.material.map) sp.material.map.dispose();
   sp.material.map = new THREE.CanvasTexture(c); sp.material.needsUpdate = true;
-  sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone(); sp.userData.grow = 1;
+  sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone(); sp.userData.grow = 1; sp.userData.drawn = true;
   fixed(sp);
 }
+// A big repo has hundreds of folders, but only a few names show (a dozen in Beginner, the top folders elsewhere):
+// each label's picture is drawn the first time it's shown, not all of them while the city is built.
+function showLabel(l, on) { if (on && !l.userData.drawn) drawLabel(l); l.visible = on; }   // sized for the zoom on the next frame (keepCityClear)
 const QUIET_LABELS = 12;   // Beginner names this many districts, the biggest, folders inside the top ones included
 function quietLabels() {
-  if (audience !== "beginner") { for (const l of labels) l.visible = l.userData.depth === 1; return; }   // the others: top-level folders only
+  if (audience !== "beginner") { for (const l of labels) showLabel(l, l.userData.depth === 1); return; }   // the others: top-level folders only
   const keep = new Set([...labels].sort((a, b) => b.userData.area - a.userData.area).slice(0, QUIET_LABELS));
-  for (const l of labels) l.visible = keep.has(l);
+  for (const l of labels) showLabel(l, keep.has(l));
 }
 
 function place(node, rect, depth) {
@@ -1087,7 +1090,7 @@ const tip = document.getElementById("tip");
 function pickAt(ndcX, ndcY) {
   mouse.set(ndcX, ndcY);
   ray.setFromCamera(mouse, camera);
-  const hit = ray.intersectObjects([...buildings.filter(b => b.visible), ...districts, ...labels], false)[0];
+  const hit = ray.intersectObjects([...buildings.filter(b => b.visible), ...districts, ...labels.filter(l => l.visible)], false)[0];
   return hit ? hit.object : null;   // a building (userData.f) or a folder (userData.dir)
 }
 function pickEvent(ev) {
@@ -1556,13 +1559,19 @@ async function loadFromGitHub(key, signal) {
   if (limit && limit.remaining < 4) throw rateLimited(limit.reset);
 
   const info = await gh(base), branch = info.default_branch, isPrivate = !!info.private;
-  const tree = await gh(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-  const kept = tree.tree.filter(e => e.type === "blob" && keepPath(e.path));
-  const files = pickFiles(kept.filter(e => e.size <= maxBytes(e.path)), MAX_FILES)
+  const treeRes = await ghRes(`${base}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+  let tree;   // { sha, kept: the code files' paths, files: the ones the city has room for }
+  if (workerReady()) { const buf = await treeRes.arrayBuffer(); tree = await inWorker("tree", { buf, max: MAX_FILES }, [buf]); }   // 16 MB of JSON, read off this thread
+  else {
+    const t = await treeRes.json(), all = t.tree.filter(e => e.type === "blob" && keepPath(e.path));
+    tree = { sha: t.sha, kept: all.map(e => e.path), files: pickFiles(all.filter(e => e.size <= maxBytes(e.path)), MAX_FILES) };
+  }
+  const kept = tree.kept;
+  const files = tree.files
     .map(e => ({ path: e.path, bytes: e.size, lines: Math.max(1, Math.round(e.size / (NB_RE.test(e.path) ? BYTES_PER_LINE * 8 : BYTES_PER_LINE))), funcs: null, todos: [], text: null, estimated: true }));
   // Files that exist today but are left out of the city (too big, or past the file limit): their history is left out too,
   // or their buildings would rise during the replay and vanish at today.
-  const shown = new Set(files.map(f => f.path)), leftOut = new Set(kept.filter(e => !shown.has(e.path)).map(e => e.path));
+  const shown = new Set(files.map(f => f.path)), leftOut = new Set(kept.filter(p => !shown.has(p)));
   if (!files.length) throw new Error("No source files found in that repo.");
 
   // Newest page of commits; its Link header gives the page count, and the last page gives the first commit.
@@ -2230,7 +2239,7 @@ function setAudience(a, quiet) {
   const others = Object.keys(AUDIENCES).filter(k => k !== a && SITE_URLS[k]);
   $("forSites").innerHTML = others.length ? `Also: ${others.map(k => `<a href="${esc(SITE_URLS[k])}">Code City for ${k === "manager" ? "managers" : k === "advanced" ? "advanced users" : "beginners"}</a>`).join(" · ")}` : "";
   understandOrder();
-  if (!quiet) { signinCues(); for (const l of labels) drawLabel(l); quietLabels(); if (typeof keepCityClear === "function") keepCityClear(); }   // the first, quiet call runs before Ask and sign-in are known
+  if (!quiet) { signinCues(); for (const l of labels) if (l.userData.drawn) drawLabel(l); quietLabels(); if (typeof keepCityClear === "function") keepCityClear(); }   // the first, quiet call runs before Ask and sign-in are known
   $("dMore").open = a !== "beginner";
   if (a !== "beginner") $("startHint").hidden = true;
   // Beginner: Info is Help (Guide's how-to folded into it), and Guide isn't on the rail
@@ -4211,6 +4220,55 @@ function tsParser(grammar) {
   if (!tsParsers.has(grammar)) tsParsers.set(grammar, TreeSitter.Language.load(TS_BASE + `tree-sitter-${grammar}.wasm`).then(L => { const p = new TreeSitter(); p.setLanguage(L); return p; }));
   return tsParsers.get(grammar);
 }
+// ---------- the worker ----------
+// Heavy reading runs on a second thread (a Web Worker), so the page stays responsive however big the repo is:
+// GitHub's file list (16 MB for a big monorepo) is read there and the city's files chosen, and code is parsed there
+// for its functions and calls. The worker is put together from this page's own functions, so there's no second copy
+// to keep in step. Where a worker can't run (a sandboxed view, an old browser), the same work runs here, as before.
+let worker = null, workerBroken = false, workerSeq = 0, callsInWorker = true;
+const workerWaits = new Map();
+function workerSource() {
+  const base = new URL(TS_BASE, location.href).href;
+  const handlers = {
+    tree({ buf, max }) {   // GitHub's tree: the code files, and the ones the city has room for
+      const tree = JSON.parse(new TextDecoder().decode(buf));
+      const kept = tree.tree.filter(e => e.type === "blob" && keepPath(e.path)).map(e => ({ path: e.path, size: e.size }));
+      return { sha: tree.sha, kept: kept.map(e => e.path), files: pickFiles(kept.filter(e => e.size <= maxBytes(e.path)), max) };
+    },
+    async calls({ grammar, text }) {   // one file's functions and calls
+      if (!self.tsReady) { importScripts(TS_BASE + "tree-sitter.js"); self.tsReady = TreeSitter.init({ locateFile: f => TS_BASE + f }); self.tsParsers = new Map(); }
+      await self.tsReady;
+      if (!self.tsParsers.has(grammar)) self.tsParsers.set(grammar, TreeSitter.Language.load(TS_BASE + "tree-sitter-" + grammar + ".wasm").then(L => { const p = new TreeSitter(); p.setLanguage(L); return p; }));
+      const tree = (await self.tsParsers.get(grammar)).parse(text);
+      try { return extractCalls(grammar, tree.rootNode); } finally { tree.delete(); }
+    },
+  };
+  return [
+    `"use strict";`,
+    `const TS_BASE = ${JSON.stringify(base)};`,
+    `const EXT = ${JSON.stringify(EXT)}, SPECIAL = ${JSON.stringify(SPECIAL)}, SKIP_DIRS = new Set(${JSON.stringify([...SKIP_DIRS])});`,
+    `const MAX_BYTES = ${MAX_BYTES}, NB_MAX_BYTES = ${NB_MAX_BYTES}, NB_RE = ${NB_RE}, MINOR_FILE = ${MINOR_FILE}, SOURCE_FILE = ${SOURCE_FILE};`,
+    `const EVENT_CALL = ${EVENT_CALL}, ROUTE_CALL = ${ROUTE_CALL}, clip = ${clip};`,
+    ...[langOf, keepPath, maxBytes, splitParts, pickFiles, extractCalls].map(String),
+    `const handlers = { ${Object.values(handlers).map(String).join(",\n")} };`,
+    `onmessage = async e => { const { id, kind, data } = e.data; try { postMessage({ id, ok: true, result: await handlers[kind](data) }); } catch (err) { postMessage({ id, ok: false, error: String(err && err.message || err) }); } };`,
+  ].join("\n");
+}
+function workerReady() {   // the worker, started on first use; null where it can't run
+  if (worker || workerBroken) return worker;
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob([workerSource()], { type: "text/javascript" })));
+    worker.onmessage = e => { const w = workerWaits.get(e.data.id); if (!w) return; workerWaits.delete(e.data.id); e.data.ok ? w.ok(e.data.result) : w.fail(new Error(e.data.error)); };
+    worker.onerror = () => { workerBroken = true; for (const w of workerWaits.values()) w.fail(new Error("The worker stopped.")); workerWaits.clear(); try { worker.terminate(); } catch (e) { /* gone */ } worker = null; };
+  } catch (e) { workerBroken = true; worker = null; }
+  return worker;
+}
+function inWorker(kind, data, transfer) {
+  const w = workerReady();
+  if (!w) return Promise.reject(new Error("No worker here."));
+  const id = ++workerSeq;
+  return new Promise((ok, fail) => { workerWaits.set(id, { ok, fail }); w.postMessage({ id, kind, data }, transfer || []); });
+}
 const callFiles = () => buildings.filter(b => b.userData.lines > 0 && callGrammar(b.userData.f.path)).map(b => b.userData.f.path).slice(0, MAX_SCAN);
 const folderOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
 function callsReady() { return callIdx && callIdx.city === buildings && callIdx.idx ? callIdx.idx : null; }
@@ -4221,15 +4279,24 @@ function loadCalls(onProgress) {
   st.ready = (async () => {
     const g = getGraph(); await g.ready;
     const paths = callFiles(), queue = g.saved && g.saved.calls ? [] : paths.slice(), files = new Map(g.saved && g.saved.calls ? Object.entries(g.saved.calls) : []);
-    if (queue.length) await loadTreeSitter();
     st.total = paths.length;
     let last = 0;
     await Promise.all(Array.from({ length: 8 }, async () => {
       while (queue.length && callIdx === st) {
         const p = queue.shift(), c = await pullCode(p);
         if (c && c.text) {
-          const grammar = callGrammar(p), parser = await tsParser(grammar), tree = parser.parse(c.text.length > MAX_PARSE * 3 ? c.text.slice(0, MAX_PARSE * 3) : c.text);
-          try { files.set(p, extractCalls(grammar, tree.rootNode)); } catch (e) { /* a file the extractor can't read: left out */ } finally { tree.delete(); }
+          const grammar = callGrammar(p), text = c.text.length > MAX_PARSE * 3 ? c.text.slice(0, MAX_PARSE * 3) : c.text;
+          let read = null;
+          if (callsInWorker && workerReady()) {
+            try { read = await inWorker("calls", { grammar, text }); }
+            catch (e) { if (/importScripts|TreeSitter|worker/i.test(String(e && e.message))) callsInWorker = false; }   // the parser won't run there: here from now on
+          }
+          if (!read && !callsInWorker) {
+            await loadTreeSitter();
+            const tree = (await tsParser(grammar)).parse(text);
+            try { read = extractCalls(grammar, tree.rootNode); } catch (e) { /* a file the extractor can't read: left out */ } finally { tree.delete(); }
+          }
+          if (read) files.set(p, read);
         }
         st.n++;
         if (Date.now() - last > 300) { last = Date.now(); redraw(); }
