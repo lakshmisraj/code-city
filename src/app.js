@@ -5664,8 +5664,9 @@ function metroMapSvgNow(t) {   // Beginner
 // lines of source code, a folder with most of the code split one level down), and which of them a tour reaches.
 const AREA_SHARE = 0.25, MAX_AREAS = 12;   // keep in step with ask.mjs
 const AREA_PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
-// translations and generated code aren't parts of the product
-const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
+// translations, generated code, hidden folders (.agents, .devcontainer) and config packages (tsconfig,
+// tailwind-config) aren't parts of the product
+const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?|\.[^/]+|tsconfig|[\w.-]+-config)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
 let areasMemo = null;   // mainAreas for the city as it is: { city, sum, value }
 function mainAreas() {   // by lines of source code: no markup, data, lock files or minified code; tests, docs, vendored and built folders aside
   let sum = 0; for (const b of buildings) sum += b.userData.lines;
@@ -5712,8 +5713,22 @@ function wfGroupsHtml(t, plain) {
 // Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
 // Picking one shows only its workflows; a part with none can have one added to this tour.
 // A part's short name: its package (or top folder) and its own folder, so two "src/modules" in different packages
-// read apart ("twenty-front/modules", "twenty-server/modules"); "packages" and "src" say nothing, so they're left out.
-const partLabel = key => { const s = key.split("/").filter(x => x && x !== "packages" && x !== "src"); return !s.length ? key.replace(/\/$/, "") || "top-level files" : s.length <= 2 ? s.join("/") : `${s[0]}/${s[s.length - 1]}`; };
+// read apart ("twenty-front/modules", "twenty-server/modules"); "packages", "apps", "src" and the like say nothing
+// ("apps/remix/app/routes" is "remix/routes"), so they're left out.
+const PART_CONTAINERS = new Set(["packages", "apps", "app", "src", "libs"]);   // folders that only hold the real ones
+const shortLabel = key => { const s = key.split("/").filter(x => x && !PART_CONTAINERS.has(x)); return !s.length ? key.replace(/\/$/, "") || "top-level files" : s.length <= 2 ? s.join("/") : `${s[0]}/${s[s.length - 1]}`; };
+// Two parts with the same short name ("apps/remix" and "apps/remix/app" are both "remix") get their fuller path instead
+let labelMemo = null;
+function partLabel(key) {
+  const { all } = mainAreas();
+  if (!labelMemo || labelMemo.all !== all) {
+    const short = new Map(all.map(a => [a.key, shortLabel(a.key)])), uses = {};
+    for (const v of short.values()) uses[v] = (uses[v] || 0) + 1;
+    const full = k => k.replace(/^(packages|apps)\//, "").replace(/\/$/, "") || "top-level files";
+    labelMemo = { all, map: new Map([...short].map(([k, v]) => [k, uses[v] > 1 ? full(k) : v])) };
+  }
+  return labelMemo.map.get(key) || shortLabel(key);
+}
 function wfInPart(w, key, area = mainAreas().area, t = tourState) { return t && t.byPart ? (w.parts || []).includes(key) : w.steps.some(st => area(st.path) === key); }
 function partsHtml(t) {
   const { areas, area } = mainAreas();
@@ -5728,8 +5743,8 @@ function partsHtml(t) {
   const made = key => !t.byPart || (t.partsAsked && t.partsAsked.has(key)), finding = key => t.finding && t.finding.has(key);
   const chip = a => { const n = count(a.key), shown = made(a.key);
     return `<button type="button" class="part-chip${shown && !n ? " missed" : ""}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(t.partAbout && t.partAbout[a.name] ? `${t.partAbout[a.name]} (${a.name}, ${fmt(a.lines)} lines)` : `${a.name} · ${fmt(a.lines)} lines`)}">${esc(partLabel(a.key))}${finding(a.key) ? `<span>…</span>` : shown ? `<span>${n}</span>` : ""}</button>`; };
-  const asked = areas.filter(a => made(a.key)).length;
-  const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(covered)} of ${fmt(areas.length)} parts. Pick a part to see all its workflows.`)
+  const onScreen = t.allParts ? all : areas, asked = onScreen.filter(a => made(a.key)).length, found = onScreen.filter(a => count(a.key)).length;
+  const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(found)} of ${fmt(onScreen.length)} parts. Pick a part to see all its workflows.`)
     : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
   const shownParts = t.allParts ? all : areas;

@@ -44,8 +44,10 @@ const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, r
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
-const PER_HOUR = +process.env.ASK_PER_HOUR || 20, PER_DAY = +process.env.ASK_PER_DAY || 300;
-const PER_USER_DAY = +process.env.ASK_PER_USER_DAY || 80;   // one account can't use up the whole site's day
+// High enough not to get in the way: Gemini's own free-tier limits are the real ceiling (and with billing on, these
+// keep one visitor from running up the bill). ASK_PER_HOUR, ASK_PER_USER_DAY and ASK_PER_DAY in the site's settings change them.
+const PER_HOUR = +process.env.ASK_PER_HOUR || 200, PER_DAY = +process.env.ASK_PER_DAY || 5000;
+const PER_USER_DAY = +process.env.ASK_PER_USER_DAY || 1000;   // one account can't use up the whole site's day
 const NARRATE_SHARE = 8;   // a staged tour's narration: one request per workflow, so this many times the allowance
 const LOW_PRIORITY = /\.(md|mdx|rst|txt|json|ya?ml|toml|ini|xml|lock|env|gradle)$/i;   // dropped first when a repo is too big
 
@@ -411,7 +413,7 @@ export function splitParts(items, weight, share, most) {   // Map(folder key -> 
   }
   return parts;
 }
-const ASIDE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?|vendor|node_modules|third_party|dist|build|\.github|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?)\//i;
+const ASIDE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?|vendor|node_modules|third_party|dist|build|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?|\.[^/]+|tsconfig|[\w.-]+-config)\//i;   // keep in step with AREA_ASIDE in src/app.js
 const PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
 const SOURCE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
 export function mainAreas(files) {
