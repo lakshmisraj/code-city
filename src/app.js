@@ -5561,7 +5561,8 @@ function partsHtml(t) {
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
       ${finding(sel.key) ? `<span>Finding every workflow in this part…</span>` : ""}</p>
-      ${none ? `<p class="side-note">No workflows were found in this part. <button type="button" class="mini" data-refind="${esc(sel.key)}">Find workflows again</button></p>` : ""}` : ""}
+      ${none ? `<p class="side-note">No workflows were found in this part. <button type="button" class="mini" data-refind="${esc(sel.key)}">Find workflows again</button></p>`
+        : t.byPart && made(sel.key) && !finding(sel.key) && t.base ? `<p class="side-note"><button type="button" class="mini" data-refind="${esc(sel.key)}" title="Ask for workflows of this part the tour doesn't have yet">Find more workflows</button></p>` : ""}` : ""}
   </div>`;
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
@@ -5578,6 +5579,7 @@ async function explorePart(t, key) {
   if (ok) t.partsAsked.add(key);
   const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows, key) : [];
   if (!ok) toast(esc(data.error || "Couldn't find this part's workflows just now."));
+  else if (!added.length && t.workflows.some(w => (w.parts || []).includes(key))) toast("No new workflows found in this part.");
   for (const w of added) if (w.summary && w.steps.every(st => st.narration)) w.pending = false;   // written in the same answer
   redrawTour(t); keepTour(t);
   if (added.length) { drawLinks(); const unwritten = added.filter(w => w.pending); if (unwritten.length) fillTour(t, null, unwritten); }
