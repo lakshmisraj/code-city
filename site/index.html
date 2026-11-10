@@ -6425,18 +6425,16 @@ async function askTourOnce(body) {
   } catch (e) { return { ok: false, status: 0, data: { error: "Couldn't reach Code City's server." } }; }
 }
 // Gemini's free tier allows few requests a minute, and Google is sometimes busy: a tour request turned away for
-// either waits and tries again on its own (saying so in the panel) rather than failing. A request turned away for
-// the day, or by this site's own hourly limit, isn't tried again.
+// either waits and tries again on its own rather than failing. The panel goes on saying what it's doing (finding a
+// part's workflows, writing them) rather than talking about limits. A request turned away for the day, or by this
+// site's own hourly limit, isn't tried again.
 const TOUR_RETRIES = 3;
 async function askTour(body, t) {
   for (let n = 0; ; n++) {
     const res = await askTourOnce(body), msg = String(res.data && res.data.error || "");
     const minute = res.status === 429 && /try again in a minute/i.test(msg), busy = res.status === 503 && /busy/i.test(msg);
     if (!(minute || busy) || n >= TOUR_RETRIES || (t && tourState !== t)) return res;
-    const wait = minute ? 20000 * (n + 1) : 6000;
-    if (t) { t.waiting = minute ? `Gemini has had too many requests this minute. Trying again in ${Math.round(wait / 1000)} seconds…` : "Gemini is busy. Trying again in a few seconds…"; redrawTour(t); }
-    await new Promise(r => setTimeout(r, wait));
-    if (t) { t.waiting = null; redrawTour(t); }
+    await new Promise(r => setTimeout(r, minute ? 20000 * (n + 1) : 6000));
   }
 }
 function redrawTour(t) { if (tourState === t && sideMode === "tour") renderTour(); }
@@ -6873,7 +6871,7 @@ function partsHtml(t) {
   const allBtn = fa ? `<p class="side-note">Finding workflows in all parts: ${fmt(fa.done)} of ${fmt(fa.total)} done…</p>`
     : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each part shown here, one at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
   return `<div class="tour-parts"><h3>Parts of the code</h3>
-    <p class="side-note">${note}</p>${t.waiting ? `<p class="side-note tour-wait">${esc(t.waiting)}</p>` : ""}${allBtn}
+    <p class="side-note">${note}</p>${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
     ${sel && t.partAbout && t.partAbout[sel.name] ? `<p class="wf-plain part-about">${esc(t.partAbout[sel.name])}</p>` : ""}
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
