@@ -5083,7 +5083,7 @@ async function planTour(topic, gen, status, id, fresh) {
     status.textContent = "";
     if (askState) askState = null;
     endTour();
-    tourState = indexTour({ title: "Workflows tour", story: "", overview: "", workflows: [], w: -1, i: 0, playing: false, timer: 0, seen: new Set(), partsAsked: new Set() });
+    tourState = indexTour({ title: "Workflows tour", story: "", overview: "", workflows: [], w: -1, i: 0, playing: false, timer: 0, seen: new Set(), partsAsked: new Set(), byPart: true });
     tourState.key = tourKey(topic);
     tourState.base = { mode: "tour", question: "", repo: currentRepo || cityName, files: files(), digest: "", every: false, plain: true };
     if (!drawer.hidden) closeDrawer();
@@ -5126,7 +5126,8 @@ async function planTour(topic, gen, status, id, fresh) {
 }
 // Tours are saved in this browser, per site version, repo and topic, with what you've seen and the parts already
 // explored, so opening the repo again shows the tour at once. The newest few are kept. "Make a new tour" replaces one.
-const TOUR_STORE = "codecity.tours", TOURS_KEPT = 8;
+const TOUR_STORE = "codecity.tours.v2", TOURS_KEPT = 8;   // v2: tours that start on the parts; ones saved before start over
+try { localStorage.removeItem("codecity.tours"); } catch (e) { /* storage blocked */ }
 const tourKey = topic => `${audience}|${currentRepo || cityName}|${String(topic || "").trim().toLowerCase()}`;
 function savedTours() { try { return JSON.parse(localStorage.getItem(TOUR_STORE) || "{}") || {}; } catch (e) { return {}; } }
 function savedTour(topic) {   // the saved tour, its steps checked against the files here, or null
@@ -5142,7 +5143,7 @@ function keepTour(t) {   // saves the tour soon (steps, words written so far, wh
   clearTimeout(keepTimer);
   keepTimer = setTimeout(() => {
     const all = savedTours();
-    all[t.key] = { at: Date.now(), data: { title: t.title, story: t.story, overview: t.overview, seen: [...(t.seen || [])], partsAsked: [...(t.partsAsked || [])],
+    all[t.key] = { at: Date.now(), data: { title: t.title, story: t.story, overview: t.overview, byPart: !!t.byPart, seen: [...(t.seen || [])], partsAsked: [...(t.partsAsked || [])],
       workflows: t.workflows.map(({ lines, handoff, error, ...w }) => ({ ...w, pending: !!w.pending || !!error })) } };
     const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at);
     for (const k of keys.slice(TOURS_KEPT)) delete all[k];
@@ -5155,7 +5156,7 @@ function keepTour(t) {   // saves the tour soon (steps, words written so far, wh
 function forgetTour(key) { const all = savedTours(); delete all[key]; try { localStorage.setItem(TOUR_STORE, JSON.stringify(all)); } catch (e) { /* storage blocked */ } }
 function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved one), at its overview
   return indexTour({ title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
-    w: -1, i: 0, playing: false, timer: 0, seen: new Set(data.seen || []), partsAsked: new Set(data.partsAsked || []) });
+    w: -1, i: 0, playing: false, timer: 0, seen: new Set(data.seen || []), partsAsked: new Set(data.partsAsked || []), byPart: !!data.byPart });
 }
 function indexTour(t) {   // which workflows pass through each file
   const shared = new Map();
@@ -5202,11 +5203,19 @@ function missingAreas(t) {   // the main areas no workflow's steps reach, as the
   const walked = new Set([...t.paths].map(area));
   return areas.filter(a => !walked.has(a.key));
 }
-function addWorkflows(t, list) {   // the gap pass's workflows: none already here by name, and no walk that stays inside one already here
-  const names = new Set(t.workflows.map(w => w.name)), have = t.workflows.map(w => new Set(w.steps.map(st => st.path)));
-  const added = list.filter(w => w && w.name && Array.isArray(w.steps) && w.steps.length && !names.has(w.name) && !have.some(h => w.steps.every(st => h.has(st.path))))
-    .map(w => ({ ...w, merged: w.merged || [], feeds: w.feeds || [], lines: null, handoff: null, pending: true }));
-  t.workflows.push(...added);
+// New workflows join the tour, but not one it already has. With a part (the one clicked), every workflow it brought
+// back belongs to that part, including one the tour already had; "already has" is then the same name or the very same
+// steps, as two workflows of a part can share files. Otherwise (the gap pass) a walk inside one already here is too.
+function addWorkflows(t, list, part) {
+  const tag = w => { if (part != null && !(w.parts || (w.parts = [])).includes(part)) w.parts.push(part); };
+  const walk = w => w.steps.map(st => st.path).join("\n"), added = [];
+  for (const w of list) {
+    if (!w || !w.name || !Array.isArray(w.steps) || !w.steps.length) continue;
+    const same = t.workflows.filter(x => x.name === w.name || (part != null ? walk(x) === walk(w) : w.steps.every(st => x.steps.some(y => y.path === st.path))));
+    if (same.length) { same.forEach(tag); continue; }
+    const nw = { ...w, parts: [], merged: w.merged || [], feeds: w.feeds || [], lines: null, handoff: null, pending: true };
+    tag(nw); t.workflows.push(nw); added.push(nw);
+  }
   indexTour(t);
   return added;
 }
@@ -5515,11 +5524,11 @@ function mainAreasNow() {
 // Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
 // Picking one shows only its workflows; a part with none can have one added to this tour.
 const partLabel = key => { const s = key.split("/").filter(Boolean); return !s.length ? "top-level files" : s.slice(-2).join("/"); };
-function wfInPart(w, key, area = mainAreas().area) { return w.steps.some(st => area(st.path) === key); }
+function wfInPart(w, key, area = mainAreas().area, t = tourState) { return t && t.byPart ? (w.parts || []).includes(key) : w.steps.some(st => area(st.path) === key); }
 function partsHtml(t) {
   const { areas, area } = mainAreas();
   if (areas.length < 2) return "";
-  const counts = new Map(); for (const w of t.workflows) for (const k of new Set(w.steps.map(st => area(st.path)))) counts.set(k, (counts.get(k) || 0) + 1);
+  const counts = new Map(); for (const w of t.workflows) for (const k of new Set(t.byPart ? w.parts || [] : w.steps.map(st => area(st.path)))) counts.set(k, (counts.get(k) || 0) + 1);
   const count = key => counts.get(key) || 0, covered = areas.filter(a => count(a.key)).length;
   const sel = t.part != null && areas.find(a => a.key === t.part);
   if (t.part != null && !sel) t.part = null;   // that part isn't a main area any more
@@ -5534,8 +5543,8 @@ function partsHtml(t) {
       ${finding ? `<span>Finding every workflow in this part…</span>` : ""}</p>` : ""}
   </div>`;
 }
-// Picking a part asks Gemini, once per part, for every workflow that goes through it; the new ones join this tour
-// and are written like the rest. The tour remembers which parts it has asked about.
+// Picking a part asks Gemini, once per part and in one request, for every workflow that goes through it, written in
+// full; any that come back unwritten are written after. The tour remembers which parts it has asked about.
 async function explorePart(t, key) {
   const a = mainAreas().areas.find(x => x.key === key);
   if (!a || !t.base || t.team) return;
@@ -5546,10 +5555,11 @@ async function explorePart(t, key) {
   t.finding.delete(key);
   if (tourState !== t) return;
   if (ok) t.partsAsked.add(key);
-  const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
+  const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows, key) : [];
   if (!ok) toast(esc(data.error || "Couldn't find this part's workflows just now."));
+  for (const w of added) if (w.summary && w.steps.every(st => st.narration)) w.pending = false;   // written in the same answer
   redrawTour(t); keepTour(t);
-  if (added.length) { drawLinks(); fillTour(t, null, added); }
+  if (added.length) { drawLinks(); const unwritten = added.filter(w => w.pending); if (unwritten.length) fillTour(t, null, unwritten); }
 }
 // Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
 // line in its colour, left to right in the order the work flows. Where workflows

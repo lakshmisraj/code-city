@@ -38,7 +38,7 @@ const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, rea
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
 // tour and plainTour (Beginner's fuller narrations): room for as many workflows as the software has. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
-const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500 };
+const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500, part: 12000 };
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
@@ -152,9 +152,18 @@ ${PLAIN_NARRATE}` : ` Narrate each step as if walking the reader through it ("he
 // Beginner's tour in stages, so no one reply has to hold the whole tour (a function gets 60 seconds): the outline is
 // every workflow with its steps' files and titles, the story and the overview; then the page asks for each workflow's
 // narration on its own. An outline given the areas the tour still misses returns only new workflows, for them.
-const outlineSystem = (gap, part) => `You are a friendly guide planning a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
+// A part the reader picked: every workflow through it, written in full, in one request.
+const PART_SYSTEM = `You are a friendly guide showing a newcomer one part of a piece of software, shown as a 3D city with one building per file.
+You get the repository name, its file list grouped by folder (each file with its line count), what the code itself shows, the part to show, and the workflows the tour already has.
+List every workflow that passes through the part named under "Part to show": as many as it really has, with no limit, each one thing it does from start to finish. Don't repeat a workflow listed under "Workflows already in the tour". Each workflow's steps must include files in that part, and may go on into other parts where the work goes.
+For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon); a one or two sentence technical summary of how the code does it, which doesn't say again what the feature already said; and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, a narration of what happens there and what it hands to the next step, and a change. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
+${CODE_SHOWS}
+${VOICE}
+${PLAIN_NARRATE}`;
+const PART_SCHEMA = () => ({ type: "object", properties: { workflows: tourSchema(true).properties.workflows }, required: ["workflows"] });
+const outlineSystem = gap => `You are a friendly guide planning a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
-${part ? `The reader picked one part of the code, named under "Part to show". List every workflow that passes through it: as many as it really has, with no limit, each one thing it does from start to finish. The tour already has the workflows listed under "Workflows already in the tour"; don't repeat any of them, but do add every workflow of this part that they don't already tell. Each new workflow's steps must include files in that part, and may go on into other parts where the work goes.` : gap ? `The tour already has the workflows listed under "Workflows already in the tour", but it doesn't reach the main areas listed under "Areas the tour still misses". Add workflows for those areas, and only those: every new workflow must pass through at least one of them, and none may repeat a workflow already in the tour. An area too small for a workflow of its own goes in as a step of the new workflow it serves.` : `Split the software into its main workflows: as many as it really has, at least two, each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". Make two workflows whenever they do different things for the person using the software, even if they share files; only a walk that does the same thing twice is one workflow.
+${gap ? `The tour already has the workflows listed under "Workflows already in the tour", but it doesn't reach the main areas listed under "Areas the tour still misses". Add workflows for those areas, and only those: every new workflow must pass through at least one of them, and none may repeat a workflow already in the tour. An area too small for a workflow of its own goes in as a step of the new workflow it serves.` : `Split the software into its main workflows: as many as it really has, at least two, each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". Make two workflows whenever they do different things for the person using the software, even if they share files; only a walk that does the same thing twice is one workflow.
 ${PLAIN_COVER}`}
 For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon, e.g. "Lets people sign up with their email and come back later to the same account."); and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code, enough to follow the work from where it starts to where it ends. Each step is one file, with its path exactly as it appears in the list (joined with its folder), and a title of two to five words. Don't write narration: each workflow is narrated separately.
 Workflows often share files; reuse the same path when they do, since that is where they meet. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
@@ -406,7 +415,7 @@ function codeBlocks(code) {
 // MAX_TRIES in all. Resolves with the first answer and cancels the rest; rejects once nothing more can be tried,
 // or when stop fires (the deadline), cancelling everything still running so nothing keeps billing.
 // attempts collects each try's start, time and outcome for the timing notes.
-function hedge(ask, attempts, stop, models = MODELS) {
+function hedge(ask, attempts, stop, models = MODELS, hedgeMs = HEDGE_MS) {
   const t0 = Date.now(), controllers = [], key = models.join();
   if (!preferredFor.has(key) || Date.now() - preferredFor.get(key).at > PREFER_MS) preferredFor.set(key, { model: models[0], at: 0 });
   const pref = preferredFor.get(key);
@@ -426,7 +435,7 @@ function hedge(ask, attempts, stop, models = MODELS) {
       const model = order[tries % order.length], ctrl = new AbortController();
       controllers.push(ctrl);
       tries++; pending++;
-      clearTimeout(timer); timer = setTimeout(launch, HEDGE_MS);
+      clearTimeout(timer); if (hedgeMs < Infinity) timer = setTimeout(launch, hedgeMs);
       const rec = { model, at: Date.now() - t0, running: true };   // still running when the note is written = slower than the answer
       attempts.push(rec);
       ask(model, ctrl.signal).then(v => {
@@ -509,7 +518,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), outlineSystem(true, true), NARRATE_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), PART_SYSTEM, NARRATE_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -628,12 +637,12 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? (stage === "outline" ? outlineSystem(gap, !!part) : stage === "narrate" ? NARRATE_SYSTEM : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? (stage === "outline" ? outlineSchema(gap) : stage === "narrate" ? NARRATE_SCHEMA : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const system = tour ? (stage === "outline" ? (part ? PART_SYSTEM : outlineSystem(gap)) : stage === "narrate" ? NARRATE_SYSTEM : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
+    const schema = tour ? (stage === "outline" ? (part ? PART_SCHEMA() : outlineSchema(gap)) : stage === "narrate" ? NARRATE_SCHEMA : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
-      maxOutputTokens: OUTPUT_TOKENS[stage ? stage : tour && plain ? "plainTour" : explain && range ? "rangeExplain" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
+      maxOutputTokens: OUTPUT_TOKENS[part ? "part" : stage ? stage : tour && plain ? "plainTour" : explain && range ? "rangeExplain" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
       ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1000, left()))]) } });
     const tryModel = async (model, signal) => {   // a model that doesn't take a thinking level gets the next one, then its default
       const levels = /^gemini-2\./.test(model) ? [null] : [...THINKING, null];   // 2.5 models take no thinking level
@@ -653,7 +662,9 @@ async function handle(event) {
     const stop = new AbortController();
     let answer;
     const models = (explain || changed) && EXPLAIN_MODELS.length ? EXPLAIN_MODELS : MODELS;   // explaining code may ask stronger models first
-    try { answer = await Promise.race([hedge(tryModel, attempts, stop.signal, models), deadline]); } finally { clearTimeout(timer); stop.abort(); }
+    // A tour's answers are long, so a copy sent alongside a slow one would only double what it costs: tours wait,
+    // and move on to another model only when one fails.
+    try { answer = await Promise.race([hedge(tryModel, attempts, stop.signal, models, tour ? Infinity : HEDGE_MS), deadline]); } finally { clearTimeout(timer); stop.abort(); }
     const { r } = answer;
     used = { model: answer.model, level: answer.level };
     console.log(`ask: ${files.length} files, answered by ${used.model} in ${Date.now() - started} ms`);
@@ -666,7 +677,9 @@ async function handle(event) {
     await note({ mode, strict, pre, ms, chars: input.length, ok: false, attempts, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
     await refund();   // nothing came back, so it doesn't count against anyone's limit
     if (e && (e.status === 503 || /UNAVAILABLE|high demand/i.test(String(e.message)))) return json(503, { error: "Gemini is very busy right now. Try again in a minute." });
-    if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: "Lots of questions right now. Try again in a minute." });
+    if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: /per ?day|PerDay|daily/i.test(String(e.message))
+      ? "Code City has used up today's free Gemini allowance, so tours and questions are off until it resets tomorrow (Pacific time)."
+      : "Lots of questions right now. Try again in a minute." });
     if (e && e.cutShort) return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." });
     if (e && /timeout|timed out|abort/i.test(`${e.name} ${e.message}`)) return json(504, { error: `Gemini didn't answer within ${Math.round(ms / 1000)} seconds. Try again, or ask something narrower.` });
     if (e && (e.status === 400 || e.status === 403)) {   // say plainly when trying again won't help

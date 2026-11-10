@@ -2,7 +2,7 @@ import { test, mock } from "node:test";
 import assert from "node:assert";
 const FN = new URL("../netlify/functions/ask.mjs", import.meta.url).href;   // the function under test
 let reply, lastInput, badKey = false, rejectThinking = false, calls = [], models = [], busyTimes = 0, slowTimes = 0, cutTimes = 0, aborted = 0;
-mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (badKey) throw Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, schema: a.config.responseJsonSchema, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
+mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (globalThis.__quota) throw Object.assign(new Error("[429 Too Many Requests] You exceeded your current quota. Quota exceeded for metric: generate_content_free_tier_requests, limit: 1000, quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"), { status: 429 }); if (badKey) throw Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, schema: a.config.responseJsonSchema, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
 const counts = new Map();
 mock.module("@netlify/blobs", { namedExports: { getStore: () => ({
   getWithMetadata: async k => counts.has(k) ? { data: { n: counts.get(k) }, etag: "e" } : null,
@@ -414,6 +414,32 @@ test("picking a part asks for every workflow through it, with the tour's workflo
   assert.equal(st, 200);
   assert.ok(out.workflows.some(w => w.name === "Math helpers"));
   assert.match(lastInput.input, /Workflows already in the tour: Long; Shares a lot\nPart to show: src\//);
-  assert.match(lastInput.system_instruction, /List every workflow that passes through it: as many as it really has, with no limit/);
+  assert.match(lastInput.system_instruction, /List every workflow that passes through the part named under "Part to show": as many as it really has, with no limit/);
+  assert.match(lastInput.system_instruction, /a narration of what happens there/, "written in the same answer");
   assert.doesNotMatch(lastInput.input, /Areas the tour still misses/);
+}));
+test("a part's workflows come back written, in one request", () => fresh(async () => {
+  reply = { workflows: [{ name: "Math helpers", feature: "Adds up.", summary: "It sums.", steps: [{ path: "src/f2.js", title: "t", narration: "Sums here.", change: "change sums" }, { path: "src/f3.js", title: "t", narration: "Hands on.", change: "c" }], feeds: [] }] };
+  models = [];
+  const [st, out] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: written part", part: "src/", existing: [] });
+  assert.equal(st, 200);
+  assert.equal(out.workflows[0].summary, "It sums.");
+  assert.deepEqual(out.workflows[0].steps.map(s => s.narration), ["Sums here.", "Hands on."]);
+  assert.equal(models.length, 1);
+}));
+test("a slow tour request isn't copied: every copy would count against the day's allowance", () => fresh(async () => {
+  reply = { title: "T", story: "S", overview: "O", workflows: [{ name: "A", feature: "f", steps: stp("src/f1.js", "src/f2.js"), feeds: [] }] };
+  slowTimes = 1; models = [];
+  const [st] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: slow tour" });
+  assert.equal(st, 200);
+  assert.equal(models.length, 1, "one request, however long it takes");
+  slowTimes = 0;
+}));
+test("when the day's free Gemini allowance is used up, the message says so", () => fresh(async () => {
+  globalThis.__quota = true;
+  try {
+    const [st, out] = await call({ question: "allowance?", files: many10 });
+    assert.equal(st, 429);
+    assert.match(out.error, /used up today's free Gemini allowance/);
+  } finally { globalThis.__quota = false; }
 }));
