@@ -415,17 +415,21 @@ test("picking a part asks for every workflow through it, with the tour's workflo
   assert.ok(out.workflows.some(w => w.name === "Math helpers"));
   assert.match(lastInput.input, /Workflows already in the tour: Long; Shares a lot\nPart to show: src\//);
   assert.match(lastInput.system_instruction, /List every workflow that passes through the part named under "Part to show": as many as it really has, with no limit/);
-  assert.match(lastInput.system_instruction, /a narration of what happens there/, "written in the same answer");
+  assert.match(lastInput.system_instruction, /Don't write narration/, "listed, which is cheap; the words come after");
   assert.doesNotMatch(lastInput.input, /Areas the tour still misses/);
 }));
-test("a part's workflows come back written, in one request", () => fresh(async () => {
-  reply = { workflows: [{ name: "Math helpers", feature: "Adds up.", summary: "It sums.", steps: [{ path: "src/f2.js", title: "t", narration: "Sums here.", change: "change sums" }, { path: "src/f3.js", title: "t", narration: "Hands on.", change: "c" }], feeds: [] }] };
+test("several workflows are written in one request, each matched by name", () => fresh(async () => {
+  reply = { workflows: [
+    { name: "Two", summary: "Second.", steps: [{ path: "src/f2.js", narration: "Two here.", change: "c2" }] },
+    { name: "One", summary: "First.", steps: [{ path: "src/f1.js", narration: "One here.", change: "c1" }, { path: "src/f3.js", narration: "Then on.", change: "c" }] }] };
   models = [];
-  const [st, out] = await call({ mode: "tour", stage: "outline", plain: true, files: many10, digest: "README: written part", part: "src/", existing: [] });
+  const [st, out] = await call({ mode: "tour", stage: "narrate", plain: true, files: many10, digest: "README: batch", others: ["Three"],
+    workflows: [{ name: "One", feature: "f1", steps: [{ path: "src/f1.js", title: "a" }, { path: "src/f3.js", title: "b" }] }, { name: "Two", feature: "f2", steps: [{ path: "src/f2.js", title: "c" }] }] });
   assert.equal(st, 200);
-  assert.equal(out.workflows[0].summary, "It sums.");
-  assert.deepEqual(out.workflows[0].steps.map(s => s.narration), ["Sums here.", "Hands on."]);
-  assert.equal(models.length, 1);
+  assert.equal(models.length, 1, "one request for both");
+  assert.deepEqual(out.workflows.map(w => [w.name, w.summary, w.steps.map(s => s.narration).join(" ")]), [["One", "First.", "One here. Then on."], ["Two", "Second.", "Two here."]]);
+  assert.match(lastInput.input, /Workflows to narrate:\n\nName: One\nFeature: f1\nSteps:\n1\. src\/f1\.js: a\n2\. src\/f3\.js: b\n\nName: Two/);
+  assert.match(lastInput.system_instruction, /narrating some workflows/);
 }));
 test("a slow tour request isn't copied: every copy would count against the day's allowance", () => fresh(async () => {
   reply = { title: "T", story: "S", overview: "O", workflows: [{ name: "A", feature: "f", steps: stp("src/f1.js", "src/f2.js"), feeds: [] }] };

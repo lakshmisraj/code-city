@@ -38,7 +38,7 @@ const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, rea
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
 // tour and plainTour (Beginner's fuller narrations): room for as many workflows as the software has. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
-const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500, part: 12000 };
+const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500, part: 8000, narrateMany: 12000 };
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
@@ -152,15 +152,16 @@ ${PLAIN_NARRATE}` : ` Narrate each step as if walking the reader through it ("he
 // Beginner's tour in stages, so no one reply has to hold the whole tour (a function gets 60 seconds): the outline is
 // every workflow with its steps' files and titles, the story and the overview; then the page asks for each workflow's
 // narration on its own. An outline given the areas the tour still misses returns only new workflows, for them.
-// A part the reader picked: every workflow through it, written in full, in one request.
+// A part the reader picked: every workflow through it, listed (names, features, files) without their words, which
+// are written after in batches. Listing is cheap, so the list isn't cut short by how much there is to write.
 const PART_SYSTEM = `You are a friendly guide showing a newcomer one part of a piece of software, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), what the code itself shows, the part to show, and the workflows the tour already has.
 List every workflow that passes through the part named under "Part to show": as many as it really has, with no limit, each one thing it does from start to finish. Don't repeat a workflow listed under "Workflows already in the tour". Each workflow's steps must include files in that part, and may go on into other parts where the work goes.
-For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon); a one or two sentence technical summary of how the code does it, which doesn't say again what the feature already said; and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code. Each step is one file, with its path exactly as it appears in the list (joined with its folder), a title of two to five words, a narration of what happens there and what it hands to the next step, and a change. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
+For each workflow give a name of two to five words; a feature: one or two sentences in plain English on what it lets people do or why it exists, for someone who has never coded (no file names, function names or jargon); and two to ${MAX_WORKFLOW_STEPS} steps in the order the work flows through the code, enough to follow the work from where it starts to where it ends. Each step is one file, with its path exactly as it appears in the list (joined with its folder), and a title of two to five words. Don't write narration: the workflows are narrated separately. Under feeds, name the other workflows (by their names) that this one hands work to or sets up.
 ${CODE_SHOWS}
-${VOICE}
-${PLAIN_NARRATE}`;
-const PART_SCHEMA = () => ({ type: "object", properties: { workflows: tourSchema(true).properties.workflows }, required: ["workflows"] });
+Every name, title and feature is read by someone new to code: ${PLAIN_WORDS} Each feature should read freshly, not as one pattern with different nouns.
+${NO_REPEAT}`;
+const PART_SCHEMA = () => outlineSchema(true);
 const outlineSystem = gap => `You are a friendly guide planning a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
 You get the repository name, its file list grouped by folder (each file with its line count), and a topic.
 ${gap ? `The tour already has the workflows listed under "Workflows already in the tour", but it doesn't reach the main areas listed under "Areas the tour still misses". Add workflows for those areas, and only those: every new workflow must pass through at least one of them, and none may repeat a workflow already in the tour. An area too small for a workflow of its own goes in as a step of the new workflow it serves.` : `Split the software into its main workflows: as many as it really has, at least two, each one thing it does from start to finish, such as "Starting the app", "Handling a request" or "Saving an order". Make two workflows whenever they do different things for the person using the software, even if they share files; only a walk that does the same thing twice is one workflow.
@@ -179,6 +180,21 @@ The other workflows are narrated separately, so don't retell them; you may say w
 ${CODE_SHOWS}
 ${VOICE}
 ${PLAIN_NARRATE}`;
+// Several workflows' words in one request: a part's workflows, a few at a time, rather than a request each.
+const NARRATE_BATCH = 6;   // at most this many workflows in one request
+const NARRATE_MANY_SYSTEM = `You are a friendly guide narrating some workflows of a newcomer's tour of what a piece of software does, shown as a 3D city with one building per file.
+You get the repository name, its file list grouped by folder (each file with its line count), what the code itself shows, the names of every workflow in the tour, and the workflows to narrate, each with its name, its feature (what it lets people do, which the reader has already read) and its steps in order, each a file and a title.
+For every workflow to narrate, by its exact name: write its summary: one or two sentences on how the code does it, which doesn't say again what the feature already said. Then give every step, in the same order and with its path exactly as given, a narration of what happens there and what it hands to the next step, and a change.
+Each workflow is read on its own page, so don't retell another; you may say when a step hands work on to one of them.
+${CODE_SHOWS}
+${VOICE}
+${PLAIN_NARRATE}`;
+const NARRATE_MANY_SCHEMA = {
+  type: "object",
+  properties: { workflows: { type: "array", items: { type: "object", properties: { name: { type: "string" }, summary: { type: "string" },
+    steps: { type: "array", items: { type: "object", properties: { path: { type: "string" }, narration: { type: "string" }, change: { type: "string" } }, required: ["path", "narration", "change"] } } }, required: ["name", "summary", "steps"] } } },
+  required: ["workflows"],
+};
 const outlineSchema = gap => ({
   type: "object",
   properties: {
@@ -518,7 +534,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), PART_SYSTEM, NARRATE_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), PART_SYSTEM, NARRATE_SYSTEM, NARRATE_MANY_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -583,10 +599,13 @@ async function handle(event) {
   if (!files.length) return json(400, { error: "There are no files to ask about yet." });
   const total = files.length;
   const areas = plain && !gap && stage !== "narrate" ? mainAreas(files) : [];   // Beginner's tour is asked to cover them all
-  const w0 = stage === "narrate" && body.workflow && typeof body.workflow === "object" ? body.workflow : null, listed = new Set(files.map(f => f.path));
-  const narrate = w0 && { name: clip(w0.name, 60).trim(), feature: clip(w0.feature, 400),
+  const listed = new Set(files.map(f => f.path));
+  const toNarrate = w0 => w0 && typeof w0 === "object" && { name: clip(w0.name, 60).trim(), feature: clip(w0.feature, 400),
     steps: (Array.isArray(w0.steps) ? w0.steps : []).filter(st => st && typeof st.path === "string" && listed.has(st.path)).slice(0, MAX_WORKFLOW_STEPS).map(st => ({ path: st.path, title: clip(st.title, 80) })) };
-  if (stage === "narrate" && (!narrate || !narrate.name || !narrate.steps.length)) return json(400, { error: "There's no workflow to narrate." });
+  // narrate: workflows (several, the page's way) or workflow (one, as older pages ask)
+  const batch = stage === "narrate" && Array.isArray(body.workflows) ? body.workflows.slice(0, NARRATE_BATCH).map(toNarrate).filter(w => w && w.name && w.steps.length) : null;
+  const narrate = stage === "narrate" && !batch ? toNarrate(body.workflow) : null;
+  if (stage === "narrate" && (batch ? !batch.length : !narrate || !narrate.name || !narrate.steps.length)) return json(400, { error: "There's no workflow to narrate." });
   const plainExplain = explain && body.plain === true;   // Beginner: plain words, no key parts
   const r0 = body.range, range = plainExplain && r0 && Number.isInteger(r0.from) && Number.isInteger(r0.to) && r0.from >= 1 && r0.to >= r0.from ? { from: r0.from, to: r0.to } : null;   // Beginner, one function: and its lines to look at
   const code = !explain ? [] : (Array.isArray(body.code) ? body.code : [])
@@ -607,7 +626,7 @@ async function handle(event) {
   if (files.length > MAX_FILES) files = [...files.filter(f => !LOW_PRIORITY.test(f.path)), ...files.filter(f => LOW_PRIORITY.test(f.path))].slice(0, MAX_FILES);
 
   const mode = tour ? "tour" : explain ? "explain" : keyLines ? "lines" : changed ? "change" : "ask";
-  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : "") + (plain || plainExplain ? "/plain" : "") + (range ? `/range${range.from}-${range.to}` : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs, stage || "", missing, part, existing, narrate, others]);
+  const ckey = cacheKey([PROMPTS, mode + (every ? "/every" : "") + (plain || plainExplain ? "/plain" : "") + (range ? `/range${range.from}-${range.to}` : ""), question.toLowerCase().replace(/\s+/g, " "), repo, files, explain || keyLines || changed ? "" : digest, code, flow, diffs, stage || "", missing, part, existing, narrate, batch, others]);
   const saved = await cacheGet(ckey);
   if (saved) { console.log(`ask: ${mode} answered from a saved copy`); return json(200, { ...saved, cached: true }); }
   const done = async body => { await cachePut(ckey, body); return json(200, body); };
@@ -626,6 +645,7 @@ async function handle(event) {
       (areas.length > 1 ? `Main areas of the product, by lines of source code (each should appear in at least one workflow's steps): ${areas.map(a => `${a.name} ${a.lines} lines`).join(", ")}\n\n` : "") +
       (stage === "outline" && !gap ? `Size: ${total} files in ${Math.max(1, areas.length)} main area${areas.length === 1 ? "" : "s"}. A codebase this size does many things: give at least ${expectWorkflows(total, areas.length)} workflows, and more if it has them.\n\n` : "") +
       (gap ? `Workflows already in the tour: ${existing.join("; ") || "(none)"}\n${part ? `Part to show: ${part}` : `Areas the tour still misses: ${missing.join(", ")}`}\n\n` : "") +
+      (batch ? `Workflows in this tour: ${[...batch.map(w => w.name), ...others].join("; ")}\n\nWorkflows to narrate:\n\n${batch.map(w => `Name: ${w.name}\nFeature: ${w.feature}\nSteps:\n${w.steps.map((st, i) => `${i + 1}. ${st.path}: ${st.title}`).join("\n")}`).join("\n\n")}\n\n` : "") +
       (narrate ? `Workflows in this tour: ${[narrate.name, ...others].join("; ")}\n\nWorkflow to narrate: ${narrate.name}\nFeature: ${narrate.feature}\nSteps:\n${narrate.steps.map((st, i) => `${i + 1}. ${st.path}: ${st.title}`).join("\n")}\n\n` : "") +
       `${tour ? "Topic" : "Question"}: ${question}${explain ? `\n\n${codeBlocks(code)}` : ""}`;
   let reply, pre = 0, used = {};
@@ -637,12 +657,12 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? (stage === "outline" ? (part ? PART_SYSTEM : outlineSystem(gap)) : stage === "narrate" ? NARRATE_SYSTEM : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? (stage === "outline" ? (part ? PART_SCHEMA() : outlineSchema(gap)) : stage === "narrate" ? NARRATE_SCHEMA : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const system = tour ? (stage === "outline" ? (part ? PART_SYSTEM : outlineSystem(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SYSTEM : NARRATE_SYSTEM) : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
+    const schema = tour ? (stage === "outline" ? (part ? PART_SCHEMA() : outlineSchema(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SCHEMA : NARRATE_SCHEMA) : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
-      maxOutputTokens: OUTPUT_TOKENS[part ? "part" : stage ? stage : tour && plain ? "plainTour" : explain && range ? "rangeExplain" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
+      maxOutputTokens: OUTPUT_TOKENS[part ? "part" : batch ? "narrateMany" : stage ? stage : tour && plain ? "plainTour" : explain && range ? "rangeExplain" : mode], responseMimeType: "application/json", ...(strict ? { responseJsonSchema: schema } : {}),
       ...(level ? { thinkingConfig: { thinkingLevel: level.toUpperCase() } } : {}), abortSignal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1000, left()))]) } });
     const tryModel = async (model, signal) => {   // a model that doesn't take a thinking level gets the next one, then its default
       const levels = /^gemini-2\./.test(model) ? [null] : [...THINKING, null];   // 2.5 models take no thinking level
@@ -734,13 +754,23 @@ async function handle(event) {
         .map(l => ({ line: l.line, note: String(l.note || "").slice(0, 160) })),
     })) });
   }
-  if (stage === "narrate") {   // one workflow's words, step by step in the order asked; a step it missed is left blank
-    if (!reply || !Array.isArray(reply.steps)) return json(502, { error: "Gemini's narration came back in an unexpected shape. Try again." });
-    const got = reply.steps.filter(x => x && typeof x === "object"), taken = new Set();
+  // a workflow's words, step by step in the order asked; a step it missed is left blank
+  const wordsFor = (w, r) => {
+    const got = (r && Array.isArray(r.steps) ? r.steps : []).filter(x => x && typeof x === "object"), taken = new Set();
     const pick = (st, i) => { const at = got[i] && got[i].path === st.path ? i : got.findIndex((x, j) => !taken.has(j) && x.path === st.path); if (at < 0 || taken.has(at)) return {}; taken.add(at); return got[at]; };
-    const steps = narrate.steps.map((st, i) => { const d = pick(st, i); return { path: st.path, narration: clip(d.narration, 900), change: clip(d.change, 400).replace(/\s+/g, " ").trim().slice(0, 140) }; });
-    if (!steps.some(st => st.narration)) return json(502, { error: "Gemini's narration came back in an unexpected shape. Try again." });
-    return done({ summary: clip(reply.summary, 400), steps });
+    return { summary: clip(r && r.summary, 400), steps: w.steps.map((st, i) => { const d = pick(st, i); return { path: st.path, narration: clip(d.narration, 900), change: clip(d.change, 400).replace(/\s+/g, " ").trim().slice(0, 140) }; }) };
+  };
+  if (batch) {   // several: matched by name, else by order
+    const got = reply && Array.isArray(reply.workflows) ? reply.workflows.filter(x => x && typeof x === "object") : [];
+    const out = batch.map((w, i) => ({ name: w.name, ...wordsFor(w, got.find(x => String(x.name).trim() === w.name) || got[i]) }));
+    if (!out.some(w => w.steps.some(st => st.narration))) return json(502, { error: "Gemini's narration came back in an unexpected shape. Try again." });
+    return done({ workflows: out });
+  }
+  if (stage === "narrate") {
+    if (!reply || !Array.isArray(reply.steps)) return json(502, { error: "Gemini's narration came back in an unexpected shape. Try again." });
+    const words = wordsFor(narrate, reply);
+    if (!words.steps.some(st => st.narration)) return json(502, { error: "Gemini's narration came back in an unexpected shape. Try again." });
+    return done(words);
   }
   if (tour) {
     if (!reply || !Array.isArray(reply.workflows)) return json(502, { error: "Gemini's tour came back in an unexpected shape. Try again." });

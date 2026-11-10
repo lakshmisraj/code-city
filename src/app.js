@@ -5167,7 +5167,7 @@ function indexTour(t) {   // which workflows pass through each file
 // its steps' files and titles), then each workflow's words, a few at a time, and, unless the tour is about one
 // topic, more workflows for any main area the outline missed. The overview says what's still being written, and a
 // workflow opened early fills in when its words arrive.
-const NARRATE_AT_ONCE = 5, GAP_PASSES = 2;
+const NARRATE_BATCH = 5, NARRATE_AT_ONCE = 2, GAP_PASSES = 2;   // workflows written per request, and requests at once
 async function askTour(body) {
   try {
     const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(), body: JSON.stringify(body) });
@@ -5184,6 +5184,20 @@ async function narrateWorkflow(t, w) {
     w.summary = String(data.summary || "");
     w.steps.forEach((st, i) => { const d = data.steps[i] || {}; st.narration = String(d.narration || ""); st.change = String(d.change || ""); });
   } else w.error = esc(data.error || `Couldn't write this workflow (error ${status}).`);
+  redrawTour(t); keepTour(t);
+}
+// Several workflows' words in one request (a request each would use up the key's daily allowance far faster)
+async function narrateBatch(t, list) {
+  list.forEach(w => { w.pending = true; w.error = null; });
+  const names = new Set(list.map(w => w.name));
+  const { ok, status, data } = await askTour({ ...(await tourBase(t)), stage: "narrate", others: t.workflows.filter(x => !names.has(x.name)).map(x => x.name),
+    workflows: list.map(w => ({ name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) })) });
+  for (const w of list) {
+    const d = ok && Array.isArray(data.workflows) ? data.workflows.find(x => x.name === w.name) : null;
+    w.pending = false;
+    if (d && d.steps.some(st => st.narration)) { w.summary = String(d.summary || ""); w.steps.forEach((st, i) => { const x = d.steps[i] || {}; st.narration = String(x.narration || ""); st.change = String(x.change || ""); }); }
+    else w.error = esc(ok ? "This workflow came back without its words." : data.error || `Couldn't write this workflow (error ${status}).`);
+  }
   redrawTour(t); keepTour(t);
 }
 // What every Beginner tour request carries. A saved tour opens without it; the repo's reading (usually done in the
@@ -5222,7 +5236,7 @@ function addWorkflows(t, list, part) {
 async function fillTour(t, topic, only) {   // only: just these workflows' words, and no gap passes
   const queue = only ? [...only] : t.workflows.filter(w => w.pending || w.error);
   let running = 0;
-  const run = () => { while (running < NARRATE_AT_ONCE && queue.length && tourState === t) { running++; narrateWorkflow(t, queue.shift()).finally(() => { running--; run(); }); } };
+  const run = () => { while (running < NARRATE_AT_ONCE && queue.length && tourState === t) { running++; narrateBatch(t, queue.splice(0, NARRATE_BATCH)).finally(() => { running--; run(); }); } };
   run();
   if (topic || only) return;   // a tour about one part covers that part, not the whole product
   for (let pass = 0; pass < GAP_PASSES; pass++) {   // a second try for what the first left out
@@ -5543,8 +5557,8 @@ function partsHtml(t) {
       ${finding ? `<span>Finding every workflow in this part…</span>` : ""}</p>` : ""}
   </div>`;
 }
-// Picking a part asks Gemini, once per part and in one request, for every workflow that goes through it, written in
-// full; any that come back unwritten are written after. The tour remembers which parts it has asked about.
+// Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
+// writes them a few to a request. The tour remembers which parts it has asked about.
 async function explorePart(t, key) {
   const a = mainAreas().areas.find(x => x.key === key);
   if (!a || !t.base || t.team) return;
