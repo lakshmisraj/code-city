@@ -1752,6 +1752,41 @@ const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
 scene.matrixAutoUpdate = false; scene.updateMatrix();
 const fixed = o => { o.matrixAutoUpdate = false; o.updateMatrix(); return o; };
 let city = fixed(new THREE.Group()); scene.add(city);
+// Buildings and folder platforms are drawn in batches: all those that look the same (one material) as one object, so
+// a city of thousands is a few dozen draws, not thousands. The real buildings and folders stay, on a layer the camera
+// doesn't draw, for the pointer to hit and for everything else to read and change; whatever changes one marks the
+// batches to be filled again before the next draw.
+const BATCH_LAYER = 1;
+let batches = { b: new Map(), d: new Map() }, batchDirty = true;
+function batchFor(kind, mat, n) {   // the batch for this material, with room for n
+  let im = batches[kind].get(mat);
+  if (!im || im.userData.room < n) {
+    if (im) { city.remove(im); if (im.dispose) im.dispose(); }
+    const room = Math.max(64, 2 ** Math.ceil(Math.log2(n)));
+    im = new THREE.InstancedMesh(BOX, mat, room);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.frustumCulled = false;   // its bounds would be one box at the middle: it would vanish from view at odd angles
+    im.userData.room = room;
+    batches[kind].set(mat, fixed(im)); city.add(im);
+  }
+  return im;
+}
+function fillBatches(kind, list, shown) {
+  const groups = new Map();
+  for (const o of list) if (shown(o)) { const g = groups.get(o.material); if (g) g.push(o); else groups.set(o.material, [o]); }
+  for (const [mat, im] of batches[kind]) if (!groups.has(mat)) im.count = 0;
+  for (const [mat, objs] of groups) {
+    const im = batchFor(kind, mat, objs.length);
+    for (let i = 0; i < objs.length; i++) im.setMatrixAt(i, objs[i].matrix);
+    im.count = objs.length; im.instanceMatrix.needsUpdate = true;
+  }
+}
+function drawBatches() {
+  if (!batchDirty) return;
+  batchDirty = false;
+  fillBatches("b", buildings, b => b.visible);
+  fillBatches("d", districts, () => true);
+}
 let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
 let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
 let panes = [];   // files open in the code viewer: [{ path, text, partial, line }]
@@ -1768,6 +1803,8 @@ function clearCity() {
   scene.remove(city);
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
   city = fixed(new THREE.Group()); scene.add(city);
+  for (const k in batches) { for (const im of batches[k].values()) if (im.dispose) im.dispose(); batches[k] = new Map(); }
+  batchDirty = true;
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
   for (const p of panes) if (p.el) p.el.remove();
   explainState = { chain: [], files: new Map() }; inPanel.clear(); nameIndex = null;
@@ -1813,7 +1850,7 @@ function place(node, rect, depth) {
     const cx = rect.x + rect.w / 2, cz = rect.y + rect.h / 2, base = depth * STEP;
     m.position.set(cx, base, cz); m.scale.set(side, 0.001, side); m.visible = false;
     m.userData = { f, side, base, lines: 0, target: 0, shown: 0, delay: Math.random() * 0.9, flash: 0, fk: "" };
-    fixed(m); city.add(m); buildings.push(m); bmap.set(f.path, m);
+    m.layers.set(BATCH_LAYER); fixed(m); city.add(m); buildings.push(m); bmap.set(f.path, m);
     if (f.todos.length) {
       const fire = new THREE.Mesh(CONE, FIRE);
       const r = Math.min(side * 0.7, 0.5 + f.todos.length * 0.08);
@@ -1828,7 +1865,7 @@ function place(node, rect, depth) {
     p.position.set(rect.x + rect.w / 2, (depth - 1) * STEP, rect.y + rect.h / 2);
     p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
     p.userData = { dir: node.path, depth };
-    fixed(p); city.add(p); districts.push(p);
+    p.layers.set(BATCH_LAYER); fixed(p); city.add(p); districts.push(p);
     const area = rect.w * rect.h, size = Math.max(1.6, Math.min(4, Math.sqrt(area) / 9));
     if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, size, node.path, 1, area);
     else if (depth === 2 && area > 40) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.2, rect.y + rect.h / 2, size, node.path, 2, area);   // Beginner names the big folders inside the top ones too: in their middle, clear of the parent's name
@@ -2170,6 +2207,7 @@ function updateHud() {
 
 // ---------- interaction (orbit) ----------
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+ray.layers.enable(BATCH_LAYER);   // the pointer hits the real buildings and folders, which the batches draw
 let pointerMoved = false, downAt = null, lastPointer = null;
 const tip = document.getElementById("tip");
 
@@ -2340,6 +2378,7 @@ function folderStats(dir) {
 function setFolder(dir) {
   folderSel = dir;
   for (const p of districts) p.material = dir != null && inFolder(p.userData.dir + "/", dir) ? FOLDER_MAT : platMats[Math.min(p.userData.depth, 6)];
+  batchDirty = true;
 }
 function openFolder(dir) {
   const st = folderStats(dir);
@@ -7093,16 +7132,17 @@ const clock = new THREE.Clock();
 // followed by a pause about twice its length, so the browser has time to answer clicks, scrolling and typing.
 let lastInput = 0, cityMoving = false;
 for (const ev of ["pointerdown", "pointermove", "wheel", "keydown", "touchstart"]) addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true, capture: true });
-// While a tour is finding or writing workflows (which can take a while), the city stands still unless someone is
-// using the page: the picture stays, and the browser's time goes to the panel and to whatever you do.
-const tourWorking = () => !!tourState && (!!tourState.filling || !!(tourState.finding && tourState.finding.size) || tourState.workflows.some(w => w.pending));
-let pausedFrame = false;
+// When nobody is using the page and nothing in the city is moving, it's redrawn only a couple of times a second, so
+// the browser's time goes to everything else; anything that changes meanwhile (an answer lighting up files, a tour's
+// workflows) still shows within half a second. Moving, scrolling or typing brings full speed back at once.
+const IDLE_MS = 500, ACTIVE_MS = 2000;
+let lastDrawn = 0, wasIdle = false;
+const recordingNow = () => !!(rec && rec.recorder && rec.recorder.state === "recording");
 function frame() {
-  if (tourWorking() && !playing && !flight && performance.now() - lastInput > 400) {
-    if (!pausedFrame) { pausedFrame = true; clock.getDelta(); }
-    return setTimeout(() => requestAnimationFrame(frame), 250);
-  }
-  if (pausedFrame) { pausedFrame = false; clock.getDelta(); }   // pick up where it stopped, not with a jump
+  const now = performance.now(), active = cityMoving || playing || flight || recordingNow() || now - lastInput < ACTIVE_MS;
+  if (!active && now - lastDrawn < IDLE_MS) { wasIdle = true; return setTimeout(() => requestAnimationFrame(frame), IDLE_MS - (now - lastDrawn)); }
+  if (wasIdle && active) { wasIdle = false; clock.getDelta(); }   // back to full speed: no jump from the time spent idle
+  lastDrawn = now;
   const started = performance.now();
   const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
   const since = (performance.now() - built) / 1000;
@@ -7119,11 +7159,13 @@ function frame() {
       if (Math.abs(u.target - u.shown) < 0.002 && Math.abs(u.vel) < 0.02) { u.shown = u.target; u.vel = 0; }
       cityMoving = true;
     }
-    b.visible = u.shown > 0.01;
+    const vis = u.shown > 0.01;
+    if (b.visible !== vis) { b.visible = vis; batchDirty = true; }
     const sy = Math.max(0.001, u.shown);
-    if (b.scale.y !== sy) { b.scale.y = sy; b.updateMatrix(); }
+    if (b.scale.y !== sy) { b.scale.y = sy; b.updateMatrix(); batchDirty = true; }
     if (u.flash > 0) u.flash -= dt * 1.6;
-    b.material = matFor(b);
+    const mat = matFor(b);
+    if (b.material !== mat) { b.material = mat; batchDirty = true; }
   }
   for (const f of fires) {
     const u = f.userData.b.userData;
@@ -7140,11 +7182,12 @@ function frame() {
   keepCityClear();
   controls.update();
   updateHover();
+  drawBatches();
   composer.render(dt);
   recordFrame();
-  const took = performance.now() - started, busy = cityMoving || playing || flight || (rec && rec.recorder && rec.recorder.state === "recording") || performance.now() - lastInput < 1500;
+  const took = performance.now() - started, busy = cityMoving || playing || flight || recordingNow() || performance.now() - lastInput < ACTIVE_MS;
   if (busy || took < 20) requestAnimationFrame(frame);
-  else setTimeout(() => requestAnimationFrame(frame), Math.min(400, took * 2));
+  else setTimeout(() => requestAnimationFrame(frame), Math.min(400, took * 2));   // a slow frame while active: room for clicks
 }
 
 // ---------- site tour ----------
