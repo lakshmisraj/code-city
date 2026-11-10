@@ -477,3 +477,14 @@ test("Google's minute limit isn't mistaken for the day's", async () => {
   assert.equal(dayUsedUp("You exceeded your current quota. Please retry in 33.2s. per day"), false, "a retry delay means it passes");
   assert.equal(dayUsedUp("You exceeded your current quota. quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"), true);
 });
+test("a summary gives the repo's title, a plain-English summary and a line for each main part it was given", () => fresh(async () => {
+  const mono = [...Array.from({ length: 20 }, (_, i) => ({ path: `web/src/w${i}.ts`, lines: 300 })), ...Array.from({ length: 20 }, (_, i) => ({ path: `api/src/a${i}.ts`, lines: 300 }))];
+  reply = { title: "Shop, an online store", story: "People buy things here.", parts: [{ name: "web/", about: "What shoppers see." }, { name: "api/", about: "Answers the web app." }, { name: "made-up/", about: "x" }] };
+  const [st, out] = await call({ mode: "tour", stage: "summary", plain: true, files: mono, digest: "README: shop" });
+  assert.equal(st, 200);
+  assert.equal(out.title, "Shop, an online store");
+  assert.equal(out.story, "People buy things here.");
+  assert.deepEqual(out.parts.map(p => p.name).sort(), ["api/", "web/"], "only the parts it was given");
+  assert.match(lastInput.input, /Main parts of the product, by lines of source code: /);
+  assert.match(lastInput.system_instruction, /introducing a newcomer/);
+}));

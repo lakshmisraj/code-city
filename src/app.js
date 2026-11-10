@@ -5190,6 +5190,7 @@ async function planTour(topic, gen, status, id, fresh) {
     openSide("tour");
     showOverview();
     if (plainTour()) fillTour(tourState, topic.trim(), tourState.workflows.filter(w => w.pending));
+    if (tourState.byPart) summarize(tourState);   // saved before it had one
     keepTour(tourState);   // now the newest
     return;
   }
@@ -5203,6 +5204,7 @@ async function planTour(topic, gen, status, id, fresh) {
     if (!drawer.hidden) closeDrawer();
     openSide("tour");
     showOverview();
+    summarize(tourState);
     return;
   }
   status.textContent = "Reading the repo…";
@@ -5257,7 +5259,7 @@ function keepTour(t) {   // saves the tour soon (steps, words written so far, wh
   clearTimeout(keepTimer);
   keepTimer = setTimeout(() => {
     const all = savedTours();
-    all[t.key] = { at: Date.now(), data: { title: t.title, story: t.story, overview: t.overview, byPart: !!t.byPart, seen: [...(t.seen || [])], partsAsked: [...(t.partsAsked || [])],
+    all[t.key] = { at: Date.now(), data: { title: t.title, story: t.story, overview: t.overview, byPart: !!t.byPart, partAbout: t.partAbout || {}, seen: [...(t.seen || [])], partsAsked: [...(t.partsAsked || [])],
       workflows: t.workflows.map(({ lines, handoff, error, ...w }) => ({ ...w, pending: !!w.pending || !!error })) } };
     const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at);
     for (const k of keys.slice(TOURS_KEPT)) delete all[k];
@@ -5270,7 +5272,7 @@ function keepTour(t) {   // saves the tour soon (steps, words written so far, wh
 function forgetTour(key) { const all = savedTours(); delete all[key]; try { localStorage.setItem(TOUR_STORE, JSON.stringify(all)); } catch (e) { /* storage blocked */ } }
 function tourFrom(data) {   // a tour's state from Gemini's answer (or a saved one), at its overview
   return indexTour({ title: data.title, story: data.story || "", overview: data.overview, workflows: data.workflows.map(w => ({ ...w, lines: null, handoff: null })),
-    w: -1, i: 0, playing: false, timer: 0, seen: new Set(data.seen || []), partsAsked: new Set(data.partsAsked || []), byPart: !!data.byPart });
+    w: -1, i: 0, playing: false, timer: 0, seen: new Set(data.seen || []), partsAsked: new Set(data.partsAsked || []), byPart: !!data.byPart, partAbout: data.partAbout || {} });
 }
 function indexTour(t) {   // which workflows pass through each file
   const shared = new Map();
@@ -5727,7 +5729,7 @@ function partsHtml(t) {
   // a tour that starts on the parts shows a part's count only once its workflows have been made
   const made = key => !t.byPart || (t.partsAsked && t.partsAsked.has(key)), finding = key => t.finding && t.finding.has(key);
   const chip = a => { const n = count(a.key), shown = made(a.key);
-    return `<button type="button" class="part-chip${shown && !n ? " missed" : ""}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(a.name)} · ${fmt(a.lines)} lines">${esc(partLabel(a.key))}${finding(a.key) ? `<span>…</span>` : shown ? `<span>${n}</span>` : ""}</button>`; };
+    return `<button type="button" class="part-chip${shown && !n ? " missed" : ""}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(t.partAbout && t.partAbout[a.name] ? `${t.partAbout[a.name]} (${a.name}, ${fmt(a.lines)} lines)` : `${a.name} · ${fmt(a.lines)} lines`)}">${esc(partLabel(a.key))}${finding(a.key) ? `<span>…</span>` : shown ? `<span>${n}</span>` : ""}</button>`; };
   const asked = areas.filter(a => made(a.key)).length;
   const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(covered)} of ${fmt(areas.length)} parts. Pick a part to see all its workflows.`)
     : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
@@ -5739,12 +5741,29 @@ function partsHtml(t) {
   return `<div class="tour-parts"><h3>Parts of the code</h3>
     <p class="side-note">${note}</p>${t.waiting ? `<p class="side-note tour-wait">${esc(t.waiting)}</p>` : ""}${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
+    ${sel && t.partAbout && t.partAbout[sel.name] ? `<p class="wf-plain part-about">${esc(t.partAbout[sel.name])}</p>` : ""}
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
       ${finding(sel.key) ? `<span>Finding every workflow in this part…</span>` : ""}</p>
       ${none ? `<p class="side-note">No workflows were found in this part. <button type="button" class="mini" data-refind="${esc(sel.key)}">Find workflows again</button></p>`
         : t.byPart && made(sel.key) && !finding(sel.key) && t.base ? `<p class="side-note"><button type="button" class="mini" data-refind="${esc(sel.key)}" title="Ask for workflows of this part the tour doesn't have yet">Find more workflows</button></p>` : ""}` : ""}
   </div>`;
+}
+// The repo in a few words at the top of a tour that opens on the parts: its title, a summary in plain English, and
+// a line on what each main part does (shown when it's picked). One request, saved with the tour.
+async function summarize(t) {
+  if (t.story || t.summarizing || !t.base || t.team) return;
+  t.summarizing = true; redrawTour(t);
+  const { ok, data } = await askTour({ ...(await tourBase(t)), stage: "summary" }, t);
+  t.summarizing = false;
+  if (tourState !== t) return;
+  if (ok && data.story) {
+    t.story = data.story;
+    if (data.title) t.title = data.title;
+    t.partAbout = Object.fromEntries((data.parts || []).map(p => [p.name, p.about]));
+    keepTour(t);
+  }
+  redrawTour(t);
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
 // writes them a few to a request. The tour remembers which parts it has asked about.
@@ -5857,7 +5876,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     $("sideSub").textContent = `${t.workflows.length} workflows`;
     // Beginner: the story, then the workflows to walk (the way in); the rest folds under More detail
     if (!tourBody(`
-      ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
+      ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : t.summarizing ? `<p class="side-note">Writing a short summary of this repo…</p>` : ""}
       ${partsHtml(t)}
       ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}${t.part != null ? `<ol class="wf-list">${t.workflows.map((w, k) => wfInPart(w, t.part) ? wfCard(t, w, k, plain) : "").join("")}</ol>` : wfGroupsHtml(t, plain)}
         ${t.part != null && !t.byPart && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}

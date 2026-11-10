@@ -40,7 +40,7 @@ const MAX_DIGEST = 20000;   // README, manifests, import graph and outlines, rea
 const THINKING = ["minimal", "low"];   // short, structured answers need little thinking; each level is tried until the model takes one
 // Output caps per mode: a reply that runs on (repeating itself, say) stops early instead of using up the time.
 // tour and plainTour (Beginner's fuller narrations): room for as many workflows as the software has. lines and rangeExplain: room for every line that matters, as there's no cap on how many.
-const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500, part: 8000, narrateMany: 12000 };
+const OUTPUT_TOKENS = { ask: 1200, tour: 6000, plainTour: 9000, explain: 1800, rangeExplain: 6000, lines: 8000, change: 1800, outline: 6000, narrate: 3500, part: 8000, narrateMany: 12000, summary: 2500 };
 const MAX_CHANGE_FILES = 6, MAX_PATCH_CHARS = 12000, MAX_CHANGE_LINES = 5;
 const BUDGET_MS = 45000;   // Netlify allows this function format 60 s; answer well before, so a slow reply still gets a clear message
 const CACHE_DAYS = 14;
@@ -154,6 +154,22 @@ ${PLAIN_NARRATE}` : ` Narrate each step as if walking the reader through it ("he
 // Beginner's tour in stages, so no one reply has to hold the whole tour (a function gets 60 seconds): the outline is
 // every workflow with its steps' files and titles, the story and the overview; then the page asks for each workflow's
 // narration on its own. An outline given the areas the tour still misses returns only new workflows, for them.
+// The repo in a few words, for the top of a tour that opens on the parts: a title, a summary in plain English, and a
+// line on what each main part does. One request, saved with the tour.
+const SUMMARY_SYSTEM = `You are a friendly guide introducing a newcomer to a piece of software, shown as a 3D city with one building per file.
+You get the repository name, its file list grouped by folder (each file with its line count), what the code itself shows, and its main parts.
+Give it a short title of two to six words that says what it is (for example "Twenty, an open-source CRM").
+Then write the summary: four to six short sentences of simple English that anyone can follow, whether or not they code. Say what the software is for and who uses it, then how it works from the first thing that happens to the end result, naming the main parts where they come in. No file names, function names or jargon; when a technical idea is needed, say what it does instead.
+Then, for every main part you were given, by its exact name, one sentence under twenty words in plain English on what that part does for the software.
+Use what the code itself shows (the README, manifests, imports, entry points) over guesses from names; say "likely" only when you are inferring beyond it.
+${PLAIN_WORDS}
+${NO_REPEAT}`;
+const SUMMARY_SCHEMA = {
+  type: "object",
+  properties: { title: { type: "string" }, story: { type: "string" }, parts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, about: { type: "string" } }, required: ["name", "about"] } } },
+  required: ["title", "story", "parts"],
+};
+
 // A part the reader picked: every workflow through it, listed (names, features, files) without their words, which
 // are written after in batches. Listing is cheap, so the list isn't cut short by how much there is to write.
 const PART_SYSTEM = `You are a friendly guide showing a newcomer one part of a piece of software, shown as a 3D city with one building per file.
@@ -555,7 +571,7 @@ async function overLimit(userId, kind) {   // returns [message or null, refund()
 const localCache = new Map();
 function cacheKey(parts) { return createHash("sha256").update(JSON.stringify(parts)).digest("hex"); }
 // Changing how Gemini is asked (its instructions) starts fresh answers instead of serving ones written the old way.
-const PROMPTS = cacheKey([outlineSystem(false), outlineSystem(true), PART_SYSTEM, NARRATE_SYSTEM, NARRATE_MANY_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
+const PROMPTS = cacheKey([SUMMARY_SYSTEM, outlineSystem(false), outlineSystem(true), PART_SYSTEM, NARRATE_SYSTEM, NARRATE_MANY_SYSTEM, SYSTEM, tourSystem(false, false), tourSystem(true, false), tourSystem(false, true), linesSystem(false), linesSystem(true), EXPLAIN_SYSTEM, EXPLAIN_PLAIN_SYSTEM, EXPLAIN_RANGE_PLAIN_SYSTEM, CHANGE_SYSTEM]).slice(0, 12);
 async function cacheGet(key) {
   if (LOCAL) return localCache.get(key) || null;
   try { const v = await getStore("ask-cache").get(key, { type: "json" }); return v && Date.now() - v.at < CACHE_DAYS * 864e5 ? v.body : null; }
@@ -605,7 +621,7 @@ async function handle(event) {
   const tour = body.mode === "tour", every = tour && body.every === true, explain = body.mode === "explain", keyLines = body.mode === "lines", changed = body.mode === "change";
   const plain = ((tour && !every) || keyLines) && body.plain === true;   // Beginner: plain English, the whole product covered, varied wording
   // Beginner's tour in stages: "outline" (with missing: the areas a tour still misses, for more workflows), then "narrate", one workflow at a time
-  const stage = tour && plain && (body.stage === "outline" || body.stage === "narrate") ? body.stage : null;
+  const stage = tour && plain && (body.stage === "outline" || body.stage === "narrate" || body.stage === "summary") ? body.stage : null;
   const clip = (v, n) => String(v == null ? "" : v).slice(0, n), names = (a, n) => (Array.isArray(a) ? a : []).map(x => clip(x, n).trim()).filter(Boolean).slice(0, 60);
   const part = stage === "outline" ? clip(body.part, 120).trim() : "";   // every workflow of one part
   const missing = stage === "outline" && !part ? names(body.missing, 120).slice(0, 20) : [], gap = missing.length > 0 || !!part;
@@ -663,7 +679,7 @@ async function handle(event) {
     : keyLines ? `Repository: ${repo}\nWorkflow: ${question}\n\n${codeBlocks(flow)}`
     : `Repository: ${repo}\nFiles${files.length < total ? ` (${files.length} of ${total}, code first)` : ""}:\n${fileList(files)}\n\n` +
       (digest && !explain ? `What the code itself shows (read by Code City, not guessed):\n${digest}\n\n` : "") +
-      (areas.length > 1 ? `Main areas of the product, by lines of source code (each should appear in at least one workflow's steps): ${areas.map(a => `${a.name} ${a.lines} lines`).join(", ")}\n\n` : "") +
+      (areas.length > 1 ? `Main ${stage === "summary" ? "parts" : "areas"} of the product, by lines of source code${stage === "summary" ? "" : " (each should appear in at least one workflow's steps)"}: ${areas.map(a => `${a.name} ${a.lines} lines`).join(", ")}\n\n` : "") +
       (stage === "outline" && !gap ? `Size: ${total} files in ${Math.max(1, areas.length)} main area${areas.length === 1 ? "" : "s"}. A codebase this size does many things: give at least ${expectWorkflows(total, areas.length)} workflows, and more if it has them.\n\n` : "") +
       (gap ? `Workflows already in the tour: ${existing.join("; ") || "(none)"}\n${part ? `Part to show: ${part}` : `Areas the tour still misses: ${missing.join(", ")}`}\n\n` : "") +
       (batch ? `Workflows in this tour: ${[...batch.map(w => w.name), ...others].join("; ")}\n\nWorkflows to narrate:\n\n${batch.map(w => `Name: ${w.name}\nFeature: ${w.feature}\nSteps:\n${w.steps.map((st, i) => `${i + 1}. ${st.path}: ${st.title}`).join("\n")}`).join("\n\n")}\n\n` : "") +
@@ -678,8 +694,8 @@ async function handle(event) {
     // The SDK doesn't reliably apply its timeout to this call, so race it against our own deadline.
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), Math.max(1000, left())); });
-    const system = tour ? (stage === "outline" ? (part ? PART_SYSTEM : outlineSystem(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SYSTEM : NARRATE_SYSTEM) : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
-    const schema = tour ? (stage === "outline" ? (part ? PART_SCHEMA() : outlineSchema(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SCHEMA : NARRATE_SCHEMA) : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
+    const system = tour ? (stage === "summary" ? SUMMARY_SYSTEM : stage === "outline" ? (part ? PART_SYSTEM : outlineSystem(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SYSTEM : NARRATE_SYSTEM) : tourSystem(every, plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SYSTEM : plainExplain ? EXPLAIN_PLAIN_SYSTEM : EXPLAIN_SYSTEM) : keyLines ? linesSystem(plain) : changed ? CHANGE_SYSTEM : SYSTEM;
+    const schema = tour ? (stage === "summary" ? SUMMARY_SCHEMA : stage === "outline" ? (part ? PART_SCHEMA() : outlineSchema(gap)) : stage === "narrate" ? (batch ? NARRATE_MANY_SCHEMA : NARRATE_SCHEMA) : tourSchema(plain)) : explain ? (range ? EXPLAIN_RANGE_PLAIN_SCHEMA : plainExplain ? EXPLAIN_PLAIN_SCHEMA : EXPLAIN_SCHEMA) : keyLines ? LINES_SCHEMA : changed ? CHANGE_SCHEMA : ANSWER_SCHEMA;
     // The file list goes first and the question last, so repeat questions about one repo share a prefix.
     const create = (model, level, signal) => client.models.generateContent({ model, contents: input, config: {
       systemInstruction: strict ? system : `${system}\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}`,
@@ -781,6 +797,12 @@ async function handle(event) {
     const pick = (st, i) => { const at = got[i] && got[i].path === st.path ? i : got.findIndex((x, j) => !taken.has(j) && x.path === st.path); if (at < 0 || taken.has(at)) return {}; taken.add(at); return got[at]; };
     return { summary: clip(r && r.summary, 400), steps: w.steps.map((st, i) => { const d = pick(st, i); return { path: st.path, narration: clip(d.narration, 900), change: clip(d.change, 400).replace(/\s+/g, " ").trim().slice(0, 140) }; }) };
   };
+  if (stage === "summary") {   // the repo's title, its summary, and a line for each main part it was given
+    if (!reply || typeof reply.story !== "string") return json(502, { error: "Gemini's summary came back in an unexpected shape. Try again." });
+    const named = new Set(areas.map(a => a.name));
+    const parts = (Array.isArray(reply.parts) ? reply.parts : []).filter(x => x && named.has(String(x.name).trim())).map(x => ({ name: String(x.name).trim(), about: clip(x.about, 240) }));
+    return done({ title: clip(reply.title, 80), story: clip(reply.story, 1500), parts });
+  }
   if (batch) {   // several: matched by name, else by order
     const got = reply && Array.isArray(reply.workflows) ? reply.workflows.filter(x => x && typeof x === "object") : [];
     const out = batch.map((w, i) => ({ name: w.name, ...wordsFor(w, got.find(x => String(x.name).trim() === w.name) || got[i]) }));
