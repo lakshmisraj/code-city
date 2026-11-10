@@ -1,8 +1,19 @@
 # Code City™
 
-**Live:** https://codecitydev.com
+**See any codebase as a 3D city.** Every file is a building and every folder a district, so you can see where the code starts, how its workflows run, and what keeps changing.
 
-Code City helps you understand a codebase quickly: where it starts, which files the rest depends on, how its workflows run and join, and how it grew. It draws the repo as a 3D city at night. Each file is a building (height is lines of code, width is number of functions), folders are raised districts, and TODO / FIXME comments burn on the rooftops.
+**[Try it on your repo at codecitydev.com](https://codecitydev.com/?ref=github)**: paste a public GitHub repo, nothing to install.
+
+![Flask as a city: each building is a file, coloured by how often it changes, from blue (rarely) to orange-red (constantly)](docs/city.png)
+
+- **Workflows tour:** pick a part of the code and get its workflows in plain English, step by step through the files.
+- **Trace:** follow a function's calls from file to file, read from the code with a parser.
+- **History:** replay the repo commit by commit, and see the hotspots that change the most.
+- **Private code:** `pipx install code-city`, then `code-city .` in your project. It runs on your own machine.
+
+Also: the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=lakshmisraj.codecitydev) · the [pull request summary Action](https://github.com/lakshmisraj/code-city-pr-summary) · [setting it up for a team](docs/teams.md)
+
+---
 
 **Setting it up for a team?** See [docs/teams.md](docs/teams.md): which pieces to use, private repos, the PR bot, an architecture page for your docs, and what leaves your machines.
 
