@@ -843,6 +843,7 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .part-chip.on span { color: var(--sodium); }
 .part-chip.missed { border-style: dashed; color: var(--ink-dim); }
 .part-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 8px; }
+.part-chip.part-more { border-style: dotted; color: var(--ink-dim); }
 </style>
 
 <div id="stage" aria-label="3D city where each building is a file"></div>
@@ -1635,8 +1636,8 @@ function keepCityClear() {
   const dist = camera.position.distanceTo(controls.target);
   scene.fog.near = dist + citySize * 0.8;
   scene.fog.far = dist + citySize * 3.5;
-  const grow = Math.min(2.2, Math.max(1, dist / (citySize * 1.3)));
-  for (const l of labels) l.scale.copy(l.userData.base).multiplyScalar(grow);
+  const grow = Math.round(Math.min(2.2, Math.max(1, dist / (citySize * 1.3))) * 50) / 50;   // in small steps, so labels resize only now and then
+  for (const l of labels) if (l.userData.grow !== grow) { l.userData.grow = grow; l.scale.copy(l.userData.base).multiplyScalar(grow); l.updateMatrix(); }
 }
 function placeBackLight() {
   const away = controls.target.clone().sub(camera.position).setY(0).normalize();
@@ -1744,7 +1745,13 @@ const platMats = [0, 1, 2, 3, 4, 5, 6].map(d => new THREE.MeshStandardMaterial({
   color: new THREE.Color("#161d33").lerp(new THREE.Color("#33406a"), d / 6), roughness: 0.95,
 }));
 
-let city = new THREE.Group(); scene.add(city);
+// Positions are worked out only for what moved. three.js (r128) recomputes an object's position every frame unless
+// told not to, and a parent that does makes all its children do it too: with thousands of buildings, folders and
+// labels that was most of each frame. So the scene, the city and everything in it that stands still are fixed, and
+// whatever changes a building's height or a label's size updates that one object (fixed() below).
+scene.matrixAutoUpdate = false; scene.updateMatrix();
+const fixed = o => { o.matrixAutoUpdate = false; o.updateMatrix(); return o; };
+let city = fixed(new THREE.Group()); scene.add(city);
 let buildings = [], bmap = new Map(), fires = [], labels = [], citySize = 50, built = 0, dirCount = 0;
 let districts = [], folderSel = null;   // folder platforms (clickable), and the folder open in the drawer
 let panes = [];   // files open in the code viewer: [{ path, text, partial, line }]
@@ -1760,7 +1767,7 @@ function clearCity() {
   cityGen++;
   scene.remove(city);
   for (const l of labels) { l.material.map.dispose(); l.material.dispose(); }
-  city = new THREE.Group(); scene.add(city);
+  city = fixed(new THREE.Group()); scene.add(city);
   buildings = []; bmap = new Map(); fires = []; labels = []; districts = []; folderSel = null; hovered = null; picked = null;
   for (const p of panes) if (p.el) p.el.remove();
   explainState = { chain: [], files: new Map() }; inPanel.clear(); nameIndex = null;
@@ -1788,7 +1795,8 @@ function drawLabel(sp) {
   ctx.fillStyle = easy ? "rgba(214,220,235,.88)" : "#f2a541"; ctx.textBaseline = "middle"; ctx.fillText(text, 20, c.height / 2 + 3);
   if (sp.material.map) sp.material.map.dispose();
   sp.material.map = new THREE.CanvasTexture(c); sp.material.needsUpdate = true;
-  sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone();
+  sp.scale.set(size * c.width / c.height, size, 1); sp.userData.base = sp.scale.clone(); sp.userData.grow = 1;
+  fixed(sp);
 }
 const QUIET_LABELS = 12;   // Beginner names this many districts, the biggest, folders inside the top ones included
 function quietLabels() {
@@ -1805,7 +1813,7 @@ function place(node, rect, depth) {
     const cx = rect.x + rect.w / 2, cz = rect.y + rect.h / 2, base = depth * STEP;
     m.position.set(cx, base, cz); m.scale.set(side, 0.001, side); m.visible = false;
     m.userData = { f, side, base, lines: 0, target: 0, shown: 0, delay: Math.random() * 0.9, flash: 0, fk: "" };
-    city.add(m); buildings.push(m); bmap.set(f.path, m);
+    fixed(m); city.add(m); buildings.push(m); bmap.set(f.path, m);
     if (f.todos.length) {
       const fire = new THREE.Mesh(CONE, FIRE);
       const r = Math.min(side * 0.7, 0.5 + f.todos.length * 0.08);
@@ -1820,7 +1828,7 @@ function place(node, rect, depth) {
     p.position.set(rect.x + rect.w / 2, (depth - 1) * STEP, rect.y + rect.h / 2);
     p.scale.set(rect.w - 0.15, STEP, rect.h - 0.15);
     p.userData = { dir: node.path, depth };
-    city.add(p); districts.push(p);
+    fixed(p); city.add(p); districts.push(p);
     const area = rect.w * rect.h, size = Math.max(1.6, Math.min(4, Math.sqrt(area) / 9));
     if (depth === 1) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.4, rect.y + 0.6, size, node.path, 1, area);
     else if (depth === 2 && area > 40) label(node.name, rect.x + rect.w / 2, depth * STEP + 1.2, rect.y + rect.h / 2, size, node.path, 2, area);   // Beginner names the big folders inside the top ones too: in their middle, clear of the parent's name
@@ -1852,7 +1860,7 @@ function buildCity(data) {
   const side = Math.sqrt(weigh(top));
   citySize = side;
   const g = new THREE.Mesh(BOX, platMats[0]);
-  g.position.set(0, -STEP, 0); g.scale.set(side + 4, STEP, side + 4); city.add(g);
+  g.position.set(0, -STEP, 0); g.scale.set(side + 4, STEP, side + 4); city.add(fixed(g));
   place(top, { x: -side / 2, y: -side / 2, w: side, h: side }, 0);
   quietLabels();
   built = performance.now();
@@ -2560,8 +2568,9 @@ const MINOR_FILE = /(^|\/)(tests?|spec|__tests__|__mocks__|mocks?|fixtures?|exam
 // Returns them in their original order. Keep in step with pick_files in codecity.py.
 function pickFiles(entries, max) {
   if (entries.length <= max) return entries;
-  const rank = e => SOURCE_FILE.test(e.path) ? (MINOR_FILE.test(e.path) ? 1 : 0) : 2, weight = e => rank(e) === 0 ? 1 : 0.2;
-  const order = list => list.slice().sort((a, b) => rank(a) - rank(b) || a.path.split("/").length - b.path.split("/").length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const ranks = new Map(entries.map(e => [e, SOURCE_FILE.test(e.path) ? (MINOR_FILE.test(e.path) ? 1 : 0) : 2])), depths = new Map(entries.map(e => [e, e.path.split("/").length]));   // worked out once, not in every comparison
+  const rank = e => ranks.get(e), weight = e => rank(e) === 0 ? 1 : 0.2;
+  const order = list => list.slice().sort((a, b) => rank(a) - rank(b) || depths.get(a) - depths.get(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const parts = [...splitParts(entries, weight, 0.1, 60).values()], total = entries.reduce((n, e) => n + weight(e), 0);
   const take = new Set();
   for (const list of parts) {   // each part's share of the room, and at least a few files from every part
@@ -6659,20 +6668,25 @@ function mainAreasNow() {
   const area = p => keys.reduce((best, k) => p.startsWith(k) && k.length > best.length ? k : best, "");
   const sizes = new Map(); for (const f of live) sizes.set(area(f.path), (sizes.get(area(f.path)) || 0) + f.lines);
   const own = new Set(buildings.map(b => b.userData.f.path).filter(p => AREA_PROJECT.test(p) && p.split("/").length === 2).map(top));   // a project of its own counts however small
-  const areas = [...sizes].filter(([k, n]) => n >= total * 0.03 || own.has(k)).sort((a, b) => b[1] - a[1]).slice(0, MAX_AREAS).map(([key, lines]) => ({ key, lines, name: key || "top-level files" }));
-  return { areas, area, live };
+  const ranked = [...sizes].sort((a, b) => b[1] - a[1]).map(([key, lines]) => ({ key, lines, name: key || "top-level files", main: lines >= total * 0.03 || own.has(key) }));
+  const areas = ranked.filter(a => a.main).slice(0, MAX_AREAS), all = [...areas, ...ranked.filter(a => !areas.includes(a))];   // all: the small parts too, after the main ones
+  return { areas, area, live, all };
 }
 // Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
 // Picking one shows only its workflows; a part with none can have one added to this tour.
-const partLabel = key => { const s = key.split("/").filter(Boolean); return !s.length ? "top-level files" : s.slice(-2).join("/"); };
+// A part's short name: its package (or top folder) and its own folder, so two "src/modules" in different packages
+// read apart ("twenty-front/modules", "twenty-server/modules"); "packages" and "src" say nothing, so they're left out.
+const partLabel = key => { const s = key.split("/").filter(x => x && x !== "packages" && x !== "src"); return !s.length ? key.replace(/\/$/, "") || "top-level files" : s.length <= 2 ? s.join("/") : `${s[0]}/${s[s.length - 1]}`; };
 function wfInPart(w, key, area = mainAreas().area, t = tourState) { return t && t.byPart ? (w.parts || []).includes(key) : w.steps.some(st => area(st.path) === key); }
 function partsHtml(t) {
   const { areas, area } = mainAreas();
   if (areas.length < 2) return "";
   const counts = new Map(); for (const w of t.workflows) for (const k of new Set(t.byPart ? w.parts || [] : w.steps.map(st => area(st.path)))) counts.set(k, (counts.get(k) || 0) + 1);
   const count = key => counts.get(key) || 0, covered = areas.filter(a => count(a.key)).length;
-  const sel = t.part != null && areas.find(a => a.key === t.part);
-  if (t.part != null && !sel) t.part = null;   // that part isn't a main area any more
+  const { all } = mainAreas(), more = all.filter(a => !areas.includes(a));
+  const sel = t.part != null && all.find(a => a.key === t.part);
+  if (t.part != null && !sel) t.part = null;   // that part isn't in this city any more
+  if (sel && !areas.includes(sel)) t.allParts = true;   // a small part picked earlier: keep it in view
   // a tour that starts on the parts shows a part's count only once its workflows have been made
   const made = key => !t.byPart || (t.partsAsked && t.partsAsked.has(key)), finding = key => t.finding && t.finding.has(key);
   const chip = a => { const n = count(a.key), shown = made(a.key);
@@ -6683,7 +6697,7 @@ function partsHtml(t) {
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
   return `<div class="tour-parts"><h3>Parts of the code</h3>
     <p class="side-note">${note}</p>
-    <div class="part-chips">${areas.map(chip).join("")}</div>
+    <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
       ${finding(sel.key) ? `<span>Finding every workflow in this part…</span>` : ""}</p>
@@ -6694,7 +6708,7 @@ function partsHtml(t) {
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
 // writes them a few to a request. The tour remembers which parts it has asked about.
 async function explorePart(t, key) {
-  const a = mainAreas().areas.find(x => x.key === key);
+  const a = mainAreas().all.find(x => x.key === key);
   if (!a || !t.base || t.team) return;
   t.partsAsked = t.partsAsked || new Set(); t.finding = t.finding || new Set();
   if (t.partsAsked.has(key) || t.finding.has(key)) return;
@@ -6917,6 +6931,7 @@ document.addEventListener("keydown", e => {   // Beginner: ← and → step thro
 });
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
+  if (e.target.closest("[data-all-parts]")) { e.stopPropagation(); tourState.allParts = !tourState.allParts; return renderTour(); }
   const again = e.target.closest("[data-refind]");
   if (again) { e.stopPropagation(); const t = tourState; if (t.partsAsked) t.partsAsked.delete(again.dataset.refind); explorePart(t, again.dataset.refind); return; }
   const pick = e.target.closest("[data-part]");
@@ -7074,11 +7089,17 @@ function resize() {
 addEventListener("resize", resize); resize();
 
 const clock = new THREE.Clock();
+// A big city takes long to draw. When nobody is using the page and nothing in the city is moving, a slow frame is
+// followed by a pause about twice its length, so the browser has time to answer clicks, scrolling and typing.
+let lastInput = 0, cityMoving = false;
+for (const ev of ["pointerdown", "pointermove", "wheel", "keydown", "touchstart"]) addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true, capture: true });
 function frame() {
+  const started = performance.now();
   const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
   const since = (performance.now() - built) / 1000;
   burstsThisFrame = 0;
   stepPlayback(dt);
+  cityMoving = false;
   for (const b of buildings) {
     const u = b.userData;
     // A slightly underdamped spring: buildings overshoot a little as they rise and jolt as they drop.
@@ -7087,9 +7108,11 @@ function frame() {
       u.vel *= Math.exp(-11 * dt);
       u.shown = Math.max(0, u.shown + u.vel * dt);
       if (Math.abs(u.target - u.shown) < 0.002 && Math.abs(u.vel) < 0.02) { u.shown = u.target; u.vel = 0; }
+      cityMoving = true;
     }
     b.visible = u.shown > 0.01;
-    b.scale.y = Math.max(0.001, u.shown);
+    const sy = Math.max(0.001, u.shown);
+    if (b.scale.y !== sy) { b.scale.y = sy; b.updateMatrix(); }
     if (u.flash > 0) u.flash -= dt * 1.6;
     b.material = matFor(b);
   }
@@ -7110,7 +7133,9 @@ function frame() {
   updateHover();
   composer.render(dt);
   recordFrame();
-  requestAnimationFrame(frame);
+  const took = performance.now() - started, busy = cityMoving || playing || flight || (rec && rec.recorder && rec.recorder.state === "recording") || performance.now() - lastInput < 1500;
+  if (busy || took < 20) requestAnimationFrame(frame);
+  else setTimeout(() => requestAnimationFrame(frame), Math.min(400, took * 2));
 }
 
 // ---------- site tour ----------

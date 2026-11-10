@@ -837,3 +837,4 @@ body.for-beginner :is(.group-title, .chain-head b) { color: var(--ink); }
 .part-chip.on span { color: var(--sodium); }
 .part-chip.missed { border-style: dashed; color: var(--ink-dim); }
 .part-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 8px; }
+.part-chip.part-more { border-style: dotted; color: var(--ink-dim); }
