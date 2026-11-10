@@ -393,14 +393,14 @@ export function splitParts(items, weight, share, most) {   // Map(folder key -> 
   }
   return parts;
 }
-const ASIDE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?|vendor|node_modules|third_party|dist|build|\.github)\//i;
+const ASIDE = /(^|\/)(tests?|spec|__tests__|examples?|docs?|benchmarks?|fixtures?|vendor|node_modules|third_party|dist|build|\.github|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?)\//i;
 const PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
 const SOURCE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
 export function mainAreas(files) {
   const live = files.filter(f => f.lines > 0 && SOURCE.test(f.path) && !/\.min\.js$/.test(f.path) && !ASIDE.test(f.path) && !/_test\.go$|\.(test|spec)\.[jt]sx?$/.test(f.path));
   const total = live.reduce((n, f) => n + f.lines, 0);
   const top = p => p.includes("/") ? p.slice(0, p.indexOf("/") + 1) : "";
-  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 2).keys()];
+  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 10).keys()];
   const area = p => keys.reduce((best, k) => p.startsWith(k) && k.length > best.length ? k : best, "");
   const sizes = new Map(); for (const f of live) sizes.set(area(f.path), (sizes.get(area(f.path)) || 0) + f.lines);
   const own = new Set(files.filter(f => PROJECT.test(f.path) && f.path.split("/").length === 2).map(f => top(f.path)));   // a folder that is a project of its own (an editor extension, a CLI) counts however small

@@ -447,3 +447,11 @@ test("when the day's free Gemini allowance is used up, the message says so", () 
     assert.match(out.error, /used up today's free Gemini allowance/);
   } finally { globalThis.__quota = false; }
 }));
+test("translations and generated code aren't parts of the product, and a big folder splits however many small ones there are", () => {
+  const files = [...Array.from({ length: 20 }, (_, i) => ({ path: `pkg/web/src/locales/l${i}.ts`, lines: 900 })), ...Array.from({ length: 10 }, (_, i) => ({ path: `pkg/web/src/generated-api/g${i}.ts`, lines: 900 })),
+    ...Array.from({ length: 30 }, (_, i) => ({ path: `pkg/server/src/m${i % 3}/s${i}.ts`, lines: 300 })), ...Array.from({ length: 20 }, (_, i) => ({ path: `pkg/web/src/c${i % 2}/w${i}.ts`, lines: 300 })),
+    ...Array.from({ length: 30 }, (_, i) => ({ path: `pkg/tiny${i}/index.ts`, lines: 5 }))];
+  const names = mainAreas(files).map(a => a.name);
+  assert.ok(!names.some(n => /locales|generated/.test(n)), names.join(", "));
+  assert.ok(names.some(n => n.startsWith("pkg/server/src/m")) && names.some(n => n.startsWith("pkg/web/src/c")), names.join(", "));
+});

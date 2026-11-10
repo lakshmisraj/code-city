@@ -6639,7 +6639,8 @@ function metroMapSvg(t) {   // Beginner
 // lines of source code, a folder with most of the code split one level down), and which of them a tour reaches.
 const AREA_SHARE = 0.25, MAX_AREAS = 12;   // keep in step with ask.mjs
 const AREA_PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
-const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
+// translations and generated code aren't parts of the product
+const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github|locales?|i18n|l10n|translations|__generated__|generated(-[\w-]+)?)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
 let areasMemo = null;   // mainAreas for the city as it is: { city, sum, value }
 function mainAreas() {   // by lines of source code: no markup, data, lock files or minified code; tests, docs, vendored and built folders aside
   let sum = 0; for (const b of buildings) sum += b.userData.lines;
@@ -6654,7 +6655,7 @@ function mainAreasNow() {
   const total = live.reduce((n, f) => n + f.lines, 0);
   const top = p => p.includes("/") ? p.slice(0, p.indexOf("/") + 1) : "";
   // a part with more than AREA_SHARE of the code is split by its subfolders, so a big repo's parts are its modules
-  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 2).keys()];
+  const keys = [...splitParts(live, f => f.lines, AREA_SHARE, MAX_AREAS * 10).keys()];   // room for a big folder to split, however many small ones there are
   const area = p => keys.reduce((best, k) => p.startsWith(k) && k.length > best.length ? k : best, "");
   const sizes = new Map(); for (const f of live) sizes.set(area(f.path), (sizes.get(area(f.path)) || 0) + f.lines);
   const own = new Set(buildings.map(b => b.userData.f.path).filter(p => AREA_PROJECT.test(p) && p.split("/").length === 2).map(top));   // a project of its own counts however small
@@ -6672,15 +6673,21 @@ function partsHtml(t) {
   const count = key => counts.get(key) || 0, covered = areas.filter(a => count(a.key)).length;
   const sel = t.part != null && areas.find(a => a.key === t.part);
   if (t.part != null && !sel) t.part = null;   // that part isn't a main area any more
-  const chip = a => { const n = count(a.key);
-    return `<button type="button" class="part-chip${n ? "" : " missed"}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(a.name)} · ${fmt(a.lines)} lines">${esc(partLabel(a.key))}<span>${n}</span></button>`; };
-  const finding = sel && t.finding && t.finding.has(sel.key);
+  // a tour that starts on the parts shows a part's count only once its workflows have been made
+  const made = key => !t.byPart || (t.partsAsked && t.partsAsked.has(key)), finding = key => t.finding && t.finding.has(key);
+  const chip = a => { const n = count(a.key), shown = made(a.key);
+    return `<button type="button" class="part-chip${shown && !n ? " missed" : ""}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(a.name)} · ${fmt(a.lines)} lines">${esc(partLabel(a.key))}${finding(a.key) ? `<span>…</span>` : shown ? `<span>${n}</span>` : ""}</button>`; };
+  const asked = areas.filter(a => made(a.key)).length;
+  const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(covered)} of ${fmt(areas.length)} parts. Pick a part to see all its workflows.`)
+    : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
+  const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
   return `<div class="tour-parts"><h3>Parts of the code</h3>
-    <p class="side-note">${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.</p>
+    <p class="side-note">${note}</p>
     <div class="part-chips">${areas.map(chip).join("")}</div>
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
-      ${finding ? `<span>Finding every workflow in this part…</span>` : ""}</p>` : ""}
+      ${finding(sel.key) ? `<span>Finding every workflow in this part…</span>` : ""}</p>
+      ${none ? `<p class="side-note">No workflows were found in this part. <button type="button" class="mini" data-refind="${esc(sel.key)}">Find workflows again</button></p>` : ""}` : ""}
   </div>`;
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
@@ -6775,7 +6782,7 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
       ${partsHtml(t)}
       ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}<ol class="wf-list">${t.workflows.map((w, k) => t.part != null && !wfInPart(w, t.part) ? "" : `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
-        ${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
+        ${t.part != null && !t.byPart && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
         ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>`}
       ${!t.workflows.length ? "" : plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
         : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button><button type="button" data-tour="replan" title="Plan the tour again from the start">Make a new tour</button></div>`) : ""}
@@ -6908,6 +6915,8 @@ document.addEventListener("keydown", e => {   // Beginner: ← and → step thro
 });
 sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
+  const again = e.target.closest("[data-refind]");
+  if (again) { e.stopPropagation(); const t = tourState; if (t.partsAsked) t.partsAsked.delete(again.dataset.refind); explorePart(t, again.dataset.refind); return; }
   const pick = e.target.closest("[data-part]");
   if (pick) { e.stopPropagation(); const t = tourState, k = pick.dataset.part; t.part = t.part !== k ? k : null; renderTour(); if (t.part != null) explorePart(t, k); return; }
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
