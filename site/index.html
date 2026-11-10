@@ -6612,7 +6612,14 @@ async function fetchKeyLines(t, wf, redraw) {
 // the work flows, with its stops numbered as in its steps. Where one workflow leads into another, a dashed arrow
 // joins the end of one to the start of the next; where workflows pass through the same file their lines pinch
 // together into one station. Files go in columns by the longest walk that reaches them.
-function metroMapSvg(t) {   // Beginner
+const PERM_MAX = 6;
+// The merge map is worked out again only when the workflows change, not every time the tour panel is drawn
+function metroMapSvg(t) {
+  const key = t.workflows.map(w => `${w.name}:${w.steps.map(st => st.path).join(",")}:${(w.feeds || []).join(",")}`).join("|");
+  if (!t.metro || t.metro.key !== key) t.metro = { key, svg: metroMapSvgNow(t) };
+  return t.metro.svg;
+}
+function metroMapSvgNow(t) {   // Beginner
   const ws = t.workflows, col = new Map(), next = new Map(), order = [];
   const link = (a, b) => { if (a !== b) next.get(a).add(b); };
   ws.forEach(w => w.steps.forEach((st, j) => {
@@ -6632,9 +6639,10 @@ function metroMapSvg(t) {   // Beginner
   order.forEach(p => { if (!state.has(p)) visit(p); });
   const rank = new Map(topo.reverse().map((p, i) => [p, i]));
   for (const p of topo) for (const q of next.get(p)) if (rank.get(q) > rank.get(p)) col.set(q, Math.max(col.get(q), col.get(p) + 1));
-  // Lanes: of every order of the workflows (five at most, so 120), the one that keeps workflows sharing a file and
-  // workflows joined by an arrow closest together, so a workflow two others lead into sits between them; ties keep
-  // the tour's order.
+  // Lanes: the order of the workflows that keeps workflows sharing a file and workflows joined by an arrow closest
+  // together, so a workflow two others lead into sits between them; ties keep the tour's order. Every order is tried
+  // up to PERM_MAX workflows (720); past that (a tour has no limit on workflows, and 10 would be 3.6 million orders,
+  // which froze the page) it starts from the tour's order and moves one workflow at a time while that helps.
   const groups = [...t.shared.values()].filter(ks => ks.length > 1);
   const cost = perm => {
     const at = new Map(perm.map((k, i) => [k, i]));
@@ -6642,7 +6650,21 @@ function metroMapSvg(t) {   // Beginner
       + feeds.reduce((c, [a, b]) => c + Math.abs(at.get(a) - at.get(b)), 0) + perm.reduce((c, k, i) => c + Math.abs(k - i) * 0.01, 0);
   };
   const perms = a => a.length < 2 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [x, ...r]));
-  const best = perms(ws.map((w, k) => k)).reduce((b, p) => cost(p) < cost(b) ? p : b);
+  const improve = start => {   // move single workflows to better places, a few rounds at most
+    let best = start, c = cost(best);
+    for (let round = 0, better = true; better && round < 4; round++) {
+      better = false;
+      for (let i = 0; i < best.length; i++) for (let j = 0; j < best.length; j++) {
+        if (i === j) continue;
+        const p = best.slice(), [k] = p.splice(i, 1); p.splice(j, 0, k);
+        const pc = cost(p);
+        if (pc < c - 1e-9) { best = p; c = pc; better = true; }
+      }
+    }
+    return best;
+  };
+  const start = ws.map((w, k) => k);
+  const best = ws.length <= PERM_MAX ? perms(start).reduce((b, p) => cost(p) < cost(b) ? p : b) : improve(start);
   const lane = new Map(best.map((k, i) => [k, i]));
   const cols = Math.max(...col.values()) + 1, PAD = 16, TOP = 30, LANE = 46, BUNDLE = 4, R = 7;
   const STEP = cols > 1 ? Math.max(22, Math.min(70, 340 / (cols - 1))) : 0;
