@@ -22,7 +22,9 @@ import { getStore } from "@netlify/blobs";
 // crawls), so a busy reply moves straight on to the next model and a slow one gets the next model asked alongside;
 // the first answer wins, and the model that gave it is asked first next time. (gemini-3.8-flash was tried as a
 // backup but took over 24 s itself.) The models this key can use are listed at GET ?models.
-const MODELS = (process.env.ASK_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite").split(",").map(m => m.trim()).filter(Boolean);
+const MODELS = (process.env.ASK_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite").split(",").map(m => m.trim()).filter(Boolean);   // gemini-2.5-flash-lite is retired
+// A model Google says doesn't exist (any more) isn't asked again by this instance of the function
+const gone = new Set();
 // Explaining code (files, selected lines, commits) can ask other models first, such as a stronger Flash for tricky
 // code: ASK_EXPLAIN_MODELS="gemini-3.6-flash,gemini-3.5-flash-lite". Unset, explanations use MODELS like the rest.
 const EXPLAIN_MODELS = (process.env.ASK_EXPLAIN_MODELS || "").split(",").map(m => m.trim()).filter(Boolean);
@@ -438,14 +440,20 @@ function hedge(ask, attempts, stop, models = MODELS, hedgeMs = HEDGE_MS) {
   return new Promise((resolve, reject) => {
     let settled = false, tries = 0, pending = 0, timer = 0, retry = 0;
     const busy = e => e && (e.status === 503 || e.status === 429 || e.status === 500 || e.cutShort || /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(e.message)));
+    // When every try fails, the most telling reason is reported, not the last one: too many requests beats busy,
+    // which beats a model that's gone (a retired backup answered last used to hide why the others failed).
+    const weight = e => !e ? -1 : e.status === 429 || /RESOURCE_EXHAUSTED/.test(String(e.message)) ? 4 : e.status === 503 || /UNAVAILABLE|high demand|overloaded/i.test(String(e.message)) ? 3 : e.cutShort ? 2 : e.status === 404 ? 0 : 1;
+    let worst = null;
     const finish = (ok, v) => {
+      if (!ok && worst && weight(worst) > weight(v)) v = worst;
       if (settled) return;
       settled = true; clearTimeout(timer); clearTimeout(retry);
       for (const c of controllers) c.abort();   // the other tries stop here, and stop billing
       ok ? resolve(v) : reject(v);
     };
     if (stop) stop.addEventListener("abort", () => finish(false, Object.assign(new Error("Deadline reached"), { name: "TimeoutError" })), { once: true });
-    const order = [pref.model, ...models.filter(m => m !== pref.model)];
+    const order = [pref.model, ...models.filter(m => m !== pref.model)].filter(m => !gone.has(m));
+    if (!order.length) return finish(false, Object.assign(new Error("None of the Gemini models this site uses is available."), { status: 404 }));
     const launch = () => {
       if (settled || tries >= MAX_TRIES) return;
       const model = order[tries % order.length], ctrl = new AbortController();
@@ -461,6 +469,12 @@ function hedge(ask, attempts, stop, models = MODELS, hedgeMs = HEDGE_MS) {
       }, e => {
         Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
         pending--;
+        if (weight(e) > weight(worst)) worst = e;
+        if (e && e.status === 404 && /no longer available|not found|is not supported/i.test(String(e.message))) {   // retired: not asked again, and the next model is
+          gone.add(model);
+          const i = order.indexOf(model); if (i >= 0) order.splice(i, 1);
+          if (!settled && order.length && tries < MAX_TRIES) { clearTimeout(retry); retry = setTimeout(launch, 0); return; }
+        }
         if (settled) return;
         if (busy(e) && tries < MAX_TRIES) { clearTimeout(retry); retry = setTimeout(launch, tries % order.length ? 0 : RETRY_MS); }   // another model at once; the same one after a pause
         else if (!pending) finish(false, e);

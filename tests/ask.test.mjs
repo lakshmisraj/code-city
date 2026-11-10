@@ -2,7 +2,7 @@ import { test, mock } from "node:test";
 import assert from "node:assert";
 const FN = new URL("../netlify/functions/ask.mjs", import.meta.url).href;   // the function under test
 let reply, lastInput, badKey = false, rejectThinking = false, calls = [], models = [], busyTimes = 0, slowTimes = 0, cutTimes = 0, aborted = 0;
-mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (globalThis.__quota) throw Object.assign(new Error("[429 Too Many Requests] You exceeded your current quota. Quota exceeded for metric: generate_content_free_tier_requests, limit: 1000, quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"), { status: 429 }); if (badKey) throw Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, schema: a.config.responseJsonSchema, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
+mock.module("@google/genai", { namedExports: { GoogleGenAI: class { constructor() { this.models = { generateContent: async a => { models.push(a.model); if (globalThis.__fail && globalThis.__fail[a.model]) throw globalThis.__fail[a.model](); if (globalThis.__quota) throw Object.assign(new Error("[429 Too Many Requests] You exceeded your current quota. Quota exceeded for metric: generate_content_free_tier_requests, limit: 1000, quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"), { status: 429 }); if (badKey) throw Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }); if (busyTimes > 0) { busyTimes--; throw Object.assign(new Error("This model is currently experiencing high demand."), { status: 503 }); } if (slowTimes > 0) { slowTimes--; await new Promise((r, j) => { const t = setTimeout(r, 400); a.config.abortSignal.addEventListener('abort', () => { aborted++; clearTimeout(t); j(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })); }); }); } if (cutTimes > 0) { cutTimes--; return { text: '{"answer": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] }; } calls.push(a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel.toLowerCase()); if (rejectThinking && a.config.thinkingConfig) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = { input: a.contents, system_instruction: a.config.systemInstruction, schema: a.config.responseJsonSchema, generation_config: { thinking_level: a.config.thinkingConfig && a.config.thinkingConfig.thinkingLevel } }; return { text: JSON.stringify(reply), usageMetadata: { candidatesTokenCount: 5 } }; } }; this.interactions = { create: async a => { calls.push(a.generation_config.thinking_level); if (rejectThinking && a.generation_config.thinking_level) throw Object.assign(new Error("thinking_level is not supported for this model"), { status: 400 }); lastInput = a; return { output_text: JSON.stringify(reply) }; } }; } } } });
 const counts = new Map();
 mock.module("@netlify/blobs", { namedExports: { getStore: () => ({
   getWithMetadata: async k => counts.has(k) ? { data: { n: counts.get(k) }, etag: "e" } : null,
@@ -237,7 +237,7 @@ test("a busy reply moves straight on to the next model", async () => {
   busyTimes = 2; models = [];
   const [st, out] = await call({ question: "q", files });
   assert.equal(st, 200); assert.equal(out.answer, "A");
-  assert.equal(models.length, 3); assert.equal(new Set(models).size, 3, "three different models");
+  assert.equal(models.length, 3); assert.equal(new Set(models).size, 2, "both models tried (the retired third is gone), then the first again");
 });
 test("a slow request gets a second copy that answers first", async () => {
   reply = { answer: "B", files: [] };
@@ -455,3 +455,19 @@ test("translations and generated code aren't parts of the product, and a big fol
   assert.ok(!names.some(n => /locales|generated/.test(n)), names.join(", "));
   assert.ok(names.some(n => n.startsWith("pkg/server/src/m")) && names.some(n => n.startsWith("pkg/web/src/c")), names.join(", "));
 });
+test("a retired model is skipped, not asked again, and doesn't hide why the others failed", () => fresh(async () => {
+  const minute = () => Object.assign(new Error("[429 Too Many Requests] You exceeded your current quota, per minute"), { status: 429 });
+  const retired = () => Object.assign(new Error("[404 Not Found] This model models/gemini-3.1-flash-lite is no longer available"), { status: 404 });
+  globalThis.__fail = { "gemini-3.5-flash-lite": minute, "gemini-3.1-flash-lite": retired };
+  try {
+    models = [];
+    const [st, out] = await call({ question: "which reason?", files: many10 });
+    assert.equal(st, 429, "too many requests is the reason given, not the retired model's 404");
+    assert.match(out.error, /Try again in a minute/);
+    globalThis.__fail = {};
+    models = []; reply = { answer: "A", files: [] };
+    const [st2] = await call({ question: "after the retired one", files: many10 });
+    assert.equal(st2, 200);
+    assert.ok(!models.includes("gemini-3.1-flash-lite"), `the retired model isn't asked again: ${models}`);
+  } finally { globalThis.__fail = null; }
+}));

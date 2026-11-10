@@ -6414,18 +6414,33 @@ function indexTour(t) {   // which workflows pass through each file
 // its steps' files and titles), then each workflow's words, a few at a time, and, unless the tour is about one
 // topic, more workflows for any main area the outline missed. The overview says what's still being written, and a
 // workflow opened early fills in when its words arrive.
-const NARRATE_BATCH = 5, NARRATE_AT_ONCE = 2, GAP_PASSES = 2;   // workflows written per request, and requests at once
-async function askTour(body) {
+const NARRATE_BATCH = 5, NARRATE_AT_ONCE = 1, GAP_PASSES = 2;   // workflows written per request, and one request at a time (Gemini's free tier allows few a minute)
+async function askTourOnce(body) {
   try {
     const r = await fetch(ASK_URL, { method: "POST", headers: askHeaders(), body: JSON.stringify(body) });
     return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
   } catch (e) { return { ok: false, status: 0, data: { error: "Couldn't reach Code City's server." } }; }
 }
+// Gemini's free tier allows few requests a minute, and Google is sometimes busy: a tour request turned away for
+// either waits and tries again on its own (saying so in the panel) rather than failing. A request turned away for
+// the day, or by this site's own hourly limit, isn't tried again.
+const TOUR_RETRIES = 3;
+async function askTour(body, t) {
+  for (let n = 0; ; n++) {
+    const res = await askTourOnce(body), msg = String(res.data && res.data.error || "");
+    const minute = res.status === 429 && /try again in a minute/i.test(msg), busy = res.status === 503 && /busy/i.test(msg);
+    if (!(minute || busy) || n >= TOUR_RETRIES || (t && tourState !== t)) return res;
+    const wait = minute ? 20000 * (n + 1) : 6000;
+    if (t) { t.waiting = minute ? `Gemini has had too many requests this minute. Trying again in ${Math.round(wait / 1000)} seconds…` : "Gemini is busy. Trying again in a few seconds…"; redrawTour(t); }
+    await new Promise(r => setTimeout(r, wait));
+    if (t) { t.waiting = null; redrawTour(t); }
+  }
+}
 function redrawTour(t) { if (tourState === t && sideMode === "tour") renderTour(); }
 async function narrateWorkflow(t, w) {
   w.pending = true; w.error = null;
   const { ok, status, data } = await askTour({ ...(await tourBase(t)), stage: "narrate", others: t.workflows.filter(x => x !== w).map(x => x.name),
-    workflow: { name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) } });
+    workflow: { name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) } }, t);
   w.pending = false;
   if (ok && Array.isArray(data.steps)) {
     w.summary = String(data.summary || "");
@@ -6438,7 +6453,7 @@ async function narrateBatch(t, list) {
   list.forEach(w => { w.pending = true; w.error = null; });
   const names = new Set(list.map(w => w.name));
   const { ok, status, data } = await askTour({ ...(await tourBase(t)), stage: "narrate", others: t.workflows.filter(x => !names.has(x.name)).map(x => x.name),
-    workflows: list.map(w => ({ name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) })) });
+    workflows: list.map(w => ({ name: w.name, feature: w.feature, steps: w.steps.map(st => ({ path: st.path, title: st.title })) })) }, t);
   for (const w of list) {
     const d = ok && Array.isArray(data.workflows) ? data.workflows.find(x => x.name === w.name) : null;
     w.pending = false;
@@ -6490,7 +6505,7 @@ async function fillTour(t, topic, only) {   // only: just these workflows' words
     const missed = missingAreas(t);
     if (!missed.length || tourState !== t) break;
     t.filling = true; redrawTour(t);
-    const { ok, data } = await askTour({ ...(await tourBase(t)), stage: "outline", missing: missed.map(a => a.name), existing: t.workflows.map(w => w.name) });
+    const { ok, data } = await askTour({ ...(await tourBase(t)), stage: "outline", missing: missed.map(a => a.name), existing: t.workflows.map(w => w.name) }, t);
     t.filling = false;
     if (tourState !== t) return;
     const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows) : [];
@@ -6852,9 +6867,9 @@ function partsHtml(t) {
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
   const left = t.byPart && t.base && !t.team ? areas.filter(a => !made(a.key) && !finding(a.key)) : [], fa = t.findingAll;
   const allBtn = fa ? `<p class="side-note">Finding workflows in all parts: ${fmt(fa.done)} of ${fmt(fa.total)} done…</p>`
-    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each of these parts, two at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
+    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each of these parts, one at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
   return `<div class="tour-parts"><h3>Parts of the code</h3>
-    <p class="side-note">${note}</p>${allBtn}
+    <p class="side-note">${note}</p>${t.waiting ? `<p class="side-note tour-wait">${esc(t.waiting)}</p>` : ""}${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
     ${sel ? `<p class="side-note part-pick"><b>${esc(sel.name)}</b> · ${fmt(sel.lines)} lines
       <button type="button" class="linkish" data-area="${esc(sel.key ? sel.key.slice(0, -1) : "(top)")}">Show in the city</button>
@@ -6865,7 +6880,7 @@ function partsHtml(t) {
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
 // writes them a few to a request. The tour remembers which parts it has asked about.
-// Every main part not explored yet, two at a time (each is a request to list its workflows, then their words)
+// Every main part not explored yet, one at a time (each is a request to list its workflows, then their words)
 async function findAllParts(t) {
   if (t.findingAll) return;
   const keys = mainAreas().areas.map(a => a.key).filter(k => !(t.partsAsked && t.partsAsked.has(k)) && !(t.finding && t.finding.has(k)));
@@ -6873,7 +6888,7 @@ async function findAllParts(t) {
   t.findingAll = { done: 0, total: keys.length };
   const queue = keys.slice();
   const run = async () => { for (let k; tourState === t && (k = queue.shift()) != null;) { await explorePart(t, k); if (t.findingAll) t.findingAll.done++; redrawTour(t); } };
-  await Promise.all([run(), run()]);
+  await run();   // one part at a time, so the tour stays within Gemini's few requests a minute
   t.findingAll = null; redrawTour(t);
 }
 async function explorePart(t, key) {
@@ -6882,7 +6897,7 @@ async function explorePart(t, key) {
   t.partsAsked = t.partsAsked || new Set(); t.finding = t.finding || new Set();
   if (t.partsAsked.has(key) || t.finding.has(key)) return;
   t.finding.add(key); redrawTour(t);
-  const { ok, data } = await askTour({ ...(await tourBase(t)), stage: "outline", part: a.name, existing: t.workflows.map(w => w.name) });
+  const { ok, data } = await askTour({ ...(await tourBase(t)), stage: "outline", part: a.name, existing: t.workflows.map(w => w.name) }, t);
   t.finding.delete(key);
   if (tourState !== t) return;
   if (ok) t.partsAsked.add(key);
