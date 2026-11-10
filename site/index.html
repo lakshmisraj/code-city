@@ -7093,7 +7093,16 @@ const clock = new THREE.Clock();
 // followed by a pause about twice its length, so the browser has time to answer clicks, scrolling and typing.
 let lastInput = 0, cityMoving = false;
 for (const ev of ["pointerdown", "pointermove", "wheel", "keydown", "touchstart"]) addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true, capture: true });
+// While a tour is finding or writing workflows (which can take a while), the city stands still unless someone is
+// using the page: the picture stays, and the browser's time goes to the panel and to whatever you do.
+const tourWorking = () => !!tourState && (!!tourState.filling || !!(tourState.finding && tourState.finding.size) || tourState.workflows.some(w => w.pending));
+let pausedFrame = false;
 function frame() {
+  if (tourWorking() && !playing && !flight && performance.now() - lastInput > 400) {
+    if (!pausedFrame) { pausedFrame = true; clock.getDelta(); }
+    return setTimeout(() => requestAnimationFrame(frame), 250);
+  }
+  if (pausedFrame) { pausedFrame = false; clock.getDelta(); }   // pick up where it stopped, not with a jump
   const started = performance.now();
   const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
   const since = (performance.now() - built) / 1000;
