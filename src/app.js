@@ -752,15 +752,7 @@ function buildCity(data) {
   closeDrawer(); applySearch();
   renderLegend();
   onCityBuilt();
-  readAhead();
   return true;
-}
-// A tour or a question first reads the repo (imports, entry points, main paths), which takes a while on a big one.
-// Once a city has settled it starts in the background, so it's usually ready by the time someone asks; a city
-// replaced before then (its history arriving) starts it again for the new one.
-function readAhead() {
-  const gen = cityGen;
-  setTimeout(() => { if (gen === cityGen && citySource !== "sample" && askEnabled && canAsk()) repoDigest().catch(() => {}); }, 3000);
 }
 
 function setTargets(linesOf) {
@@ -2026,7 +2018,7 @@ function onCityBuilt() {
   if (sideMode === "map") openSide("map");   // the new city's facts
   else if (sideMode === "report") openReport();   // the new city's report
   else if (citySource !== "sample" && audience !== "beginner") { if (audience === "manager") openReport(); else openSide("map"); }   // first look: the status report, or how the repo is built
-  else if (citySource !== "sample") loadMap();   // Beginner starts with just the city; read the code meanwhile so its tour opens ready
+  // Beginner starts with just the city, and reads no code until asked: its tour opens on the parts of the code at once
   showStartHint();
   if (audience !== "beginner" && citySource !== "sample" && segOpen && !phoneMQ.matches && !(citySource === "github" && !hist && ghProbe)) openSeg("understand");
   autoRead();
@@ -4369,9 +4361,13 @@ async function scanPut(key, part) {
 }
 // Called when a city is built: read imports and functions at once, for code this page can read. The saved copy
 // for this commit, if any, is picked up by the import graph itself (see getGraph), so nothing is downloaded twice.
+// A big repo read from GitHub isn't read up front: that's thousands of downloads and parses alongside the city's
+// animation. Its code is read when something needs it (Trace, Code structure, a question).
+const AUTO_READ_FILES = 800;
 async function autoRead() {
   const city = buildings;
   if (citySource === "sample" || !(codeRepo() || buildings.some(b => b.userData.f.text != null))) return;
+  if (!buildings.some(b => b.userData.f.text != null) && buildings.filter(b => b.userData.lines > 0).length > AUTO_READ_FILES) return;
   const facts = await systemFacts().catch(() => null);
   if (city !== buildings || !facts || !facts.scanned) return;
   const g = graph, key = scanKey();
@@ -5050,9 +5046,9 @@ $("startHintClose").onclick = doneStartHint;
 $("tourBtn2").onclick = async () => {   // a workflow named below focuses the tour
   if (audience === "beginner") doneStartHint();
   if (audience === "beginner" && await openTeamTour()) return;   // the team's own tour, when the repo has one
-  if (audience === "beginner") {   // Beginner's one way in: Code structure in plain English at once, then the tour if there is one
+  if (audience === "beginner" && (!askEnabled || !canAsk())) {   // no tour to take here: where the code starts, in plain English, instead
     if (sideMode !== "map") openSide("map");
-    if (!askEnabled || !canAsk()) return;
+    return;
   }
   startTour($("tourTopic").value.trim());
 };
@@ -5076,11 +5072,23 @@ async function planTour(topic, gen, status, id, fresh) {
     tourState = tourFrom(saved);
     tourState.key = tourKey(topic);
     tourState.base = { mode: "tour", question: topic.trim(), repo: currentRepo || cityName, files: files(), digest: "", every: audience === "advanced", plain: plainTour() };
-    if (plainTour()) { loadMap(); if (!drawer.hidden) closeDrawer(); }
+    if (plainTour() && !drawer.hidden) closeDrawer();
     openSide("tour");
     showOverview();
     if (plainTour()) fillTour(tourState, topic.trim(), tourState.workflows.filter(w => w.pending));
     keepTour(tourState);   // now the newest
+    return;
+  }
+  if (plainTour() && !topic.trim() && mainAreas().areas.length > 1) {   // Beginner: the parts of the code first, at once; picking one makes its workflows
+    status.textContent = "";
+    if (askState) askState = null;
+    endTour();
+    tourState = indexTour({ title: "Workflows tour", story: "", overview: "", workflows: [], w: -1, i: 0, playing: false, timer: 0, seen: new Set(), partsAsked: new Set() });
+    tourState.key = tourKey(topic);
+    tourState.base = { mode: "tour", question: "", repo: currentRepo || cityName, files: files(), digest: "", every: false, plain: true };
+    if (!drawer.hidden) closeDrawer();
+    openSide("tour");
+    showOverview();
     return;
   }
   status.textContent = "Reading the repo…";
@@ -5180,10 +5188,14 @@ async function narrateWorkflow(t, w) {
 // What every Beginner tour request carries. A saved tour opens without it; the repo's reading (usually done in the
 // background by then) is added the first time a request needs it.
 async function tourBase(t) {
-  if (!t.base.digest && !t.base.read) { t.base.read = true; t.base.digest = await repoDigest().catch(() => ""); }
-  const { read, ...base } = t.base;
+  if (!t.base.digest && !t.base.reading) {   // started once, by the first request that needs it
+    t.base.reading = repoDigest().then(d => { t.base.digest = d; }, () => {});
+  }
+  if (!t.base.digest && t.base.reading) await Promise.race([t.base.reading, new Promise(r => setTimeout(r, DIGEST_WAIT_MS))]);
+  const { reading, ...base } = t.base;
   return base;
 }
+const DIGEST_WAIT_MS = 4000;   // a part's workflows don't wait longer than this for the repo's reading
 function missingAreas(t) {   // the main areas no workflow's steps reach, as the coverage line counts them
   const { areas, area } = mainAreas();
   if (areas.length < 2) return [];
@@ -5479,7 +5491,15 @@ function metroMapSvg(t) {   // Beginner
 const AREA_SHARE = 0.25, MAX_AREAS = 12;   // keep in step with ask.mjs
 const AREA_PROJECT = /\/(package\.json|pyproject\.toml|setup\.py|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|composer\.json|Gemfile)$/;
 const AREA_ASIDE = /(^|\/)(vendor|node_modules|third_party|dist|build|\.github)\//i, SOURCE_FILE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kts?|swift|rb|php|c|cc|cpp|h|hpp|cs|scala|vue|svelte|exs?|dart|lua|sh)$/i;
+let areasMemo = null;   // mainAreas for the city as it is: { city, sum, value }
 function mainAreas() {   // by lines of source code: no markup, data, lock files or minified code; tests, docs, vendored and built folders aside
+  let sum = 0; for (const b of buildings) sum += b.userData.lines;
+  if (areasMemo && areasMemo.city === buildings && areasMemo.sum === sum) return areasMemo.value;
+  const value = mainAreasNow();
+  areasMemo = { city: buildings, sum, value };
+  return value;
+}
+function mainAreasNow() {
   const live = buildings.map(b => ({ path: b.userData.f.path, lines: b.userData.lines }))
     .filter(f => f.lines > 0 && SOURCE_FILE.test(f.path) && !/\.min\.js$/.test(f.path) && !aside(f.path) && !AREA_ASIDE.test(f.path));
   const total = live.reduce((n, f) => n + f.lines, 0);
@@ -5495,11 +5515,12 @@ function mainAreas() {   // by lines of source code: no markup, data, lock files
 // Beginner's tour overview: the parts of the code (its main areas), each with how many workflows pass through it.
 // Picking one shows only its workflows; a part with none can have one added to this tour.
 const partLabel = key => { const s = key.split("/").filter(Boolean); return !s.length ? "top-level files" : s.slice(-2).join("/"); };
-function wfInPart(w, key) { const { area } = mainAreas(); return w.steps.some(st => area(st.path) === key); }
+function wfInPart(w, key, area = mainAreas().area) { return w.steps.some(st => area(st.path) === key); }
 function partsHtml(t) {
-  const { areas } = mainAreas();
+  const { areas, area } = mainAreas();
   if (areas.length < 2) return "";
-  const count = key => t.workflows.filter(w => wfInPart(w, key)).length, covered = areas.filter(a => count(a.key)).length;
+  const counts = new Map(); for (const w of t.workflows) for (const k of new Set(w.steps.map(st => area(st.path)))) counts.set(k, (counts.get(k) || 0) + 1);
+  const count = key => counts.get(key) || 0, covered = areas.filter(a => count(a.key)).length;
   const sel = t.part != null && areas.find(a => a.key === t.part);
   if (t.part != null && !sel) t.part = null;   // that part isn't a main area any more
   const chip = a => { const n = count(a.key);
@@ -5602,19 +5623,19 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     if (!tourBody(`
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : ""}
       ${partsHtml(t)}
-      <div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}<ol class="wf-list">${t.workflows.map((w, k) => t.part != null && !wfInPart(w, t.part) ? "" : `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
+      ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}<ol class="wf-list">${t.workflows.map((w, k) => t.part != null && !wfInPart(w, t.part) ? "" : `<li><button type="button" class="wf-card${t.seen && wfDone(t, k) ? " is-done" : ""}" data-wf="${k}" title="${esc(plain && w.feature ? w.feature : w.summary)}">
         <span class="wf-name">${wfDot(k)}${esc(w.name)}${w.pending ? `<span class="wf-done wf-part">Writing…</span>` : wfProgress(t, k)}</span>${w.feature ? `<span class="wf-feature">${esc(w.feature)}</span>` : ""}</button></li>`).join("")}</ol>
         ${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
-        ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>
-      ${plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
+        ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>`}
+      ${!t.workflows.length ? "" : plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
         : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button><button type="button" data-tour="replan" title="Plan the tour again from the start">Make a new tour</button></div>`) : ""}
-      <details class="more tour-more"><summary>More detail</summary><div class="d-stack">
+      ${!t.workflows.length ? "" : `<details class="more tour-more"><summary>More detail</summary><div class="d-stack">
         ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
         <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
         <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
         ${shared.length ? `<div><h3>Where workflows meet</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
           <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
-      </div></details>`)) return;   // nothing changed: leave the panel as it is
+      </div></details>`}`)) return;   // nothing changed: leave the panel as it is
   } else {
     const w = t.workflows[t.w], L = w.lines || {};
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
