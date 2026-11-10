@@ -467,7 +467,7 @@ function hedge(ask, attempts, stop, models = MODELS, hedgeMs = HEDGE_MS) {
         if (!settled) { pref.model = model; pref.at = Date.now(); }   // only the winner counts
         finish(true, v);
       }, e => {
-        Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 80)}` });
+        Object.assign(rec, { running: false, ms: Date.now() - t0 - rec.at, ok: false, err: `${e && e.status || ""} ${String(e && e.message).slice(0, 400)}` });
         pending--;
         if (weight(e) > weight(worst)) worst = e;
         if (e && e.status === 404 && /no longer available|not found|is not supported/i.test(String(e.message))) {   // retired: not asked again, and the next model is
@@ -482,6 +482,13 @@ function hedge(ask, attempts, stop, models = MODELS, hedgeMs = HEDGE_MS) {
     };
     launch();
   });
+}
+
+// Google's "too many requests" can be the minute's limit or the day's, and its wording names quotas of both kinds,
+// so a mention of "per day" alone doesn't mean the day is used up: only a refusal with no per-minute quota and no
+// "retry in" delay is taken as the day's (the minute's passes; the day's lasts until midnight Pacific).
+export function dayUsedUp(message) {
+  return /PerDay|per day|daily/i.test(message) && !/PerMinute|per minute|retryDelay|retry in/i.test(message);
 }
 
 // The Gemini models this key can use for text (their names are public), so other models can be tried when
@@ -708,10 +715,10 @@ async function handle(event) {
   } catch (e) {
     const ms = Date.now() - started;
     console.log(`ask: failed after ${ms} ms: ${e && e.name} status=${e && e.status} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 300)}`);
-    await note({ mode, strict, pre, ms, chars: input.length, ok: false, attempts, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 160)}` });
+    await note({ mode, strict, pre, ms, chars: input.length, ok: false, attempts, err: `${e && e.name} ${e && e.status || ""} ${String(e && e.message).replace(/AIza[0-9A-Za-z_-]{20,}/g, "[key]").slice(0, 600)}` });
     await refund();   // nothing came back, so it doesn't count against anyone's limit
     if (e && (e.status === 503 || /UNAVAILABLE|high demand/i.test(String(e.message)))) return json(503, { error: "Gemini is very busy right now. Try again in a minute." });
-    if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: /per ?day|PerDay|daily/i.test(String(e.message))
+    if (e && (e.status === 429 || /RESOURCE_EXHAUSTED/.test(e.message))) return json(429, { error: dayUsedUp(String(e.message))
       ? "Code City has used up today's free Gemini allowance, so tours and questions are off until it resets tomorrow (Pacific time)."
       : "Lots of questions right now. Try again in a minute." });
     if (e && e.cutShort) return json(502, { error: "Gemini's reply was cut short. Try again, or ask something narrower." });

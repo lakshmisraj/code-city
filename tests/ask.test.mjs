@@ -471,3 +471,9 @@ test("a retired model is skipped, not asked again, and doesn't hide why the othe
     assert.ok(!models.includes("gemini-3.1-flash-lite"), `the retired model isn't asked again: ${models}`);
   } finally { globalThis.__fail = null; }
 }));
+test("Google's minute limit isn't mistaken for the day's", async () => {
+  const { dayUsedUp } = await import(FN);
+  assert.equal(dayUsedUp("You exceeded your current quota. quotaId: GenerateRequestsPerMinutePerProjectPerModel-FreeTier; also GenerateRequestsPerDayPerProjectPerModel-FreeTier"), false, "names both: the minute's");
+  assert.equal(dayUsedUp("You exceeded your current quota. Please retry in 33.2s. per day"), false, "a retry delay means it passes");
+  assert.equal(dayUsedUp("You exceeded your current quota. quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"), true);
+});

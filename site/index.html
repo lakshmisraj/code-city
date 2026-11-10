@@ -6866,9 +6866,10 @@ function partsHtml(t) {
   const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(covered)} of ${fmt(areas.length)} parts. Pick a part to see all its workflows.`)
     : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
-  const left = t.byPart && t.base && !t.team ? areas.filter(a => !made(a.key) && !finding(a.key)) : [], fa = t.findingAll;
+  const shownParts = t.allParts ? all : areas;
+  const left = t.byPart && t.base && !t.team ? shownParts.filter(a => !made(a.key) && !finding(a.key)) : [], fa = t.findingAll;
   const allBtn = fa ? `<p class="side-note">Finding workflows in all parts: ${fmt(fa.done)} of ${fmt(fa.total)} done…</p>`
-    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each of these parts, one at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
+    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each part shown here, one at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
   return `<div class="tour-parts"><h3>Parts of the code</h3>
     <p class="side-note">${note}</p>${t.waiting ? `<p class="side-note tour-wait">${esc(t.waiting)}</p>` : ""}${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
@@ -6881,18 +6882,28 @@ function partsHtml(t) {
 }
 // Picking a part asks Gemini, once per part, for every workflow that goes through it (listed, which is cheap), then
 // writes them a few to a request. The tour remembers which parts it has asked about.
-// Every main part not explored yet, one at a time (each is a request to list its workflows, then their words)
+// Every part on screen not explored yet (the main ones, and the small ones too when Show all parts is open), one at a
+// time: each is a request to list its workflows, then their words. A limit that won't pass in a minute (the day's,
+// or this site's hourly one) stops it, rather than every part after it failing the same way.
 async function findAllParts(t) {
   if (t.findingAll) return;
-  const keys = mainAreas().areas.map(a => a.key).filter(k => !(t.partsAsked && t.partsAsked.has(k)) && !(t.finding && t.finding.has(k)));
+  const { areas, all } = mainAreas();
+  const keys = (t.allParts ? all : areas).map(a => a.key).filter(k => !(t.partsAsked && t.partsAsked.has(k)) && !(t.finding && t.finding.has(k)));
   if (!keys.length) return;
   t.findingAll = { done: 0, total: keys.length };
   const queue = keys.slice();
-  const run = async () => { for (let k; tourState === t && (k = queue.shift()) != null;) { await explorePart(t, k); if (t.findingAll) t.findingAll.done++; redrawTour(t); } };
+  const run = async () => {
+    for (let k; tourState === t && (k = queue.shift()) != null;) {
+      const r = await explorePart(t, k, true);
+      if (t.findingAll) t.findingAll.done++;
+      redrawTour(t);
+      if (r && !r.ok && /today|this hour/i.test(r.error)) { toast(esc(r.error)); break; }   // the rest would fail the same way
+    }
+  };
   await run();   // one part at a time, so the tour stays within Gemini's few requests a minute
   t.findingAll = null; redrawTour(t);
 }
-async function explorePart(t, key) {
+async function explorePart(t, key, quiet) {
   const a = mainAreas().all.find(x => x.key === key);
   if (!a || !t.base || t.team) return;
   t.partsAsked = t.partsAsked || new Set(); t.finding = t.finding || new Set();
@@ -6903,11 +6914,12 @@ async function explorePart(t, key) {
   if (tourState !== t) return;
   if (ok) t.partsAsked.add(key);
   const added = ok && Array.isArray(data.workflows) ? addWorkflows(t, data.workflows, key) : [];
-  if (!ok) toast(esc(data.error || "Couldn't find this part's workflows just now."));
+  if (!ok && !quiet) toast(esc(data.error || "Couldn't find this part's workflows just now."));
   else if (!added.length && t.workflows.some(w => (w.parts || []).includes(key))) toast("No new workflows found in this part.");
   for (const w of added) if (w.summary && w.steps.every(st => st.narration)) w.pending = false;   // written in the same answer
   redrawTour(t); keepTour(t);
   if (added.length) { drawLinks(); const unwritten = added.filter(w => w.pending); if (unwritten.length) fillTour(t, null, unwritten); }
+  return { ok, error: String(data && data.error || "") };
 }
 // Advanced and Manager: the merge map as it was when the sites split (Beginner has metroMapSvg). Each workflow a
 // line in its colour, left to right in the order the work flows. Where workflows
