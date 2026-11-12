@@ -151,7 +151,7 @@ ${plain ? `${PLAIN_STORY}
 ` : ""}Then write an overview of two to four sentences on how the workflows fit together: where they start, which files they share, and how one leads into another.${plain ? " Keep it about the code, not a retelling of the story." : ""} Give the tour a short title.
 ${CODE_SHOWS}
 ${VOICE}${plain ? `
-${PLAIN_NARRATE}` : ` Narrate each step as if walking the reader through it ("here the request lands in…, which hands it to…").`}`;
+${PLAIN_NARRATE}` : ` Write for a developer who is new to this codebase and has never seen it. Narrate each step as if walking beside them ("here the request lands in…, which hands it to…"): say what happens, then why it is there. Name the real files, functions and types so they can find them, and explain a term the project invented the first time you use it. Short, direct sentences, no hype and no jokes. When the next step is the obvious one to read, say so; when a step has a trap or a surprise, say that plainly.`}`;
 
 // Beginner's tour in stages, so no one reply has to hold the whole tour (a function gets 60 seconds): the outline is
 // every workflow with its steps' files and titles, the story and the overview; then the page asks for each workflow's
