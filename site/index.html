@@ -1893,6 +1893,7 @@ function buildCity(data) {
   const before = { nodes, hist, totalChurn };
   try { prepare(data); } catch (e) { ({ nodes, hist, totalChurn } = before); setRepoStatus("That city's data couldn't be read."); return false; }
   if (!nodes.size) { ({ nodes, hist, totalChurn } = before); setRepoStatus("No source files found there."); return false; }
+  track(data.source === "sample" ? null : data.source === "folder" ? "folder_opened" : data.source === "json" && !data.repoKey ? "export_opened" : "repo_loaded");
   playing = false;
   if (data.source !== "github") closeHistoryPanel();   // its Load button would rebuild the previous repo
   resetRecording();
@@ -2096,6 +2097,9 @@ function setColorMode(m) {
   syncUrl();
 }
 document.getElementById("cLang").onclick = () => setColorMode("lang");
+document.getElementById("mapBtn").addEventListener("click", () => track("map_open"));
+document.getElementById("commitsBtn").addEventListener("click", () => track("history_open"));
+document.getElementById("cLang").addEventListener("click", () => track("language_colours"));
 document.getElementById("mapBtn").onclick = () => sideMode === "map" ? closeSide() : openSide("map");
 document.getElementById("commitsBtn").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
 document.getElementById("tbCommits").onclick = () => sideMode === "commits" ? closeSide() : openCommits();
@@ -2487,6 +2491,7 @@ function renderQList() {
 }
 function pickHit(i) { const b = qHits[i]; if (!b) return; qList.hidden = true; qInput.setAttribute("aria-expanded", "false"); openDrawer(b); }
 qInput.addEventListener("input", applySearch);
+qInput.addEventListener("input", () => { if (qInput.value && !qInput.__counted) { qInput.__counted = true; track("search_used"); } else if (!qInput.value) qInput.__counted = false; });   // once per search, not per key
 qInput.addEventListener("focus", renderQList);
 qInput.addEventListener("blur", () => setTimeout(renderQList, 150));   // let a click on the list land first
 qInput.addEventListener("keydown", e => {
@@ -3300,6 +3305,7 @@ function toast(msg) {
 }
 document.getElementById("shareBtn").onclick = async () => {
   if (!currentRepo) return toast("Links work for GitHub repos. Build one first.");
+  track("share_link");
   const url = shareUrl();
   try { await navigator.clipboard.writeText(url); toast("Link copied"); }
   catch (e) { setRepoStatus(`Copy this link: <code>${esc(url)}</code>`); }
@@ -3364,6 +3370,7 @@ let audience = (() => {
 function setAudience(a, quiet) {
   if (!AUDIENCES[a] || (LOCKED_FOR && a !== LOCKED_FOR)) return;
   audience = a;
+  if (!quiet) track("level_" + a);
   try { localStorage.setItem("codecity.for", a); } catch (e) { /* storage blocked */ }
   for (const k in AUDIENCES) document.body.classList.toggle("for-" + k, k === a);
   $("forSel").value = a; $("forSel2").value = a;
@@ -3454,6 +3461,7 @@ function refreshSideSoon() {   // the timeline moves many times a second; redraw
   setTimeout(() => { sideQueued = false; renderSide(); }, 250);
 }
 $("sideClose").onclick = () => closeSide();
+$("hotBtn").addEventListener("click", () => track("heat_colours"));
 $("hotBtn").onclick = () => {   // colours by change heat and opens the list; again closes the list, keeping the colours
   if (sideMode === "hot") return closeSide();
   if (hist && colorMode !== "heat") setColorMode("heat");
@@ -3810,6 +3818,7 @@ function renderPR() {
 // it only identifies the visitor, which raises their limit to 5,000 requests an hour.
 const SIGNIN_URL = "/.netlify/functions/github-login";
 function startSignin() {
+  track("signin_click"); track.flush();   // the page is about to leave
   location.href = SIGNIN_URL + "?return=" + encodeURIComponent(location.pathname + location.search);
 }
 function signOut() {
@@ -3914,6 +3923,7 @@ async function askCity(question, task) {   // task: Beginner's "Start from a tas
   const q = question.trim(), status = task ? $("taskStatus") : $("askStatus");
   if (!q) return;
   if (!canAsk()) { status.innerHTML = needSignin("ask questions"); return; }
+  track("ask_question");
   if (!okToSendPrivate()) return;
   const gen = cityGen, id = cityId();
   status.textContent = "Reading the repo…";
@@ -4100,6 +4110,7 @@ function renderPanelExplain() {
 async function explainCode(state, paths, question, from, range, panel) {   // panel: Beginner, in the file's panel
   if (!canAsk()) { toast("Sign in with GitHub (in the left card) to have code explained."); return; }   // nothing opens until it can work
   if (!okToSendPrivate()) return;
+  track(range ? "explain_lines" : "explain_file");
   const gen = cityGen;
   paths = paths.slice(0, MAX_EXPLAIN);   // the files actually read, so the window's title is true
   const st = { paths, from: from || null, range: range || null, loading: true };
@@ -4315,6 +4326,7 @@ function addPane(p) {
 }
 function markLine(p) { p.el.querySelectorAll(".pane-body .vl.hit").forEach(r => r.classList.remove("hit")); const r = p.el.querySelector(`.pane-body [data-l="${p.line}"]`); if (r) r.classList.add("hit"); }
 async function viewFile(path, line, link) {   // resolves with the file's window, or null
+  track("code_view");
   const ex = !codePane(path) && panes.find(q => q.kind === "explain" && q.st && q.st.paths.length === 1 && q.st.paths[0] === path);
   if (ex) { await addCodeTo(ex); if (!codePane(path)) return null; }   // its explanation is open on its own: the code joins that window
   const have = codePane(path);
@@ -5925,6 +5937,7 @@ sideBody.addEventListener("click", e => {   // a folder in the status report, or
   const link = Object.assign(document.createElement("a"), { href: url, download: `${(currentRepo || cityName || "code-city").replace(/[^\w.-]+/g, "-")}-status.md` });
   document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+$("reportBtn").addEventListener("click", () => track("report_open"));
 $("reportBtn").onclick = () => sideMode === "report" ? closeSide() : openReport();
 
 // ---------- commits and branches ----------
@@ -6306,6 +6319,7 @@ async function startTour(topic, fresh) {
   const status = $("askStatus");
   if (!canAsk()) { status.innerHTML = needSignin("take a tour"); return; }
   if (!okToSendPrivate()) return;
+  track("tour_start");
   tourLoading = true;
   if (sideMode === "map") renderSide();
   try { await planTour(topic, gen, status, cityId(), fresh); } finally { tourLoading = false; if (sideMode === "map") renderSide(); }
@@ -6560,6 +6574,7 @@ async function openTeamTour(at) {   // at: "2.3" (workflow 2, step 3), "0" or no
 }
 function saveTeamTour() {
   const t = tourState; if (!t) return;
+  track("tour_save");
   const file = { codecityTour: 1, title: t.title, story: t.story || "", overview: t.overview || "",
     workflows: t.workflows.map(w => ({ name: w.name, feature: w.feature || "", summary: w.summary || "", steps: w.steps.map(st => ({ path: st.path, title: st.title, narration: st.narration, change: st.change || "" })), feeds: w.feeds || [] })) };
   const a = document.createElement("a");
@@ -6571,6 +6586,7 @@ function showOverview(end) {   // end: Beginner's closing card instead of the ov
   const t = tourState;
   if (!t) return;
   clearTimeout(t.timer); t.w = -1; t.playing = false; t.end = end === true;
+  if (t.end) track("tour_done");
   resetView(true);
   renderTour(); drawLinks();
 }
@@ -6578,6 +6594,7 @@ function goToWorkflow(w, i) {
   const t = tourState;
   if (!t || !t.workflows[w]) return;
   t.w = w;
+  track("workflow_open");
   loadKeyLines(w);
   goToStop(i || 0);
 }
@@ -6586,7 +6603,8 @@ function goToStop(i) {
   if (!t || t.w < 0) return;
   const steps = t.workflows[t.w].steps;
   t.i = Math.max(0, Math.min(steps.length - 1, i));
-  if (t.seen) t.seen.add(`${t.w}:${t.i}`);
+  if (t.seen) { const had = wfDone(t, t.w); t.seen.add(`${t.w}:${t.i}`); if (!had && wfDone(t, t.w)) track("workflow_done"); }
+  track("tour_step");
   keepTour(t);
   const b = bmap.get(steps[t.i].path);
   if (b) flyToBuilding(b);
@@ -7161,12 +7179,12 @@ sideBody.addEventListener("click", e => {
   if (sideMode !== "tour" || !tourState) return;
   if (e.target.closest("[data-all-parts]")) { e.stopPropagation(); tourState.allParts = !tourState.allParts; return renderTour(); }
   const again = e.target.closest("[data-refind]");
-  if (again) { e.stopPropagation(); const t = tourState; if (t.partsAsked) t.partsAsked.delete(again.dataset.refind); explorePart(t, again.dataset.refind); return; }
-  if (e.target.closest("[data-find-all]")) { e.stopPropagation(); findAllParts(tourState); return renderTour(); }
+  if (again) { e.stopPropagation(); track("tour_find_more"); const t = tourState; if (t.partsAsked) t.partsAsked.delete(again.dataset.refind); explorePart(t, again.dataset.refind); return; }
+  if (e.target.closest("[data-find-all]")) { e.stopPropagation(); track("tour_find_more"); findAllParts(tourState); return renderTour(); }
   const groupMore = e.target.closest("[data-group-more]");
   if (groupMore) { e.stopPropagation(); const t = tourState, k = groupMore.dataset.groupMore; t.openGroups = t.openGroups || new Set(); if (t.openGroups.has(k)) t.openGroups.delete(k); else t.openGroups.add(k); return renderTour(); }
   const pick = e.target.closest("[data-part]");
-  if (pick) { e.stopPropagation(); const t = tourState, k = pick.dataset.part; t.part = t.part !== k ? k : null; renderTour(); if (t.part != null) explorePart(t, k); return; }
+  if (pick) { e.stopPropagation(); const t = tourState, k = pick.dataset.part; t.part = t.part !== k ? k : null; renderTour(); if (t.part != null) { track("tour_part"); explorePart(t, k); } return; }
   const act = e.target.closest("[data-tour]"), stop = e.target.closest("[data-stop]"), wf = e.target.closest("[data-wf]");
   if (wf) { e.stopPropagation(); return goToWorkflow(+wf.dataset.wf, 0); }
   if (stop) { e.stopPropagation(); return goToStop(+stop.dataset.stop); }
@@ -7481,15 +7499,45 @@ function siteTourOnLoad() {
 // the site it came from and a shared link's ?ref=. Never a repo, a file or who you are. Not sent by the local app or
 // VS Code, or when the browser asks not to be tracked.
 function countVisit() {
-  if (!/(^|\.)codecitydev\.com$/.test(location.hostname) || navigator.doNotTrack === "1" || navigator.globalPrivacyControl) return;
+  if (!trackingOn()) return;
   const today = new Date().toISOString().slice(0, 10);
-  let first = false;
-  try { first = localStorage.getItem("codecity.visitDay") !== today; localStorage.setItem("codecity.visitDay", today); } catch (e) { /* storage blocked: counted as a page load only */ }
+  let first = false, returning = false, days = 0;
+  try {
+    const before = localStorage.getItem("codecity.visitDay");
+    first = before !== today; returning = first && !!before;
+    localStorage.setItem("codecity.visitDay", today);
+    if (first) { days = (parseInt(localStorage.getItem("codecity.visitDays"), 10) || (before ? 1 : 0)) + 1; localStorage.setItem("codecity.visitDays", String(days)); }   // only how many days, never which
+  } catch (e) { /* storage blocked: counted as a page load only */ }
   let from = null;
   try { const r = document.referrer && new URL(document.referrer); if (r && r.hostname !== location.hostname) from = r.hostname; } catch (e) { /* no usable referrer */ }
   fetch("/.netlify/functions/visit", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ first, from, ref: new URLSearchParams(location.search).get("ref") }) }).catch(() => { /* a count isn't worth an error */ });
+    body: JSON.stringify({ first, returning, days, from, ref: new URLSearchParams(location.search).get("ref") }) }).catch(() => { /* a count isn't worth an error */ });
 }
+// Which features get used, for the same stats page (netlify/functions/visit.mjs). Only a feature's name and how
+// many times leave the page: never a repo, a file, a question or who you are. A browser is counted once a day
+// per feature (that is how many people), and every use is added up too. Sent in one batch a few seconds after,
+// or when the page is left. Same rules as the visit count: only on codecitydev.com, never with Do Not Track.
+function trackingOn() { return /(^|\.)codecitydev\.com$/.test(location.hostname) && navigator.doNotTrack !== "1" && !navigator.globalPrivacyControl; }
+function track(name) {
+  if (!name || !trackingOn()) return;
+  const q = track.q = track.q || { use: {}, people: [] };
+  q.use[name] = (q.use[name] || 0) + 1;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    let seen = JSON.parse(localStorage.getItem("codecity.used") || "null");
+    if (!seen || seen.day !== today) seen = { day: today, names: [] };
+    if (!seen.names.includes(name)) { seen.names.push(name); q.people.push(name); localStorage.setItem("codecity.used", JSON.stringify(seen)); }
+  } catch (e) { /* storage blocked: the uses are counted, the people are not */ }
+  if (!track.timer) track.timer = setTimeout(track.flush, 4000);
+}
+track.flush = function () {
+  clearTimeout(track.timer); track.timer = 0;
+  const q = track.q; track.q = null;
+  if (!q || !trackingOn()) return;
+  fetch("/.netlify/functions/visit", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(q) }).catch(() => { /* a count isn't worth an error */ });
+};
+addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") track.flush(); });
+addEventListener("pagehide", () => track.flush());
 const start = () => {
   countVisit();
   const link = readLink();
@@ -7497,7 +7545,7 @@ const start = () => {
   buildCity(sampleCity()); frame();
   initSignin().then(siteTourOnLoad, siteTourOnLoad);
   initAsk();
-  if (link.repo) { document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
+  if (link.repo) { track("shared_link_opened"); document.getElementById("repoInput").value = "github.com/" + link.repo; loadRepo(link.repo); }
   else if (LOCAL) {   // `code-city .` names a folder or repo to open straight away
     fetch("/api/start", { headers: { "X-Code-City": "1" } }).then(r => r.ok ? r.json() : {}).then(d => {
       if (d && d.src) { document.getElementById("repoInput").value = d.src; loadRepo(d.src); }

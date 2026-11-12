@@ -36,14 +36,24 @@
     <div class="cards" style="margin-bottom:12px">
       <div class="card"><b id="visitors">0</b><span>Visitors (each browser counted once a day)</span></div>
       <div class="card"><b id="views">0</b><span>Page loads</span></div>
+      <div class="card"><b id="newv">0</b><span>New browsers</span></div>
+      <div class="card"><b id="retv">0</b><span>Came back (<span id="retpct">0%</span> of visitors)</span></div>
     </div>
     <section style="margin-bottom:12px"><h2>Visitors per day</h2><div class="bar" id="bar"></div></section>
+    <div class="three" style="margin-bottom:12px">
+      <section><h2>How many days they have come</h2><table id="visits"></table></section>
+      <section><h2>The tour, step by step</h2><table id="funnel"></table></section>
+      <section><h2>Levels chosen</h2><table id="levels"></table></section>
+    </div>
+    <section style="margin-bottom:12px"><h2>What gets used</h2>
+      <p style="margin-bottom:8px">People: browsers that used it, once a day each. Times: every use added up.</p>
+      <table id="uses"></table></section>
     <div class="three" style="margin-bottom:12px">
       <section><h2>Personal links (?ref=)</h2><table id="refs"></table></section>
       <section><h2>Came from</h2><table id="from"></table></section>
       <section><h2>Countries</h2><table id="countries"></table></section>
     </div>
-    <p>Only counts are kept: no IP addresses, cookies, repos, files or GitHub accounts, and browsers asking not to be tracked aren't counted. This site's version only; each version of Code City keeps its own.</p>
+    <p>Only counts are kept: no IP addresses, cookies, repos, files, questions or GitHub accounts, and browsers asking not to be tracked aren't counted. A feature is counted by its name only. A browser that clears its site data counts as new again. This site's version only; each version of Code City keeps its own.</p>
   </div>
 </main>
 <script>
@@ -63,11 +73,45 @@
     if (!rows.length) { const tr = t.insertRow(), c = tr.insertCell(); c.textContent = "None yet"; c.style.color = "var(--dim)"; return; }
     for (const [k, v] of rows) { const tr = t.insertRow(); tr.insertCell().textContent = k; tr.insertCell().textContent = v.toLocaleString(); }
   };
+  // What each count is called. A feature's name is all the page ever sends.
+  const LABELS = {
+    repo_loaded: "Opened a GitHub repo", folder_opened: "Opened a folder", export_opened: "Opened an exported file", shared_link_opened: "Came in by a shared link",
+    level_beginner: "Beginner", level_advanced: "Advanced", level_manager: "Manager",
+    tour_start: "Started a workflows tour", tour_part: "Picked a part of the code", tour_find_more: "Looked for more workflows", workflow_open: "Opened a workflow", tour_step: "Viewed a step",
+    workflow_done: "Finished a workflow", tour_done: "Reached the end of the tour", tour_save: "Saved a tour",
+    ask_question: "Asked a question", explain_file: "Had a file explained", explain_lines: "Had lines explained", code_view: "Viewed code", search_used: "Searched files",
+    map_open: "Opened the map", history_open: "Opened commits and changes", report_open: "Opened the report", heat_colours: "Coloured by change heat", language_colours: "Coloured by language",
+    share_link: "Copied a share link", signin_click: "Clicked Sign in with GitHub",
+  };
+  const GROUPS = [
+    ["Getting code in", ["repo_loaded", "folder_opened", "export_opened", "shared_link_opened"]],
+    ["Workflows tour", ["tour_start", "tour_part", "tour_find_more", "workflow_open", "tour_step", "workflow_done", "tour_done", "tour_save"]],
+    ["Understanding code", ["ask_question", "explain_file", "explain_lines", "code_view", "search_used"]],
+    ["Other views", ["map_open", "history_open", "report_open", "heat_colours", "language_colours", "share_link", "signin_click"]],
+  ];
+  const rows = (id, list, empty) => {
+    const t = $(id); t.textContent = "";
+    if (!list.length) { const c = t.insertRow().insertCell(); c.textContent = empty || "None yet"; c.style.color = "var(--dim)"; return; }
+    for (const r of list) { const tr = t.insertRow(); r.forEach((v, i) => { const c = tr.insertCell(); c.textContent = typeof v === "number" ? v.toLocaleString() : v; if (r.head) c.style.fontWeight = "600"; }); }
+  };
   const show = n => {
     const cutoff = new Date(Date.now() - (n - 1) * 864e5).toISOString().slice(0, 10), days = data.days.filter(d => d.day >= cutoff).sort((a, b) => a.day < b.day ? -1 : 1);
     const sum = k => days.reduce((a, d) => a + (d[k] || 0), 0), merge = k => { const m = {}; for (const d of days) for (const [a, b] of Object.entries(d[k] || {})) m[a] = (m[a] || 0) + b; return m; };
     $("visitors").textContent = sum("visitors").toLocaleString(); $("views").textContent = sum("views").toLocaleString();
     fill("refs", merge("refs")); fill("from", merge("from")); fill("countries", merge("countries"));
+    const vis = sum("visitors"), ret = sum("returning"), people = merge("people"), uses = merge("uses"), pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "–";
+    $("newv").textContent = Math.max(0, vis - ret).toLocaleString(); $("retv").textContent = ret.toLocaleString(); $("retpct").textContent = pct(ret, vis);
+    const buckets = merge("visits");
+    rows("visits", ["1", "2-3", "4-7", "8+"].filter(k => buckets[k]).map(k => [k === "1" ? "First day" : k + " days", buckets[k]]), "None yet");
+    const step = (label, key) => [label, people[key] || 0, pct(people[key] || 0, vis)];
+    rows("funnel", [["Visitors", vis, "100%"], step("Opened a repo", "repo_loaded"), step("Started a tour", "tour_start"), step("Opened a workflow", "workflow_open"), step("Finished a workflow", "workflow_done"), step("Reached the tour's end", "tour_done")]);
+    rows("levels", ["level_beginner", "level_advanced", "level_manager"].map(k => [LABELS[k], people[k] || 0]));
+    const head = $("uses"); head.textContent = "";
+    for (const [group, names] of GROUPS) {
+      const tr = head.insertRow(); const c = tr.insertCell(); c.colSpan = 3; c.textContent = group; c.style.cssText = "text-align:left;color:var(--dim);font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding-top:12px";
+      const th = head.insertRow(); ["", "People", "Times"].forEach((h, i) => { const x = th.insertCell(); x.textContent = h; x.style.color = "var(--dim)"; x.style.fontSize = "12px"; });
+      for (const k of names) { const r = head.insertRow(); r.insertCell().textContent = LABELS[k]; r.insertCell().textContent = (people[k] || 0).toLocaleString(); r.insertCell().textContent = (uses[k] || 0).toLocaleString(); }
+    }
     const by = new Map(days.map(d => [d.day, d.visitors || 0])), bar = $("bar"), series = Array.from({ length: n }, (_, k) => { const day = new Date(Date.now() - (n - 1 - k) * 864e5).toISOString().slice(0, 10); return [day, by.get(day) || 0]; }), top = Math.max(1, ...series.map(s => s[1]));
     bar.textContent = "";
     for (const [day, v] of series) { const i = document.createElement("i"); i.style.height = Math.max(2, v / top * 80) + "px"; i.title = `${day}: ${v}`; bar.append(i); }
