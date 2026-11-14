@@ -6640,9 +6640,9 @@ function focusStepWindow() {
 function stepPointersHtml(t, w, k, st) {   // Start at…, You'd come here to…, Next: this calls…
   const d = w.start && w.start.get(k), n = w.next && w.next.get(k), short = p => esc(p.split("/").pop());
   const at = d && (d.to > d.from ? `L${d.from}–${d.to}` : `L${d.from}`);
-  return `${d ? `<p class="wf-ptr">Start at <button type="button" class="xb-name" data-explain-range data-file="${esc(st.path)}" data-from="${d.from}" data-to="${d.to}" title="Explain just ${esc(d.name)}">${esc(d.name)}</button> <span class="wf-at">${at}</span></p>` : ""}` +
-    `${st.change ? `<p class="wf-ptr"><b>You'd come here to</b> ${esc(st.change.replace(/^[A-Z]/, c => c.toLowerCase()))}</p>` : ""}` +
-    `${n ? `<p class="wf-ptr">Next: this calls <button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(st.path)}" title="Show line ${n.line}, where it's used">${esc(n.name)}</button> in <b>${short(n.of)}</b> →</p>` : ""}`;
+  return `${d ? `<p class="wf-ptr">Start with <button type="button" class="xb-name" data-explain-range data-file="${esc(st.path)}" data-from="${d.from}" data-to="${d.to}" title="Explain just ${esc(d.name)}">${esc(d.name)}</button> <span class="wf-at">${at}</span></p>` : ""}` +
+    `${st.change ? `<p class="wf-ptr"><b>Why you'd come here:</b> to ${esc(st.change.replace(/^[A-Z]/, c => c.toLowerCase()))}</p>` : ""}` +
+    `${n ? `<p class="wf-ptr">Next, it uses <button type="button" class="xb-name" data-line="${n.line}" data-file="${esc(st.path)}" title="Show line ${n.line}, where it's used">${esc(n.name)}</button> in <b>${short(n.of)}</b> →</p>` : ""}`;
 }
 async function stepPointers(wf, code) {
   wf.next = new Map(); wf.start = new Map();
@@ -6896,13 +6896,13 @@ function partsHtml(t) {
   const chip = a => { const n = count(a.key), shown = made(a.key);
     return `<button type="button" class="part-chip${shown && !n ? " missed" : ""}${sel === a ? " on" : ""}" data-part="${esc(a.key)}" aria-pressed="${sel === a}" title="${esc(t.partAbout && t.partAbout[a.name] ? `${t.partAbout[a.name]} (${a.name}, ${fmt(a.lines)} lines)` : `${a.name} · ${fmt(a.lines)} lines`)}">${esc(partLabel(a.key))}${finding(a.key) ? `<span>…</span>` : shown ? `<span>${n}</span>` : ""}</button>`; };
   const onScreen = t.allParts ? all : areas, asked = onScreen.filter(a => made(a.key)).length, found = onScreen.filter(a => count(a.key)).length;
-  const note = t.byPart ? (!asked ? "Pick a part to see all its workflows." : `Workflows found in ${fmt(found)} of ${fmt(onScreen.length)} parts. Pick a part to see all its workflows.`)
-    : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see all its workflows.`;
+  const note = t.byPart ? (!asked ? "Pick a part to see everything it does." : `Workflows found in ${fmt(found)} of ${fmt(onScreen.length)} parts. Pick a part to see everything it does.`)
+    : `${covered === areas.length ? "The workflows cover every part." : `The workflows cover ${fmt(covered)} of ${fmt(areas.length)} parts.`} Pick a part to see everything it does.`;
   const none = sel && made(sel.key) && !count(sel.key) && !finding(sel.key) && t.byPart;
   const shownParts = t.allParts ? all : areas;
   const left = t.byPart && t.base && !t.team ? shownParts.filter(a => !made(a.key) && !finding(a.key)) : [], fa = t.findingAll;
   const allBtn = fa ? `<p class="side-note">Finding workflows in all parts: ${fmt(fa.done)} of ${fmt(fa.total)} done…</p>`
-    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Asks Gemini about each part shown here, one at a time">Find workflows in all parts (${fmt(left.length)} left)</button></p>` : "";
+    : left.length > 1 ? `<p class="side-note"><button type="button" class="mini" data-find-all title="Has Gemini, an AI, look at each part shown here, one after another">Look for workflows in every part (${fmt(left.length)} left)</button></p>` : "";
   return `<div class="tour-parts"><h3>Parts of the code</h3>
     <p class="side-note">${note}</p>${allBtn}
     <div class="part-chips">${areas.map(chip).join("")}${t.allParts ? more.map(chip).join("") : ""}${more.length ? `<button type="button" class="part-chip part-more" data-all-parts aria-expanded="${!!t.allParts}">${t.allParts ? "Show fewer parts" : `Show all parts (${fmt(more.length)} more)`}</button>` : ""}</div>
@@ -7025,15 +7025,15 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
   if (t.end) {
     $("sideSub").textContent = "Tour finished";
     if (!tourBody(`
-      <div class="tour-stop tour-end"><h3>That's the tour</h3><p class="wf-plain">You walked through ${t.workflows.length === 1 ? "one workflow" : `${t.workflows.length} workflows`}: ${t.workflows.map((w, k) => `${wfDot(k)}${esc(w.name)}`).join(", ")}.</p></div>
+      <div class="tour-stop tour-end"><h3>You've reached the end</h3><p class="wf-plain">You followed ${t.workflows.length === 1 ? "one workflow" : `${t.workflows.length} workflows`}: ${t.workflows.map((w, k) => `${wfDot(k)}${esc(w.name)}`).join(", ")}.</p></div>
       <div><h3>What next</h3><ul class="tour-next">
         <li>Click any building in the city to see what that file does.</li>
         ${askEnabled ? `<li>Ask a question about the code, like "where does it start?"</li>` : ""}
       </ul></div>
       <div class="side-actions tour-end-acts">
-        <button type="button" data-tour="overview">Back to the overview</button>
+        <button type="button" data-tour="overview">Back to the list of workflows</button>
         ${askEnabled ? `<button type="button" data-tour="ask">Ask a question</button>` : ""}
-        ${t.team ? "" : `<button type="button" data-tour="save">Save this tour for your team</button>`}
+        ${t.team ? "" : `<button type="button" data-tour="save">Save this tour to share with your team</button>`}
         <button type="button" class="primary" data-tour="close">Close the tour</button>
       </div>`)) return;   // nothing changed: leave the panel as it is
   } else if (t.w < 0) {
@@ -7043,16 +7043,16 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     if (!tourBody(`
       ${story ? `<div class="tour-stop"><h3>In plain English</h3><p class="wf-plain">${esc(story)}</p></div>` : t.summarizing ? `<p class="side-note">Writing a short summary of this repo…</p>` : ""}
       ${partsHtml(t)}
-      ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code to see the workflows that run through it.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">Pick one to walk through it, a step at a time.</p>`}${t.part != null ? `<ol class="wf-list">${t.workflows.map((w, k) => wfInPart(w, t.part) ? wfCard(t, w, k, plain) : "").join("")}</ol>` : wfGroupsHtml(t, plain)}
-        ${t.part != null && !t.byPart && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">No workflow goes through this part yet.</p>` : ""}
-        ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't reached yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>`}
+      ${!t.workflows.length && t.part == null ? `<p class="side-note">Pick a part of the code above to see what it does, one step at a time.</p>` : `<div><h3>${t.part != null ? `Workflows in ${esc(partLabel(t.part))}` : "Workflows"}</h3>${t.part != null && !t.workflows.some(w => wfInPart(w, t.part)) ? "" : `<p class="side-note">A workflow is one thing the software does, followed from start to finish, like signing up. Pick one to go through it a step at a time.</p>`}${t.part != null ? `<ol class="wf-list">${t.workflows.map((w, k) => wfInPart(w, t.part) ? wfCard(t, w, k, plain) : "").join("")}</ol>` : wfGroupsHtml(t, plain)}
+        ${t.part != null && !t.byPart && !t.workflows.some(w => wfInPart(w, t.part)) ? `<p class="side-note">We haven't found a workflow for this part yet.</p>` : ""}
+        ${(n => n || t.filling ? `<p class="side-note">${n ? `Writing the workflows: ${fmt(t.workflows.length - n)} of ${fmt(t.workflows.length)} ready.` : ""}${t.filling ? `${n ? " " : ""}Looking for parts of the code the tour hasn't covered yet…` : ""}</p>` : "")(t.workflows.filter(w => w.pending).length)}</div>`}
       ${!t.workflows.length ? "" : plain ? (t.team ? `<p class="side-note">Your team's tour, from <code>${TEAM_TOUR}</code> in the repo. Edit that file to change it.</p>`
-        : `<div class="side-actions"><button type="button" data-tour="save">Save this tour for your team</button><button type="button" data-tour="replan" title="Plan the tour again from the start">Make a new tour</button></div>`) : ""}
+        : `<div class="side-actions"><button type="button" data-tour="save">Save this tour to share with your team</button><button type="button" data-tour="replan" title="Plan the tour again from the start">Make a new tour</button></div>`) : ""}
       ${!t.workflows.length ? "" : `<details class="more tour-more"><summary>More detail</summary><div class="d-stack">
         ${plain && mapState && mapState.city === buildings ? structureHtml(true, true) : ""}
         <div class="tour-stop"><h3>${story ? "How the code fits together" : "How it all fits together"}</h3><p class="ask-answer">${rich(t.overview)}</p></div>
-        <div><h3>How they merge</h3>${metroMapSvg(t)}</div>
-        ${shared.length ? `<div><h3>Files that several workflows share</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
+        <div><h3>How the workflows connect</h3>${metroMapSvg(t)}</div>
+        ${shared.length ? `<div><h3>Files used by more than one workflow</h3><ol class="rank">${shared.map(([p, ws]) => `<li><button type="button" data-path="${esc(p)}">
           <span class="n">${ws.map(wfDot).join("")}</span><span class="path">${pathHtml(p)}</span><span class="meta">in ${ws.map(k => esc(t.workflows[k].name)).join(", ")}</span></button></li>`).join("")}</ol></div>` : ""}
       </div></details>`}`)) return;   // nothing changed: leave the panel as it is
   } else {
@@ -7060,17 +7060,17 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
     $("sideSub").textContent = `Workflow ${t.w + 1} of ${t.workflows.length} · step ${t.i + 1} of ${w.steps.length}`;
     if (!tourBody(`
       <div class="side-actions"><button type="button" class="mini" data-tour="overview">← All workflows</button></div>
-      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">In the code</p>` : ""}${w.pending ? `<p class="side-note">Writing this workflow…</p>` : w.error ? `<p class="side-note">${w.error} <button type="button" class="linkish" data-tour="renarrate">Try again</button></p>` : `<p class="ask-answer">${rich(w.summary)}</p>`}</div>
+      <div class="tour-stop"><h3>${wfDot(t.w)}${esc(w.name)}</h3>${plain && w.feature ? `<p class="wf-plain">${esc(w.feature)}</p><p class="wf-label">How the code does it</p>` : ""}${w.pending ? `<p class="side-note">Writing this workflow…</p>` : w.error ? `<p class="side-note">${w.error} <button type="button" class="linkish" data-tour="renarrate">Try again</button></p>` : `<p class="ask-answer">${rich(w.summary)}</p>`}</div>
       ${w.steps.length < 2 ? "" : `<div class="wf-progress" aria-label="Steps">${w.steps.map((st, k) => `<button type="button" class="wf-dot-step${k === t.i ? " current" : k < t.i ? " done" : ""}" data-stop="${k}" title="Step ${k + 1}: ${esc(st.title)}" aria-label="Step ${k + 1}: ${esc(st.title)}"${k === t.i ? ` aria-current="step"` : ""}>${k + 1}</button>`).join(`<span aria-hidden="true"></span>`)}</div>`}
       <ol class="wf-steps easy" style="--wf:${WF_COLORS[t.w % WF_COLORS.length]}">${w.steps.map((st, k) => {
         if (k !== t.i) return "";   // one step at a time: the dots and Back / Next move between them
         const { lines, shownAt, hand } = stepLines(w, k);
         const code = `${L.loading ? `<p class="side-note">Finding the lines to look at…</p>` : L.error ? `<p class="side-note">${L.error}</p>` : ""}
-          ${lines.length ? `<div><h3>Lines to look at</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
+          ${lines.length ? `<div><h3>Lines worth reading</h3><ul class="todos parts">${lines.map(l => `<li><button type="button" class="lnum" data-line="${l.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${l.line}</button>${rich(l.note)}</li>`).join("")}</ul></div>`
             : shownAt >= 0 ? `<p class="side-note">This file's lines to look at are in <button type="button" class="linkish" data-stop="${shownAt}">step ${shownAt + 1}</button>.</p>`
             : L.byPath && !L.read.has(st.path) ? `<p class="side-note">This file's code couldn't be read, so no lines were picked. <b>View code</b> may still show it.</p>`
             : L.byPath ? `<p class="side-note">No lines stood out in this file. <b>View code</b> shows all of it.</p>` : ""}
-          ${hand.length ? `<div><h3>Where it passes on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
+          ${hand.length ? `<div><h3>Where the work moves on to step ${k + 2}</h3><ul class="todos parts">${hand.map(h => `<li><button type="button" class="lnum" data-line="${h.line}" data-file="${esc(st.path)}" title="Show this line in the code">L${h.line}</button><code>${esc(h.text)}</code></li>`).join("")}</ul></div>` : ""}`;
         return `<li class="wf-step current" data-stop-box="${k}">
           <button type="button" class="wf-step-head" data-stop="${k}" aria-current="step"><span class="n">${k + 1}</span><span>${esc(st.title)}</span></button>
           <div class="wf-file"><button type="button" class="wf-file-main" data-path="${esc(st.path)}" title="Show this file in the city">
@@ -7078,14 +7078,14 @@ function renderTour() {   // Beginner's tour panel; Advanced and Manager keep th
             <span class="wf-file-text"><b>${esc(st.path.slice(st.path.lastIndexOf("/") + 1))}</b>${st.path.includes("/") ? `<i>${esc(st.path.slice(0, st.path.lastIndexOf("/") + 1))}</i>` : ""}</span></button>
             <button type="button" class="wf-file-view" data-view="${esc(st.path)}">View code</button></div>
           ${st.narration ? `<p class="explain-text">${rich(st.narration)}</p>` : w.pending ? `<p class="side-note">Writing this step…</p>` : ""}
-          ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by AI. Check it against the code."}</p>` : ""}
+          ${plain ? `<p class="xb-source">${t.team ? "From your team's tour" : "Written by an AI, so check it against the code."}</p>` : ""}
           ${plain ? stepPointersHtml(t, w, k, st) : ""}
           ${(t.shared.get(st.path) || []).length > 1 ? `<p class="side-note wf-meets">This file is also part of ${t.shared.get(st.path).filter(j => j !== t.w).map(j => `<button type="button" class="linkish" data-wf="${j}">${wfDot(j)}${esc(t.workflows[j].name)}</button>`).join(", ")}</p>` : ""}
           ${plain ? (code.trim() || L.waiting ? `<details class="more" data-key-lines${t.linesOpen ? " open" : ""}><summary>Show the code behind this step</summary>${code}</details>` : "") : code}
         </li>`; }).join("")}</ol>
       <div class="side-actions tour-nav">
         <button type="button" data-tour="back" title="Back (←)" ${t.i === 0 && t.w === 0 ? "disabled" : ""}>Back</button>
-        <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : (u => !u ? "Finish tour" : u.w === t.w ? "Step you skipped" : "Next workflow")(nextUnseen(t))}</button>
+        <button type="button" class="primary" data-tour="next" title="Next (→)">${t.i < w.steps.length - 1 ? "Next step" : (u => !u ? "Finish tour" : u.w === t.w ? "A step you skipped" : "Next workflow")(nextUnseen(t))}</button>
       </div>
       <p class="side-note kbd-tip">Tip: the ← and → keys step through the tour.</p>`)) return;   // nothing changed: leave the panel as it is
     const cur = sideBody.querySelector(`[data-stop-box="${t.i}"]`);
